@@ -23,3 +23,9 @@ test('zero vector scores 0 (no divide by zero)', () => {
   const b = new Float32Array([1, 0])
   expect(cosineSimilarity(a, b)).toBe(0)
 })
+
+test('mismatched dimensions returns 0 (not NaN)', () => {
+  const a = new Float32Array([1, 0, 0])
+  const b = new Float32Array([1, 0])
+  expect(cosineSimilarity(a, b)).toBe(0)
+})
