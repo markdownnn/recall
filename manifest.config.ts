@@ -18,10 +18,10 @@ export default defineManifest({
   // *.aws.cdn.hf.co is the actual HuggingFace CDN that ALL file downloads redirect to
   // (even small JSON files — verified with curl -sI resolve/main/tokenizer.json);
   // cdn.jsdelivr.net has been removed: the ONNX WASM runtime is now bundled into
-  // the extension under public/onnx/ and served via chrome.runtime.getURL('onnx/').
+  // the extension under public/onnx-hf/ and served via chrome.runtime.getURL('onnx-hf/').
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.aws.cdn.hf.co",
   },
-  permissions: ['storage', 'unlimitedStorage', 'activeTab', 'scripting', 'offscreen'],
+  permissions: ['unlimitedStorage', 'activeTab', 'offscreen'],
   host_permissions: ['<all_urls>'],
 })
