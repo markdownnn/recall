@@ -1,4 +1,5 @@
 import { test, expect, chromium } from '@playwright/test'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,6 +44,74 @@ test('pause blocks capture; unpausing restores it', async () => {
     await popup.getByPlaceholder('recall...').press('Enter')
     await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
+
+  await ctx.close()
+})
+
+// Scenario: clicking "Don't remember this site" must actually block a subsequent
+// capture via the real worker+SQL path — not just show optimistic popup text.
+// This is the end-to-end proof of the privacy promise.
+//
+// Approach: route 'http://deny-test.example/article' to serve the article HTML
+// so the tab has a real hostname (deny-test.example) that the gate can block.
+// Then deny the host, capture, and assert the gate returned 'denylisted'.
+// Finally capture the file:// article (different host) to confirm only the denied
+// host is blocked and normal capture still works.
+//
+// Coverage: integration (real extension, real SqliteWorkerClient, real gate SQL).
+test('deny-host blocks capture via real SQL path', async () => {
+  test.setTimeout(120_000)
+
+  const ctx = await chromium.launchPersistentContext('', {
+    headless: false,
+    args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
+  })
+  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'))
+  const extId = sw.url().split('/')[2]
+
+  // Read the article fixture and serve it at a real http hostname via Playwright
+  // route interception. Route is intercepted at the CDP level before DNS, so the
+  // domain does not need to exist and no TLS handshake is required.
+  const articleHtml = fs.readFileSync(path.resolve(dir, 'fixtures/article.html'), 'utf8')
+  const denyArticleUrl = 'http://deny-test.example/article'
+
+  const articlePage = await ctx.newPage()
+  await articlePage.route(denyArticleUrl, (route) =>
+    route.fulfill({ contentType: 'text/html', body: articleHtml }),
+  )
+  await articlePage.goto(denyArticleUrl)
+
+  const popup = await ctx.newPage()
+  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+
+  // Keep article page as the active tab so popup reads its URL for deny-host.
+  await articlePage.bringToFront()
+
+  // Click "Don't remember this site". The popup awaits the full round-trip
+  // (popup -> SW -> offscreen -> SQLite addDenyHost) before setting denyStatus,
+  // so when the status text appears the SQL write is already committed.
+  await popup.getByText("Don't remember this site").click()
+  await expect(popup.getByText(/won't remember deny-test\.example/i)).toBeVisible({ timeout: 10_000 })
+
+  // Now try to capture the denied page. The gate reads userDenyHosts from
+  // SQLite and must return reason='denylisted' for deny-test.example.
+  await popup.getByText('Capture this page').click()
+  await expect(
+    popup.getByText('not saved: this site is on the no-remember list'),
+  ).toBeVisible({ timeout: 10_000 })
+
+  // Verify the denied page was NOT captured (no "captured" text).
+  await expect(popup.getByText(/captured/i)).not.toBeVisible()
+
+  // Cross-check: capture the file:// article (host='') on a different page to
+  // confirm the denylist is host-specific and normal capture still works.
+  const fileArticlePage = await ctx.newPage()
+  await fileArticlePage.goto(articleUrl)
+  await fileArticlePage.bringToFront()
+  await popup.getByText('Capture this page').click()
+  // file:// pages have host='' which is NOT deny-test.example, so capture
+  // should proceed and produce chunks (the gate only checks thin/paused/denied).
+  await expect(popup.getByText(/captured/i)).toBeVisible({ timeout: 10_000 })
 
   await ctx.close()
 })

@@ -68,7 +68,14 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(items1).toHaveCount(2, { timeout: 30_000 })
     await expect(items1.first()).toContainText('Cortisol', { timeout: 10_000 })
 
-    console.log('[persistence] session 1 OK — Cortisol ranked first, closing context...')
+    // Set Paused = on in session 1 so we can assert it survives the restart.
+    // The checkbox triggers set-paused -> offscreen -> SQLite setPaused, so
+    // once the click resolves the setting is durably written.
+    await popup1.getByLabel(/pause/i).check()
+    // Give the round-trip (popup -> SW -> offscreen -> SQLite) time to complete.
+    await popup1.waitForTimeout(2_000)
+
+    console.log('[persistence] session 1 OK — Cortisol ranked first, paused=true set, closing context...')
   } finally {
     await ctx1.close()
   }
@@ -96,7 +103,12 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(items2).toHaveCount(2, { timeout: 30_000 })
     await expect(items2.first()).toContainText('Cortisol', { timeout: 10_000 })
 
-    console.log('[persistence] session 2 OK — Cortisol ranked first WITHOUT re-capturing. OPFS persistence confirmed.')
+    // Assert that the Pause setting also survived the restart.
+    // The popup reads settings via get-settings -> offscreen -> SQLite on mount,
+    // so if the checkbox is checked the SQLite value persisted across the restart.
+    await expect(popup2.getByLabel(/pause/i)).toBeChecked({ timeout: 10_000 })
+
+    console.log('[persistence] session 2 OK — Cortisol ranked first WITHOUT re-capturing, pause setting persisted. OPFS persistence confirmed.')
   } finally {
     await ctx2.close()
   }
