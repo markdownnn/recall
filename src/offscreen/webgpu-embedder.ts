@@ -14,8 +14,7 @@ const MODEL_ID = 'Xenova/multilingual-e5-small'
 const BATCH = 32
 
 // Configure the ONNX runtime ONCE to load its WASM from the bundled extension
-// dir (public/onnx-hf/), not a CDN.  Proven by the WebGPU bench (webgpu-bench.ts):
-// both the WASM backend and the WebGPU backend (ort-webgpu) need asyncify.wasm.
+// dir (public/onnx-hf/), not a CDN.  Both WASM and WebGPU backends need asyncify.wasm.
 let _envConfigured = false
 function configureEnv(): void {
   if (_envConfigured) return
@@ -38,23 +37,9 @@ export class WebGpuEmbedder {
   // Single-flight queue so ONNX never receives two overlapping inputs.
   private queue: Promise<unknown> = Promise.resolve()
 
-  // Timing captured during createPipe(); zero until loaded.
-  private _pipelineMs: number = 0
-  private _warmupMs: number = 0
-
   // Which backend actually won. Null until the pipeline has been created.
   get device(): 'webgpu' | 'wasm' | null {
     return this._device
-  }
-
-  // Time (ms) for pipeline() to resolve (model download + onnx/webgpu init).
-  get pipelineMs(): number {
-    return this._pipelineMs
-  }
-
-  // Time (ms) for the warmup embed after the pipeline resolves (shader compilation / first-inference).
-  get warmupMs(): number {
-    return this._warmupMs
   }
 
   // Create the pipeline (triggers the model download), wiring v4 progress events
@@ -74,46 +59,27 @@ export class WebGpuEmbedder {
     // --- WebGPU first. A failure in creation OR the warmup embed means WebGPU
     //     is unusable here, so we fall through to WASM. ---
     try {
-      const t0Pipeline = Date.now()
       const pipe = (await pipeline('feature-extraction', MODEL_ID, {
         device: 'webgpu',
         progress_callback: onProgress,
       } as any)) as FeatureExtractionPipeline
-      this._pipelineMs = Date.now() - t0Pipeline
-      console.log(`[timing] offscreen pipeline (webgpu attempt) = ${this._pipelineMs} ms`)
-
-      const t0Warmup = Date.now()
       await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
-      this._warmupMs = Date.now() - t0Warmup
-      console.log(`[timing] offscreen warmup (webgpu) = ${this._warmupMs} ms`)
-
       this._device = 'webgpu'
-      console.log('[recall/offscreen] embedder ready on WebGPU')
+      console.log('[recall] embedder ready on WebGPU')
       return pipe
     } catch (e) {
-      console.warn('[recall/offscreen] WebGPU embedder unavailable, falling back to WASM:', String(e))
-      // Reset timing counters before WASM attempt.
-      this._pipelineMs = 0
-      this._warmupMs = 0
+      console.warn('[recall] WebGPU unavailable, falling back to WASM:', String(e))
     }
 
     // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. ---
     ;(env.backends.onnx as any).wasm.numThreads = 1
-    const t0Pipeline = Date.now()
     const pipe = (await pipeline('feature-extraction', MODEL_ID, {
       device: 'wasm',
       progress_callback: onProgress,
     } as any)) as FeatureExtractionPipeline
-    this._pipelineMs = Date.now() - t0Pipeline
-    console.log(`[timing] offscreen pipeline (wasm) = ${this._pipelineMs} ms`)
-
-    const t0Warmup = Date.now()
     await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
-    this._warmupMs = Date.now() - t0Warmup
-    console.log(`[timing] offscreen warmup (wasm) = ${this._warmupMs} ms`)
-
     this._device = 'wasm'
-    console.log('[recall/offscreen] embedder ready on WASM (single-thread)')
+    console.log('[recall] embedder ready on WASM (single-thread)')
     return pipe
   }
 
@@ -134,13 +100,9 @@ export class WebGpuEmbedder {
     const out: number[][] = []
     for (let i = 0; i < texts.length; i += BATCH) {
       const slice = texts.slice(i, i + BATCH)
-      const t0 = Date.now()
       const prefixed = slice.map((t) => `${kind}: ${t}`)
       const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
       for (const arr of output.tolist() as number[][]) out.push(arr)
-      console.log(
-        `[recall/offscreen] embed batch ${Math.floor(i / BATCH) + 1}: ${slice.length} texts (${kind}) in ${Date.now() - t0}ms on ${this._device}`,
-      )
     }
     return out
   }

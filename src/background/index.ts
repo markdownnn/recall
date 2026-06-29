@@ -21,8 +21,6 @@ if (typeof window === 'undefined') {
 
 console.log('[recall/bg] service worker evaluated (thin relay)')
 
-const _t0Startup = Date.now()
-
 // ---------------------------------------------------------------------------
 // Offscreen lifecycle
 // ---------------------------------------------------------------------------
@@ -73,7 +71,6 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
 
   if (msg?.kind === 'model-progress') {
     const e = msg.status as { status: string; progress?: number }
-    console.log('[recall/bg] model progress:', e.status, e.progress ?? '')
     modelStatus = reduceModelProgress(modelStatus, e)
     broadcastModelStatus(modelStatus)
   } else if (msg?.kind === 'indexing-progress') {
@@ -109,15 +106,12 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
       await ensureOffscreen()
 
       if (msg.type === 'capture') {
-        console.log('[recall/bg] capture: forwarding to offscreen, text length =', msg.text.length)
-        const t0 = Date.now()
         const r = await callOffscreen<{ chunkCount: number }>({
           op: 'capture',
           url: msg.url,
           title: msg.title,
           text: msg.text,
         })
-        console.log(`[timing] capture store (incl. offscreen RPC) = ${Date.now() - t0} ms`)
         sendResponse({ type: 'captured', chunkCount: r.chunkCount } satisfies MsgResult)
       } else if (msg.type === 'recall') {
         const r = await callOffscreen<{ results: RankedResult[] }>({
@@ -148,12 +142,10 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('[recall/bg] onInstalled: pre-warming model in offscreen...')
   ;(async () => {
     await ensureOffscreen()
-    const r = await callOffscreen<{ device: string; pipelineMs?: number; warmupMs?: number }>({
+    const r = await callOffscreen<{ device: string }>({
       op: 'ensureLoaded',
     })
-    const startupToModelMs = Date.now() - _t0Startup
     console.log('[recall/bg] pre-warm complete: device =', r.device)
-    console.log(`[timing] startup->model ready = ${startupToModelMs} ms`)
     modelStatus = { state: 'ready', percent: 100 }
     broadcastModelStatus(modelStatus)
   })().catch((e) => {
@@ -171,54 +163,3 @@ setInterval(() => {
   callOffscreen({ op: 'ping' }).catch(() => {})
 }, 25_000)
 
-// ---------------------------------------------------------------------------
-// Spike: run-webgpu-bench relay (additive, unchanged)
-// ---------------------------------------------------------------------------
-
-chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
-  if (msg.type !== 'run-webgpu-bench') return false
-  ;(async () => {
-    try {
-      await ensureOffscreen()
-      await chrome.storage.local.set({ __run_bench_trigger: true })
-      sendResponse({ status: 'started' })
-    } catch (e) {
-      sendResponse({ status: 'error', error: String(e) })
-    }
-  })()
-  return true
-})
-
-// ---------------------------------------------------------------------------
-// Spike: rpc-stress handler (additive, unchanged)
-// Tests N concurrent callOffscreen() round-trips and reports delivery stats.
-// ---------------------------------------------------------------------------
-
-chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
-  if (msg?.type !== 'rpc-stress') return false
-  ;(async () => {
-    const count: number = Number(msg.count) || 0
-    const t0 = Date.now()
-    await ensureOffscreen()
-    const settled = await Promise.allSettled(
-      Array.from({ length: count }, (_, i) =>
-        callOffscreen<{ echoed: unknown; n: number }>({ n: i }),
-      ),
-    )
-    let ok = 0, mismatches = 0, missing = 0
-    for (let i = 0; i < count; i++) {
-      const r = settled[i]
-      if (r.status === 'rejected') {
-        missing++
-      } else {
-        const n = (r.value as any)?.n
-        if (n === i + 1) ok++
-        else mismatches++
-      }
-    }
-    const elapsedMs = Date.now() - t0
-    console.log(`[rpc-stress] done: total=${count} ok=${ok} mismatches=${mismatches} missing=${missing} elapsedMs=${elapsedMs}`)
-    sendResponse({ total: count, ok, mismatches, missing, elapsedMs })
-  })()
-  return true
-})

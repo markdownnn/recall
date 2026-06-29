@@ -64,51 +64,6 @@ function runDrainWithProgress(): void {
 runDrainWithProgress()
 
 // ---------------------------------------------------------------------------
-// WebGPU bench (additive, independent of storage/core).
-// ---------------------------------------------------------------------------
-
-let _benchRunning = false
-
-async function _runBenchIfTriggered(): Promise<void> {
-  if (_benchRunning) return
-  const data = (await chrome.storage.local.get(['__run_bench_trigger'])) as Record<string, unknown>
-  if (data['__run_bench_trigger'] !== true) return
-  _benchRunning = true
-  await chrome.storage.local.remove(['__run_bench_trigger'])
-  console.log('[recall/offscreen] webgpu-bench: trigger detected, starting...')
-  await chrome.storage.local.set({ __webgpu_bench_started: Date.now() })
-  try {
-    const { runBench } = await import('./webgpu-bench')
-    const result = await runBench()
-    console.log('[recall/offscreen] webgpu-bench: DONE', result)
-    await chrome.storage.local.set({ __webgpu_bench: { ...result, ts: Date.now() } })
-  } catch (e) {
-    const errResult = {
-      webgpuMsPerChunk: null,
-      wasm1MsPerChunk: null,
-      wasmMultiMsPerChunk: null,
-      crossOriginIsolated: false,
-      accuracyCosine: null,
-      webgpuDtype: null,
-      notes: [`bench threw: ${String(e)}`],
-      ts: Date.now(),
-      error: String(e),
-    }
-    console.error('[recall/offscreen] webgpu-bench: FAILED', e)
-    await chrome.storage.local.set({ __webgpu_bench: errResult })
-  } finally {
-    _benchRunning = false
-  }
-}
-
-let _pollCount = 0
-setInterval(() => {
-  _pollCount++
-  chrome.storage.local.set({ __offscreen_heartbeat: _pollCount }).catch(console.error)
-  _runBenchIfTriggered().catch(console.error)
-}, 2_000)
-
-// ---------------------------------------------------------------------------
 // RPC handler: dispatches on payload.op
 // ---------------------------------------------------------------------------
 
@@ -121,9 +76,8 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const url = p.url as string
     const title = p.title as string
     const text = p.text as string
-    const t0 = Date.now()
     const { chunkCount } = await capture.capture({ url, title, text })
-    console.log(`[recall/offscreen] capture done: ${chunkCount} chunks in ${Date.now() - t0}ms`)
+    console.log(`[recall] captured ${chunkCount} chunks`)
     // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
     runDrainWithProgress()
     return { chunkCount }
@@ -133,9 +87,8 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   if (op === 'recall') {
     const text = p.text as string
     const k = p.k as number
-    const t0 = Date.now()
     const results = await recall.recall({ text, k })
-    console.log(`[recall/offscreen] recall done: ${results.length} results in ${Date.now() - t0}ms`)
+    console.log(`[recall] recalled ${results.length} results`)
     return { results }
   }
 
@@ -146,28 +99,13 @@ installOffscreenRpcHandler(async (payload: unknown) => {
         .sendMessage({ channel: 'rpc-event', kind: 'model-progress', status: e })
         .catch(() => {})
     })
-    console.log('[recall/offscreen] ensureLoaded done, device =', embedder.device)
-    return { device: embedder.device, pipelineMs: embedder.pipelineMs, warmupMs: embedder.warmupMs }
-  }
-
-  // --- embed: kept for any callers that still use direct embed RPC (spike tests) ---
-  if (op === 'embed') {
-    const texts = (p.texts as string[]) ?? []
-    const kind = (p.kind as 'query' | 'passage') ?? 'passage'
-    const t0 = Date.now()
-    const vectors = await embedder.embed(texts, kind)
-    return { vectors, embedMs: Date.now() - t0, chunkCount: texts.length }
+    console.log('[recall] model ready, device =', embedder.device)
+    return { device: embedder.device }
   }
 
   // --- ping: keep-alive from the SW ---
   if (op === 'ping') {
     return { pong: true }
-  }
-
-  // --- default: echo (keeps rpc-stress spike test green) ---
-  return {
-    echoed: payload,
-    n: ((p.n as number) ?? 0) + 1,
   }
 })
 
