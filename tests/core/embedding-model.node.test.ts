@@ -3,7 +3,7 @@
 // Coverage: integration (real model inference, no mock).
 // Worker wrapper is browser-only so node tests the embedding logic directly.
 
-import { pipeline } from '@xenova/transformers'
+import { pipeline } from '@huggingface/transformers'
 import { cosineSimilarity } from '../../src/core/cosine'
 
 test('cross-lingual english: english query is closest to matching english passage', async () => {
