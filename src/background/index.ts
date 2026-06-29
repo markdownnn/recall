@@ -2,7 +2,7 @@ import { CaptureService } from '../core/capture-service'
 import { RecallService } from '../core/recall-service'
 import { IndexingService } from '../core/indexing-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
-import { InlineEmbedder } from '../adapters/inline-embedder'
+import { OffscreenEmbedderProxy } from '../adapters/offscreen-embedder-proxy'
 import { SqliteVectorStore } from '../adapters/sqlite-vector-store'
 // Static import: Vite does NOT wrap static imports in __vitePreload lambdas,
 // so this works inside a Chrome extension service worker where dynamic
@@ -41,14 +41,23 @@ function broadcastIndexingProgress(pending: number, embedded: number): void {
   })
 }
 
-// Worker is not available in Chrome extension service workers.
-// InlineEmbedder runs the ONNX model directly in the SW thread instead.
-const embedder = new InlineEmbedder((e) => {
+// The SW does NOT run the model. This proxy forwards embed()/ensureLoaded() to
+// the REAL embedder in the offscreen document (WebGPU, WASM fallback) over RPC.
+// Model-download progress arrives separately as 'rpc-event' messages (handled below).
+const embedder = new OffscreenEmbedderProxy(ensureOffscreen, callOffscreen)
+const chunker = new ParagraphChunker(220)
+
+// Model-loading progress from the offscreen: the offscreen pushes fire-and-forget
+// { channel:'rpc-event', kind:'model-progress', status } messages during load.
+// Feed them through the existing reducer + broadcast so the popup UI keeps working.
+chrome.runtime.onMessage.addListener((msg: any): boolean => {
+  if (msg?.channel !== 'rpc-event' || msg?.kind !== 'model-progress') return false
+  const e = msg.status as { status: string; progress?: number }
   console.log('[recall/bg] model progress:', e.status, e.progress ?? '')
   modelStatus = reduceModelProgress(modelStatus, e)
   broadcastModelStatus(modelStatus)
+  return false
 })
-const chunker = new ParagraphChunker(220)
 
 async function buildStore(): Promise<SqliteVectorStore> {
   const sqlite3 = await sqlite3InitModule()
@@ -74,12 +83,14 @@ const ready = (async () => {
 // Pre-warm: download and cache the model weights on install so the first
 // capture does not have to wait for a ~135 MB download.
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[recall/bg] onInstalled: pre-warming model...')
-  embedder.ensureLoaded().then(() => {
-    console.log('[recall/bg] pre-warm complete: model ready')
+  console.log('[recall/bg] onInstalled: pre-warming model in offscreen...')
+  ;(async () => {
+    await ensureOffscreen()
+    const device = await embedder.ensureLoaded()
+    console.log('[recall/bg] pre-warm complete: model ready, embedding device =', device)
     modelStatus = { state: 'ready', percent: 100 }
     broadcastModelStatus(modelStatus)
-  }).catch((e) => {
+  })().catch((e) => {
     console.error('[recall/bg] pre-warm FAILED:', e)
     modelStatus = { state: 'error', percent: modelStatus.percent }
   })

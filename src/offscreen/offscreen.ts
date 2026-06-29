@@ -6,6 +6,7 @@
 // capture / recall / embedding flow.
 
 import { installOffscreenRpcHandler } from './offscreen-rpc'
+import { WebGpuEmbedder } from './webgpu-embedder'
 
 const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module' })
 
@@ -69,9 +70,7 @@ let _benchRunning = false
 
 async function _runBenchIfTriggered(): Promise<void> {
   if (_benchRunning) return
-  const data = await new Promise<Record<string, unknown>>(resolve =>
-    chrome.storage.local.get(['__run_bench_trigger'], resolve)
-  )
+  const data = (await chrome.storage.local.get(['__run_bench_trigger'])) as Record<string, unknown>
   if (data['__run_bench_trigger'] !== true) return
   _benchRunning = true
   // Consume the trigger immediately so a restart does not re-fire.
@@ -112,13 +111,44 @@ setInterval(() => {
 }, 2_000)
 
 // ---------------------------------------------------------------------------
-// Spike: reliable SW<->offscreen RPC echo handler (additive, isolated).
-// Proves 100% delivery + correct correlation under concurrent load.
-// The handler is trivial: echo the payload back with n incremented.
+// Real embedder (multilingual-e5-small, WebGPU with WASM fallback) lives here.
+// The SW holds only a proxy that forwards embed/ensureLoaded over RPC.
 // ---------------------------------------------------------------------------
-installOffscreenRpcHandler(async (payload: unknown) => ({
-  echoed: payload,
-  n: ((payload as Record<string, unknown>)?.n as number ?? 0) + 1,
-}))
+const embedder = new WebGpuEmbedder()
+
+// RPC handler dispatches on payload.op:
+//   'embed'        -> { vectors: number[][] }  (Float32Array can't cross the wire)
+//   'ensureLoaded' -> { device }  + fire-and-forget model-progress events to the SW
+//   (default)      -> echo {echoed, n+1}  (keeps the rpc-stress spike test green)
+installOffscreenRpcHandler(async (payload: unknown) => {
+  const p = (payload ?? {}) as Record<string, unknown>
+  const op = p.op as string | undefined
+
+  if (op === 'embed') {
+    const texts = (p.texts as string[]) ?? []
+    const kind = (p.kind as 'query' | 'passage') ?? 'passage'
+    const vectors = await embedder.embed(texts, kind)
+    return { vectors }
+  }
+
+  if (op === 'ensureLoaded') {
+    await embedder.ensureLoaded((e) => {
+      // Fire-and-forget: push download progress to the SW so the popup can show it.
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'model-progress', status: e })
+        .catch(() => {
+          // SW/popup may be closed; ignore.
+        })
+    })
+    console.log('[recall/offscreen] ensureLoaded done, embedding device =', embedder.device)
+    return { device: embedder.device }
+  }
+
+  // Default: echo (additive spike — proves RPC delivery/correlation under load).
+  return {
+    echoed: payload,
+    n: ((p.n as number) ?? 0) + 1,
+  }
+})
 
 console.log('[recall/offscreen] document loaded, worker spawned')
