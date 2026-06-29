@@ -1,12 +1,12 @@
 import type { RankedResult } from './core/model'
 
 export type Msg =
-  | { type: 'capture'; url: string; title: string; text: string }
+  | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
   | { type: 'recall'; text: string; k: number }
   | { type: 'model-status' }
 
 export type MsgResult =
-  | { type: 'captured'; chunkCount: number }
+  | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'denylisted' | 'thin' }
   | { type: 'recalled'; results: RankedResult[] }
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
