@@ -23,7 +23,11 @@ function sendCapture(manual: boolean): void {
   chrome.runtime.sendMessage(capture, () => void chrome.runtime.lastError)
 }
 
-if (!chrome.extension.inIncognitoContext) {
+// Incognito is handled by the SW (it drops senders whose tab.incognito is true),
+// and extensions do not inject content scripts in incognito unless explicitly allowed.
+// We do NOT check chrome.extension here: chrome.extension is unreliable/undefined in
+// MV3 content scripts and would throw, killing both auto- and manual-capture.
+{
   let dwellTimer: ReturnType<typeof setTimeout> | undefined
   let currentUrl = ''
   const startCandidate = (url: string): void => {
