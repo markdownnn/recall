@@ -18,6 +18,8 @@ export interface VectorSearchPort {
   setVector(chunkId: string, vector: Float32Array): Promise<void>
   // Search ONLY over embedded chunks (those with a vector).
   search(queryVector: Float32Array, k: number): Promise<RankedResult[]>
+  // Delete all pages (and their chunks) whose host equals or is a subdomain of the given host.
+  deletePagesByHost(host: string): Promise<void>
 }
 
 export interface AppSettings {
@@ -29,4 +31,5 @@ export interface SettingsPort {
   get(): Promise<AppSettings>
   setPaused(paused: boolean): Promise<void>
   addDenyHost(host: string): Promise<void>
+  removeDenyHost(host: string): Promise<void>
 }

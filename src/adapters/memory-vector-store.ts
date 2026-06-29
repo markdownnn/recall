@@ -48,4 +48,16 @@ export class MemoryVectorStore implements VectorSearchPort {
     scored.sort((a, b) => b.score - a.score)
     return scored.slice(0, k)
   }
+
+  async deletePagesByHost(host: string): Promise<void> {
+    const pageIds: string[] = []
+    for (const [id, page] of this.pages) {
+      let h = ''
+      try { h = new URL(page.url).hostname.toLowerCase() } catch {}
+      if (h === host || h.endsWith('.' + host)) { pageIds.push(id); this.pages.delete(id) }
+    }
+    for (const [id, { chunk }] of this.chunks) {
+      if (pageIds.includes(chunk.pageId)) this.chunks.delete(id)
+    }
+  }
 }
