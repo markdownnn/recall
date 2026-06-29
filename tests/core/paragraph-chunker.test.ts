@@ -24,3 +24,25 @@ test('ignores empty paragraphs', () => {
   const chunks = chunker.chunk({ pageId: 'p1', text: 'a\n\n\n\n  \n\nb' })
   expect(chunks.map((c) => c.text)).toEqual(['a', 'b'])
 })
+
+test('hard-splits a long spaceless ASCII token into maxChars slices', () => {
+  const longWord = 'a'.repeat(1000)
+  const smallChunker = new ParagraphChunker(220, 100)
+  const chunks = smallChunker.chunk({ pageId: 'p1', text: longWord })
+  expect(chunks.length).toBeGreaterThan(1)
+  for (const c of chunks) {
+    expect(c.text.length).toBeLessThanOrEqual(100)
+  }
+  expect(chunks.map((c) => c.text).join('')).toBe(longWord)
+})
+
+// Non-ASCII allowed here: verifying CJK spaceless text is bounded by char budget.
+test('hard-splits CJK spaceless text into multiple chunks', () => {
+  const cjkText = 'コルチゾールは睡眠を妖害するホルモンです'
+  const smallChunker = new ParagraphChunker(220, 10)
+  const chunks = smallChunker.chunk({ pageId: 'p1', text: cjkText })
+  expect(chunks.length).toBeGreaterThan(1)
+  for (const c of chunks) {
+    expect([...c.text].length).toBeLessThanOrEqual(10)
+  }
+})
