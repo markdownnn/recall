@@ -4,3 +4,4 @@ dist-ext/
 .vite/
 test-results/
 playwright-report/
+recall-extension.zip
