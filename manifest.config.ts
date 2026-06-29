@@ -13,8 +13,14 @@ export default defineManifest({
   // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm (background) and
   // @xenova/transformers ONNX runtime (embedder worker).  Without it Chrome's
   // default CSP blocks WebAssembly compilation and the background hangs forever.
+  // connect-src restricts egress so a compromised dependency cannot exfiltrate
+  // data to arbitrary hosts.  huggingface.co starts model-file requests;
+  // *.aws.cdn.hf.co is the actual HuggingFace CDN that ALL file downloads redirect to
+  // (even small JSON files — verified with curl -sI resolve/main/tokenizer.json);
+  // cdn.jsdelivr.net serves the ONNX WASM runtime (will be removed once the runtime is
+  // bundled locally, then that origin can be dropped here too).
   content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.aws.cdn.hf.co https://cdn.jsdelivr.net",
   },
   permissions: ['storage', 'unlimitedStorage', 'activeTab', 'scripting'],
   host_permissions: ['<all_urls>'],

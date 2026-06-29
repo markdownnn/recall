@@ -13,7 +13,8 @@ let extractorP: Promise<FeatureExtractionPipeline> | null = null
 
 function getExtractor(): Promise<FeatureExtractionPipeline> {
   if (!extractorP) {
-    extractorP = pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
+    // Pinned to an immutable commit (supply-chain: HF 'main' must not be trusted to stay constant).
+    extractorP = pipeline('feature-extraction', 'Xenova/multilingual-e5-small', { revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78' })
   }
   return extractorP
 }
