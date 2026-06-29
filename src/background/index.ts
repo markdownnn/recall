@@ -27,9 +27,18 @@ console.log('[recall/bg] service worker evaluated (thin relay)')
 
 let _offscreenDocP: Promise<void> | null = null
 
+// Serialize creation: concurrent callers all share the ONE in-flight promise, so
+// two retries can never both call createDocument() and trigger Chrome's "Only a
+// single offscreen document may be created" error. We never null _offscreenDocP
+// while a creation is in flight.
 function ensureOffscreen(): Promise<void> {
   if (_offscreenDocP) return _offscreenDocP
-  _offscreenDocP = (async () => {
+  _offscreenDocP = createOffscreenOnce()
+  return _offscreenDocP
+}
+
+async function createOffscreenOnce(): Promise<void> {
+  try {
     const exists = await chrome.offscreen?.hasDocument?.()
     if (exists) return
     await chrome.offscreen.createDocument({
@@ -37,8 +46,16 @@ function ensureOffscreen(): Promise<void> {
       reasons: ['BLOBS'],
       justification: 'OPFS sqlite + WebGPU embedder via offscreen document',
     })
-  })()
-  return _offscreenDocP
+  } catch (e) {
+    // A "single offscreen document may be created"/"already exists" race means
+    // the document actually exists now — treat as SUCCESS by re-checking.
+    const existsNow = await chrome.offscreen?.hasDocument?.().catch(() => false)
+    if (existsNow) return
+    // Real failure: clear the cached promise so the NEXT call retries instead of
+    // replaying this rejection forever.
+    _offscreenDocP = null
+    throw e
+  }
 }
 
 function resetOffscreen(): void {
@@ -84,6 +101,12 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
       modelStatus = { state: 'ready', percent: 100 }
       broadcastModelStatus(modelStatus)
     }
+  } else if (msg?.kind === 'indexing-error') {
+    // A fire-and-forget drain failed in the offscreen. Relay to the popup so it
+    // can clear the stuck "indexing..." state instead of hanging forever.
+    chrome.runtime
+      .sendMessage({ type: 'indexing-error', error: String(msg.error ?? 'unknown') })
+      .catch(() => {})
   }
 
   return false
@@ -95,7 +118,24 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
 
 chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
   if (msg.type === 'model-status') {
-    sendResponse({ type: 'model-status', status: modelStatus } satisfies MsgResult)
+    // A freshly-woken SW has modelStatus = INITIAL even when the model is
+    // actually loaded in the (surviving) offscreen. Ask the offscreen for the
+    // truth; if it reports a loaded device, report ready. Fall back to the local
+    // status if the offscreen is unreachable.
+    ;(async () => {
+      if (modelStatus.state !== 'ready') {
+        try {
+          const r = await callOffscreen<{ device: string | null }>(
+            { op: 'status' },
+            { timeoutMs: 5_000 },
+          )
+          if (r.device) modelStatus = { state: 'ready', percent: 100 }
+        } catch {
+          // offscreen not reachable yet; keep the local status.
+        }
+      }
+      sendResponse({ type: 'model-status', status: modelStatus } satisfies MsgResult)
+    })()
     return true
   }
 
@@ -135,31 +175,48 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
 })
 
 // ---------------------------------------------------------------------------
-// onInstalled: pre-warm model in offscreen
+// Pre-warm: create the offscreen and load the model up front so the first
+// capture/recall does not silently pay the ~20s model load.
+// The offscreen document does NOT survive a browser restart, so we run this on
+// BOTH onInstalled and onStartup.
+// Model load can take ~20s on WebGPU and minutes on WASM, so use a long RPC
+// timeout — the default 30s would kill a slow WASM load mid-flight.
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('[recall/bg] onInstalled: pre-warming model in offscreen...')
-  ;(async () => {
+const MODEL_LOAD_TIMEOUT_MS = 300_000 // 5 min
+
+async function prewarm(trigger: string): Promise<void> {
+  console.log(`[recall/bg] ${trigger}: pre-warming model in offscreen...`)
+  try {
     await ensureOffscreen()
-    const r = await callOffscreen<{ device: string }>({
-      op: 'ensureLoaded',
-    })
+    const r = await callOffscreen<{ device: string }>(
+      { op: 'ensureLoaded' },
+      { timeoutMs: MODEL_LOAD_TIMEOUT_MS },
+    )
     console.log('[recall/bg] pre-warm complete: device =', r.device)
     modelStatus = { state: 'ready', percent: 100 }
     broadcastModelStatus(modelStatus)
-  })().catch((e) => {
+  } catch (e) {
     console.error('[recall/bg] pre-warm FAILED:', e)
     modelStatus = { state: 'error', percent: modelStatus.percent }
-  })
+  }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  void prewarm('onInstalled')
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void prewarm('onStartup')
 })
 
 // ---------------------------------------------------------------------------
-// Keep-alive: ping the offscreen every 25s so Chrome does not reap it.
-// This keeps the model resident across captures.
+// Keep-alive: ping the offscreen every 20s so Chrome does not reap it (the reap
+// timer is 30s; 20s leaves margin — ADR 0014). This keeps the model resident
+// across captures.
 // ---------------------------------------------------------------------------
 
 setInterval(() => {
   callOffscreen({ op: 'ping' }).catch(() => {})
-}, 25_000)
+}, 20_000)
 

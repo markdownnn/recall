@@ -49,6 +49,9 @@ interface PendingEntry {
 
 const _pending = new Map<number, PendingEntry>()
 let _nextId = 0
+// Default per-op timeout. Long-running ops (model load) override this via the
+// { timeoutMs } option on callOffscreen — a cold WASM model load can take
+// minutes, far longer than 30s, and must NOT be killed mid-load.
 const TIMEOUT_MS = 30_000
 
 // Callbacks registered by background/index.ts so callOffscreen can ensure the
@@ -111,46 +114,65 @@ export function installSwRpcListener(): void {
 // SW-side: callOffscreen
 // ---------------------------------------------------------------------------
 
+export interface CallOptions {
+  /** Per-call timeout in ms. Defaults to TIMEOUT_MS (30s). Use a long value
+   *  (or Infinity) for model-load ops that can legitimately take minutes. */
+  timeoutMs?: number
+}
+
+/** Best-effort check that the offscreen document is actually gone. On any error
+ *  (e.g. chrome.offscreen unavailable) we conservatively assume it still exists
+ *  so we never tear down + recreate a live, half-loaded offscreen. */
+async function offscreenIsGone(): Promise<boolean> {
+  try {
+    const exists = await chrome.offscreen?.hasDocument?.()
+    return exists === false
+  } catch {
+    return false
+  }
+}
+
 /**
  * Send a request to the offscreen document and await its reply.
  *
  * - Ensures the offscreen document exists before sending.
- * - On timeout, resets the document promise, recreates the document, and
- *   retries ONCE before rejecting.
+ * - On timeout, recreate + retry ONCE *only if* hasDocument() confirms the
+ *   offscreen is actually gone. If it still exists it is just slow (e.g. a long
+ *   model load) — we reject without destroying it, so we never loop on cold
+ *   recreations of a half-loaded document.
  * - Multiple concurrent calls are safe: each gets a unique id and its own
  *   resolver in the pending Map.
  */
-export async function callOffscreen<T>(payload: unknown): Promise<T> {
+export async function callOffscreen<T>(payload: unknown, opts?: CallOptions): Promise<T> {
   if (_ensurer) await _ensurer()
+  const timeoutMs = opts?.timeoutMs ?? TIMEOUT_MS
   try {
-    return await _singleCall<T>(payload)
+    return await _singleCall<T>(payload, timeoutMs)
   } catch (e) {
-    if (
-      e instanceof Error &&
-      e.message.startsWith('[rpc] timeout') &&
-      _ensurer &&
-      _resetter
-    ) {
-      console.warn('[rpc] callOffscreen timed out on first attempt — recreating offscreen and retrying once')
-      _resetter()
-      await _ensurer()
-      return _singleCall<T>(payload)
+    if (e instanceof Error && e.message.startsWith('[rpc] timeout') && _ensurer && _resetter) {
+      if (await offscreenIsGone()) {
+        console.warn('[rpc] callOffscreen timed out and offscreen is gone — recreating and retrying once')
+        _resetter()
+        await _ensurer()
+        return _singleCall<T>(payload, timeoutMs)
+      }
+      console.warn('[rpc] callOffscreen timed out but offscreen still exists (slow op) — rejecting without recreating')
     }
     throw e
   }
 }
 
 /** Single attempt: send the message and wait for a reply from installSwRpcListener. */
-function _singleCall<T>(payload: unknown): Promise<T> {
+function _singleCall<T>(payload: unknown, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const id = _nextId++
 
     const timer = setTimeout(() => {
       if (_pending.has(id)) {
         _pending.delete(id)
-        reject(new Error(`[rpc] timeout: no reply for id=${id} after ${TIMEOUT_MS}ms`))
+        reject(new Error(`[rpc] timeout: no reply for id=${id} after ${timeoutMs}ms`))
       }
-    }, TIMEOUT_MS)
+    }, timeoutMs)
 
     _pending.set(id, {
       resolve: resolve as (v: unknown) => void,
