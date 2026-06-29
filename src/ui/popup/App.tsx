@@ -3,6 +3,7 @@ import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg
 import type { RankedResult } from '../../core/model'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
+import { siteHost } from '../../core/site-host'
 
 async function activeTabId(): Promise<number> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -59,12 +60,22 @@ export function App() {
   const denyHost = async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      const host = new URL(tab.url!).hostname.replace(/^www\./, '')
+      const host = siteHost(new URL(tab.url!).hostname)
       if (userDenyHosts.includes(host)) {
         setDenyStatus(`Already on the no-remember list: ${host}`)
         return
       }
-      await chrome.runtime.sendMessage({ type: 'deny-host', host }).catch(() => {})
+      let res: MsgResult
+      try {
+        res = await chrome.runtime.sendMessage({ type: 'deny-host', host })
+      } catch {
+        setDenyStatus('Could not add to no-remember list - please try again')
+        return
+      }
+      if (res?.type !== 'ok') {
+        setDenyStatus('Could not add to no-remember list - please try again')
+        return
+      }
       setUserDenyHosts((prev) => [...prev, host])
       setDenyStatus(`Won't remember ${host}`)
     } catch {
@@ -73,15 +84,36 @@ export function App() {
   }
 
   const removeDeny = async (h: string) => {
-    await chrome.runtime.sendMessage({ type: 'remove-deny-host', host: h }).catch(() => {})
+    let res: MsgResult
+    try {
+      res = await chrome.runtime.sendMessage({ type: 'remove-deny-host', host: h })
+    } catch {
+      setDenyStatus('Could not remove - please try again')
+      return
+    }
+    if (res?.type !== 'ok') {
+      setDenyStatus('Could not remove - please try again')
+      return
+    }
     setUserDenyHosts((prev) => prev.filter((x) => x !== h))
   }
 
   const forgetHost = async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      const host = new URL(tab.url!).hostname.replace(/^www\./, '')
-      await chrome.runtime.sendMessage({ type: 'forget-host', host }).catch(() => {})
+      const host = siteHost(new URL(tab.url!).hostname)
+      if (!window.confirm(`Delete ALL captured history from ${host} and its subdomains? This cannot be undone.`)) return
+      let res: MsgResult
+      try {
+        res = await chrome.runtime.sendMessage({ type: 'forget-host', host })
+      } catch {
+        setDenyStatus('Could not forget - please try again')
+        return
+      }
+      if (res?.type !== 'ok') {
+        setDenyStatus('Could not forget - please try again')
+        return
+      }
       setDenyStatus(`Forgot everything from ${host}`)
     } catch {
       setDenyStatus('Cannot forget this page (restricted tab)')
