@@ -62,3 +62,54 @@ test('re-capture of same URL leaves exactly the new chunk count (no stale chunks
   expect(results.length).toBe(1)
   expect(results[0].chunk.text).toBe('only one para')
 })
+
+// Scenario: embed throws during re-capture; the original chunks must survive untouched.
+// Coverage: integration (fake embedder that fails on the second call).
+test('failed re-capture embed preserves the original chunks in the store', async () => {
+  const store = new MemoryVectorStore()
+
+  let callCount = 0
+  const flakyEmbedder: EmbeddingPort = {
+    async embed(texts) {
+      callCount++
+      if (callCount === 1) return texts.map(embedText)
+      throw new Error('embed failed on second call')
+    },
+  }
+
+  const svc = new CaptureService(new ParagraphChunker(220), flakyEmbedder, store)
+
+  // First capture succeeds: 3 paragraphs -> 3 chunks.
+  await svc.capture({
+    url: 'http://x/b',
+    title: 'B',
+    text: 'para one\n\npara two\n\npara three',
+  })
+
+  // Second capture: embed fails -> store must NOT be mutated.
+  await expect(
+    svc.capture({ url: 'http://x/b', title: 'B', text: 'new content here' }),
+  ).rejects.toThrow('embed failed on second call')
+
+  // All 3 original chunks are still searchable.
+  const results = await store.search(embedText('para one'), 10)
+  expect(results.length).toBe(3)
+})
+
+// Scenario: Credentials in a URL must not create a duplicate entry vs the clean URL.
+// Coverage: integration (fake embedder; asserts single page via search result count).
+test('URLs differing only in credentials map to the same stored page', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), fakeEmbedder, store)
+
+  // First capture uses a URL with embedded credentials.
+  await svc.capture({ url: 'https://user:pass@example.com/a', title: 'A', text: 'hello world' })
+  // Second capture uses the clean URL for the same resource.
+  await svc.capture({ url: 'https://example.com/a', title: 'A', text: 'hello again' })
+
+  // Second capture must have overwritten the first (same pageId).
+  // So exactly 1 chunk remains, belonging to the clean URL page.
+  const results = await store.search(embedText('hello again'), 10)
+  expect(results.length).toBe(1)
+  expect(results[0].chunk.text).toBe('hello again')
+})
