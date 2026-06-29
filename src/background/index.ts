@@ -39,6 +39,7 @@ const ready = (async () => {
 })()
 
 chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
+  if (msg.type !== 'capture' && msg.type !== 'recall') return false
   ;(async () => {
     try {
       const svc = await ready
