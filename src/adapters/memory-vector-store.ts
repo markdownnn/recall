@@ -1,6 +1,11 @@
 import type { VectorSearchPort } from '../core/ports'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
-import { cosineSimilarity } from '../core/cosine'
+
+function dotProduct(a: Float32Array, b: Float32Array): number {
+  let sum = 0
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i]
+  return sum
+}
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
@@ -19,7 +24,7 @@ export class MemoryVectorStore implements VectorSearchPort {
     for (const { chunk, vector } of this.chunks.values()) {
       const page = this.pages.get(chunk.pageId)
       if (!page) continue
-      scored.push({ chunk, page, score: cosineSimilarity(queryVector, vector) })
+      scored.push({ chunk, page, score: dotProduct(queryVector, vector) })
     }
     scored.sort((a, b) => b.score - a.score)
     return scored.slice(0, k)
