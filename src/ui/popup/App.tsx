@@ -14,11 +14,22 @@ export function App() {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<RankedResult[]>([])
   const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
+  const [paused, setPaused] = useState(false)
+  const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
+  const [denyStatus, setDenyStatus] = useState('')
 
   useEffect(() => {
     // Query current model status on mount.
     chrome.runtime.sendMessage({ type: 'model-status' }).then((res: MsgResult) => {
       if (res?.type === 'model-status') setModelStatus(res.status)
+    }).catch(() => {})
+
+    // Query settings on mount.
+    chrome.runtime.sendMessage({ type: 'get-settings' }).then((res: MsgResult) => {
+      if (res?.type === 'settings') {
+        setPaused(res.paused)
+        setUserDenyHosts(res.userDenyHosts)
+      }
     }).catch(() => {})
 
     // Subscribe to broadcasts from the background.
@@ -37,12 +48,35 @@ export function App() {
     }
   }, [])
 
+  const togglePause = async (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked
+    setPaused(checked)
+    await chrome.runtime.sendMessage({ type: 'set-paused', paused: checked }).catch(() => {})
+  }
+
+  const denyHost = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const host = new URL(tab.url!).hostname
+      if (userDenyHosts.includes(host)) {
+        setDenyStatus(`Already on the no-remember list: ${host}`)
+        return
+      }
+      await chrome.runtime.sendMessage({ type: 'deny-host', host }).catch(() => {})
+      setUserDenyHosts((prev) => [...prev, host])
+      setDenyStatus(`Won't remember ${host}`)
+    } catch {
+      setDenyStatus('Cannot add this page (restricted tab)')
+    }
+  }
+
   const capture = async () => {
     setStatus('capturing...')
     try {
       const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
       if (res?.type === 'captured') {
         if (res.captured && res.chunkCount > 0) setStatus(`captured (indexing ${res.chunkCount} chunks...)`)
+        else if (!res.captured && res.reason === 'paused') setStatus('Paused - nothing is being saved')
         else if (!res.captured && res.reason === 'denylisted') setStatus('not saved: this site is on the no-remember list')
         else if (!res.captured) setStatus('nothing substantial to capture')
         else setStatus('nothing to capture')
@@ -83,6 +117,23 @@ export function App() {
   return (
     <div style="padding: 12px;">
       {renderModelStatus()}
+      <div style="margin-bottom:8px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+          <input type="checkbox" checked={paused} onChange={togglePause} />
+          Pause capturing
+        </label>
+        {paused && (
+          <div style="font-size:11px; color:#c66; margin-top:3px;">Paused - nothing is being saved</div>
+        )}
+      </div>
+      <div style="margin-bottom:8px;">
+        <button onClick={denyHost} style="font-size:12px;">
+          {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? 'Already on no-remember list' : "Don't remember this site"}
+        </button>
+        {denyStatus && (
+          <span style="margin-left:8px; font-size:11px; color:#888;">{denyStatus}</span>
+        )}
+      </div>
       <button onClick={capture}>Capture this page</button>
       <span style="margin-left:8px;">{status}</span>
       <hr />
