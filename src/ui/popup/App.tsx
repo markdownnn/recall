@@ -17,6 +17,8 @@ export function App() {
   const [paused, setPaused] = useState(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
   const [denyStatus, setDenyStatus] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
 
   useEffect(() => {
     // Query current model status on mount.
@@ -89,9 +91,18 @@ export function App() {
   }
 
   const search = async () => {
-    const res: MsgResult = await chrome.runtime.sendMessage({ type: 'recall', text: q, k: 5 })
-    if (res.type === 'recalled') setResults(res.results)
-    else if (res.type === 'error') setStatus(res.error)
+    if (!q.trim() || searching) return
+    setSearching(true)
+    setHasSearched(true)
+    try {
+      const res: MsgResult = await chrome.runtime.sendMessage({ type: 'recall', text: q, k: 5 })
+      if (res.type === 'recalled') setResults(res.results)
+      else if (res.type === 'error') setStatus(res.error)
+    } catch (e) {
+      setStatus('search failed: ' + String(e))
+    } finally {
+      setSearching(false)
+    }
   }
 
   function renderModelStatus() {
@@ -144,6 +155,12 @@ export function App() {
         placeholder="recall..."
         style="width: 100%; box-sizing: border-box; padding: 6px;"
       />
+      {searching && (
+        <div style="font-size:12px; color:#4a90d9; margin-top:6px;">searching...</div>
+      )}
+      {!searching && hasSearched && results.length === 0 && (
+        <div style="font-size:12px; color:#888; margin-top:6px;">no results</div>
+      )}
       <ul style="list-style:none; padding:0;">
         {results.map((r) => (
           <li key={r.chunk.id} style="margin:8px 0; padding:8px; border:1px solid #eee;">

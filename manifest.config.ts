@@ -23,4 +23,17 @@ export default defineManifest({
   },
   permissions: ['unlimitedStorage', 'activeTab', 'offscreen'],
   host_permissions: ['<all_urls>'],
+  // Keyboard shortcuts. _execute_action opens the popup (handled by Chrome);
+  // capture-page is handled by the service worker. Users can rebind at
+  // chrome://extensions/shortcuts.
+  commands: {
+    _execute_action: {
+      suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
+      description: 'Open Recall',
+    },
+    'capture-page': {
+      suggested_key: { default: 'Ctrl+Shift+U', mac: 'Command+Shift+U' },
+      description: 'Capture the current page',
+    },
+  },
 })

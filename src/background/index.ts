@@ -65,6 +65,18 @@ function resetOffscreen(): void {
 installSwRpcListener()
 registerOffscreenEnsurer(ensureOffscreen, resetOffscreen)
 
+// Keyboard shortcut: Ctrl/Cmd+Shift+U captures the current page. Mirrors the popup's
+// "Capture this page" button by asking the active tab's content script to extract
+// and send a manual capture. (_execute_action opens the popup; Chrome handles that.)
+chrome.commands?.onCommand.addListener((command) => {
+  if (command !== 'capture-page') return
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    if (tab?.id) {
+      chrome.tabs.sendMessage(tab.id, { type: 'extract-and-capture' }, () => void chrome.runtime.lastError)
+    }
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Model status (SW tracks the latest status from rpc-events; popup reads it)
 // ---------------------------------------------------------------------------
