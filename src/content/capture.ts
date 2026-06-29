@@ -1,5 +1,6 @@
 import { Readability } from '@mozilla/readability'
 import type { Msg, MsgResult } from '../messaging'
+import { DwellTracker } from './dwell-tracker'
 
 const DWELL_MS = 10_000
 const POLL_MS = 1_000
@@ -29,48 +30,27 @@ function sendCapture(manual: boolean): void {
 // MV3 content scripts and would throw, killing both auto- and manual-capture.
 //
 // Dwell counts VISIBLE time, not wall-clock: a page only auto-captures after the user
-// has actually looked at it (tab focused / not hidden) for DWELL_MS. Background tabs
-// (e.g. middle-click-opened links) never accumulate and are never captured. The timer
-// pauses when the tab is hidden and resumes when it becomes visible again.
+// has actually looked at it (tab visible / not hidden) for DWELL_MS. Background tabs
+// (e.g. middle-click-opened links) never accumulate and are never captured. The logic
+// lives in the pure, unit-tested DwellTracker; here we wire it to the real clock,
+// document.visibilityState, the visibilitychange event, and a poll for SPA navigation.
 {
-  let currentUrl = ''
-  let visibleMs = 0 // accumulated visible time for the current candidate
-  let streakStart: number | null = null // start of the ongoing visible streak, or null if hidden
-  let captured = false
-
-  const isVisible = (): boolean => document.visibilityState === 'visible'
-
-  const flushStreak = (): void => {
-    if (streakStart !== null) {
-      visibleMs += Date.now() - streakStart
-      streakStart = null
-    }
-  }
-
-  const startCandidate = (url: string): void => {
-    currentUrl = url
-    visibleMs = 0
-    captured = false
-    streakStart = isVisible() ? Date.now() : null
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    if (isVisible()) streakStart = Date.now()
-    else flushStreak()
-  })
-
-  startCandidate(location.href)
+  let currentUrl = location.href
+  const tracker = new DwellTracker(
+    DWELL_MS,
+    () => Date.now(),
+    () => document.visibilityState === 'visible',
+    () => sendCapture(false),
+  )
+  tracker.reset()
+  document.addEventListener('visibilitychange', () => tracker.onVisibilityChange())
   setInterval(() => {
     if (location.href !== currentUrl) {
-      startCandidate(location.href) // SPA navigation or bounce -> new candidate
+      currentUrl = location.href // SPA navigation or bounce -> new candidate
+      tracker.reset()
       return
     }
-    if (captured) return
-    const ongoing = streakStart !== null ? Date.now() - streakStart : 0
-    if (visibleMs + ongoing >= DWELL_MS) {
-      captured = true
-      sendCapture(false)
-    }
+    tracker.tick()
   }, POLL_MS)
 }
 
