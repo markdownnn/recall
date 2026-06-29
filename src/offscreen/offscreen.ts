@@ -127,8 +127,10 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   if (op === 'embed') {
     const texts = (p.texts as string[]) ?? []
     const kind = (p.kind as 'query' | 'passage') ?? 'passage'
+    const t0Embed = Date.now()
     const vectors = await embedder.embed(texts, kind)
-    return { vectors }
+    const embedMs = Date.now() - t0Embed
+    return { vectors, embedMs, chunkCount: texts.length }
   }
 
   if (op === 'ensureLoaded') {
@@ -141,7 +143,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
         })
     })
     console.log('[recall/offscreen] ensureLoaded done, embedding device =', embedder.device)
-    return { device: embedder.device }
+    return { device: embedder.device, pipelineMs: embedder.pipelineMs, warmupMs: embedder.warmupMs }
   }
 
   // Default: echo (additive spike — proves RPC delivery/correlation under load).

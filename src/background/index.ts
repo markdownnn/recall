@@ -27,6 +27,9 @@ if (typeof window === 'undefined') {
 
 console.log('[recall/bg] service worker evaluated')
 
+// Wall-clock reference for startup->model-ready measurement.
+const _t0Startup = Date.now()
+
 let modelStatus: ModelStatus = INITIAL_MODEL_STATUS
 
 function broadcastModelStatus(status: ModelStatus): void {
@@ -87,7 +90,9 @@ chrome.runtime.onInstalled.addListener(() => {
   ;(async () => {
     await ensureOffscreen()
     const device = await embedder.ensureLoaded()
+    const startupToModelMs = Date.now() - _t0Startup
     console.log('[recall/bg] pre-warm complete: model ready, embedding device =', device)
+    console.log(`[timing] startup->model ready = ${startupToModelMs} ms`)
     modelStatus = { state: 'ready', percent: 100 }
     broadcastModelStatus(modelStatus)
   })().catch((e) => {
@@ -108,6 +113,7 @@ async function runDrain(): Promise<void> {
   drainInProgress = true
   // Keepalive: reset the MV3 idle timer every 20s so the SW is not killed mid-drain.
   const ka = setInterval(() => { chrome.runtime.getPlatformInfo(() => {}) }, 20_000)
+  const t0Drain = Date.now()
   try {
     const svc = await ready
     let totalEmbedded = 0
@@ -116,9 +122,11 @@ async function runDrain(): Promise<void> {
       // Broadcast progress: pending is approximate (1 = still going, 0 = done).
       broadcastIndexingProgress(1, totalEmbedded)
     })
+    const drainTotalMs = Date.now() - t0Drain
     // Drain complete: broadcast pending=0 so the popup can show "indexed".
     broadcastIndexingProgress(0, totalEmbedded)
     console.log('[recall/bg] drain complete, total embedded:', totalEmbedded)
+    console.log(`[timing] drain total = ${drainTotalMs} ms`)
     if (totalEmbedded > 0) {
       modelStatus = { state: 'ready', percent: 100 }
       broadcastModelStatus(modelStatus)
@@ -142,8 +150,11 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
       const svc = await ready
       if (msg.type === 'capture') {
         console.log('[recall/bg] capture: storing chunks, text length =', msg.text.length)
+        const t0Capture = Date.now()
         const { chunkCount } = await svc.capture.capture({ url: msg.url, title: msg.title, text: msg.text })
+        const captureStoreMs = Date.now() - t0Capture
         console.log('[recall/bg] capture: DONE, chunkCount =', chunkCount, ', responding immediately')
+        console.log(`[timing] capture store = ${captureStoreMs} ms`)
         // Respond immediately — embedding happens in the background.
         sendResponse({ type: 'captured', chunkCount } satisfies MsgResult)
         // Fire-and-forget: drain the embedding queue in the background.
