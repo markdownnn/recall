@@ -1,13 +1,11 @@
 import { DEFAULT_DENYLIST, isDenylisted } from './denylist'
+import type { AppSettings } from './ports'
 
-export interface GateInput {
-  url: string
-  text: string
-  manual: boolean
-}
-export interface GateDecision {
-  capture: boolean
-  reason?: 'denylisted' | 'thin'
+export interface GateInput { url: string; text: string; manual: boolean }
+export interface GateDecision { capture: boolean; reason?: 'paused' | 'denylisted' | 'thin' }
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname } catch { return '' }
 }
 
 export class CaptureGate {
@@ -18,10 +16,13 @@ export class CaptureGate {
     this.minWords = opts.minWords ?? 100
   }
 
-  decide(input: GateInput): GateDecision {
-    if (isDenylisted(input.url, this.denylist)) {
-      return { capture: false, reason: 'denylisted' }
-    }
+  decide(input: GateInput, settings: AppSettings): GateDecision {
+    // Pause is a temporary global hard gate — blocks everything, even manual.
+    if (settings.paused) return { capture: false, reason: 'paused' }
+    // Hard gate (privacy): built-in denylist + user "don't remember" hosts. Applies to manual.
+    if (isDenylisted(input.url, this.denylist)) return { capture: false, reason: 'denylisted' }
+    if (settings.userDenyHosts.includes(hostOf(input.url))) return { capture: false, reason: 'denylisted' }
+    // Soft gate (quality): skipped for explicit manual save.
     if (!input.manual) {
       const words = input.text.trim().split(/\s+/).filter(Boolean).length
       if (words < this.minWords) return { capture: false, reason: 'thin' }

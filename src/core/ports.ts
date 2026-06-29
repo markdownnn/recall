@@ -19,3 +19,14 @@ export interface VectorSearchPort {
   // Search ONLY over embedded chunks (those with a vector).
   search(queryVector: Float32Array, k: number): Promise<RankedResult[]>
 }
+
+export interface AppSettings {
+  paused: boolean
+  userDenyHosts: string[]
+}
+
+export interface SettingsPort {
+  get(): Promise<AppSettings>
+  setPaused(paused: boolean): Promise<void>
+  addDenyHost(host: string): Promise<void>
+}
