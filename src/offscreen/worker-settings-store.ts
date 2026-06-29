@@ -6,4 +6,5 @@ export class WorkerSettingsStore implements SettingsPort {
   get = () => this.c.request<AppSettings>('getSettings')
   setPaused = (paused: boolean) => this.c.request<void>('setPaused', paused)
   addDenyHost = (host: string) => this.c.request<void>('addDenyHost', host)
+  removeDenyHost = (host: string) => this.c.request<void>('removeDenyHost', host)
 }

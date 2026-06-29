@@ -24,9 +24,11 @@ const SCHEMA = [
 // ---------------------------------------------------------------------------
 
 function opUpsertPage(db: any, page: CapturedPage): void {
+  let host = ''
+  try { host = new URL(page.url).hostname.toLowerCase() } catch {}
   db.exec({
-    sql: `INSERT OR REPLACE INTO pages (id, url, title, capturedAt) VALUES (?, ?, ?, ?)`,
-    bind: [page.id, page.url, page.title, page.capturedAt],
+    sql: `INSERT OR REPLACE INTO pages (id, url, title, capturedAt, host) VALUES (?, ?, ?, ?, ?)`,
+    bind: [page.id, page.url, page.title, page.capturedAt, host],
   })
 }
 
@@ -121,6 +123,16 @@ function opAddDenyHost(db: any, host: string): void {
   })
 }
 
+function opRemoveDenyHost(db: any, host: string): void {
+  db.exec({ sql: `DELETE FROM user_denylist WHERE host = ?`, bind: [host] })
+}
+
+function opDeletePagesByHost(db: any, host: string): void {
+  const where = `(host = ? OR host LIKE '%.' || ?)`
+  db.exec({ sql: `DELETE FROM chunks WHERE pageId IN (SELECT id FROM pages WHERE ${where})`, bind: [host, host] })
+  db.exec({ sql: `DELETE FROM pages WHERE ${where}`, bind: [host, host] })
+}
+
 // ---------------------------------------------------------------------------
 // Op -> handler MAP (declarative)
 // ---------------------------------------------------------------------------
@@ -134,6 +146,8 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   getSettings: (db) => opGetSettings(db),
   setPaused: (db, args) => { opSetPaused(db, args as boolean) },
   addDenyHost: (db, args) => { opAddDenyHost(db, args as string) },
+  removeDenyHost: (db, args) => { opRemoveDenyHost(db, args as string) },
+  deletePagesByHost: (db, args) => { opDeletePagesByHost(db, args as string) },
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +164,17 @@ const initPromise: Promise<void> = (async () => {
     for (const sql of SCHEMA) {
       db.exec({ sql })
     }
+    // Idempotent migration: add host column if not already present.
+    try { db.exec(`ALTER TABLE pages ADD COLUMN host TEXT`) } catch { /* already exists */ }
+    // Backfill host for existing rows that predate the column.
+    const toFix: { id: string; url: string }[] = []
+    db.exec({ sql: `SELECT id, url FROM pages WHERE host IS NULL`, rowMode: 'object', callback: (r: any) => toFix.push({ id: r.id, url: r.url }) })
+    for (const r of toFix) {
+      let host = ''
+      try { host = new URL(r.url).hostname.toLowerCase() } catch { /* leave '' */ }
+      db.exec({ sql: `UPDATE pages SET host = ? WHERE id = ?`, bind: [host, r.id] })
+    }
+    if (toFix.length > 0) console.log(`[recall-worker] backfilled host for ${toFix.length} rows`)
     console.log('[recall-worker] sqlite OPFS SAH pool ready, schema created')
   } catch (e) {
     console.error('[recall-worker] init FAILED:', String(e))
