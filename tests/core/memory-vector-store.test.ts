@@ -24,3 +24,10 @@ test('respects k', async () => {
   await store.upsertChunk(chunkB, new Float32Array([0, 1]))
   expect((await store.search(new Float32Array([1, 0]), 1)).length).toBe(1)
 })
+
+test('excludes a chunk whose page is missing', async () => {
+  const store = new MemoryVectorStore()
+  // chunk upserted without its page
+  await store.upsertChunk(chunkA, new Float32Array([1, 0]))
+  expect((await store.search(new Float32Array([1, 0]), 5)).length).toBe(0)
+})
