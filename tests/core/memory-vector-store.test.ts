@@ -31,3 +31,15 @@ test('excludes a chunk whose page is missing', async () => {
   await store.upsertChunk(chunkA, new Float32Array([1, 0]))
   expect((await store.search(new Float32Array([1, 0]), 5)).length).toBe(0)
 })
+
+test('clearChunks removes all chunks for the page and search returns 0', async () => {
+  const store = new MemoryVectorStore()
+  await store.upsertPage(page)
+  await store.upsertChunk(chunkA, new Float32Array([1, 0]))
+  await store.upsertChunk(chunkB, new Float32Array([0, 1]))
+
+  await store.clearChunks('p1')
+
+  const results = await store.search(new Float32Array([1, 0]), 10)
+  expect(results.length).toBe(0)
+})

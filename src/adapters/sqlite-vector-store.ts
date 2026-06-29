@@ -23,8 +23,12 @@ export class SqliteVectorStore implements VectorSearchPort {
   async upsertChunk(chunk: Chunk, vector: Float32Array): Promise<void> {
     this.db.exec({
       sql: `INSERT OR REPLACE INTO chunks (id, pageId, idx, text, vector) VALUES (?, ?, ?, ?, ?)`,
-      bind: [chunk.id, chunk.pageId, chunk.index, chunk.text, new Uint8Array(vector.buffer)],
+      bind: [chunk.id, chunk.pageId, chunk.index, chunk.text, new Uint8Array(vector.buffer, vector.byteOffset, vector.byteLength)],
     })
+  }
+
+  async clearChunks(pageId: string): Promise<void> {
+    this.db.exec({ sql: 'DELETE FROM chunks WHERE pageId = ?', bind: [pageId] })
   }
 
   async search(queryVector: Float32Array, k: number): Promise<RankedResult[]> {

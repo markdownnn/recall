@@ -23,6 +23,7 @@ export class CaptureService {
       capturedAt: Date.now(),
     }
     await this.store.upsertPage(page)
+    await this.store.clearChunks(pageId)
 
     const chunks = this.chunker.chunk({ pageId, text: input.text })
     if (chunks.length === 0) return

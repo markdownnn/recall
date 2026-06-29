@@ -11,5 +11,6 @@ export interface EmbeddingPort {
 export interface VectorSearchPort {
   upsertPage(page: import('./model').CapturedPage): Promise<void>
   upsertChunk(chunk: Chunk, vector: Float32Array): Promise<void>
+  clearChunks(pageId: string): Promise<void>
   search(queryVector: Float32Array, k: number): Promise<RankedResult[]>
 }

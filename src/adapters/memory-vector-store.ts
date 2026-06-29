@@ -14,6 +14,12 @@ export class MemoryVectorStore implements VectorSearchPort {
     this.chunks.set(chunk.id, { chunk, vector })
   }
 
+  async clearChunks(pageId: string): Promise<void> {
+    for (const [id, { chunk }] of this.chunks) {
+      if (chunk.pageId === pageId) this.chunks.delete(id)
+    }
+  }
+
   async search(queryVector: Float32Array, k: number): Promise<RankedResult[]> {
     const scored: RankedResult[] = []
     for (const { chunk, vector } of this.chunks.values()) {

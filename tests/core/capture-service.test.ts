@@ -39,3 +39,26 @@ test('uses passage prefix kind for embedding', async () => {
   await svc.capture({ url: 'http://x/a', title: 'A', text: 'hello world' })
   expect(kinds).toContain('passage')
 })
+
+test('re-capture of same URL leaves exactly the new chunk count (no stale chunks)', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), fakeEmbedder, store)
+
+  // First capture: 3 paragraphs -> 3 chunks
+  await svc.capture({
+    url: 'http://x/a',
+    title: 'A',
+    text: 'para one\n\npara two\n\npara three',
+  })
+
+  // Second capture: 1 paragraph -> 1 chunk
+  await svc.capture({
+    url: 'http://x/a',
+    title: 'A',
+    text: 'only one para',
+  })
+
+  const results = await store.search(embedText('only one para'), 10)
+  expect(results.length).toBe(1)
+  expect(results[0].chunk.text).toBe('only one para')
+})
