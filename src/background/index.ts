@@ -11,6 +11,11 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import type { Msg, MsgResult } from '../messaging'
 import { INITIAL_MODEL_STATUS, reduceModelProgress } from '../core/model-progress'
 import type { ModelStatus } from '../core/model-progress'
+import {
+  callOffscreen,
+  installSwRpcListener,
+  registerOffscreenEnsurer,
+} from '../offscreen/offscreen-rpc'
 
 // Vite's module-preload error handler calls window.dispatchEvent(), which does
 // not exist in a service worker.  Aliasing window -> self lets the error
@@ -161,20 +166,67 @@ ready.then(() => {
 // embedding logic.  Remove it once the architecture decision is made.
 // ---------------------------------------------------------------------------
 
-async function ensureOffscreen(): Promise<void> {
-  const exists = await chrome.offscreen?.hasDocument?.()
-  if (exists) return
-  await chrome.offscreen.createDocument({
-    url: chrome.runtime.getURL('src/offscreen/offscreen.html'),
-    reasons: ['BLOBS'],
-    justification: 'sqlite OPFS persistence via dedicated worker (spike)',
-  })
+// Singleton promise so concurrent callers never try to call createDocument() twice.
+// The first call creates the promise; all subsequent calls reuse it.
+// Set to null by resetOffscreen() so the next ensureOffscreen() does a real check.
+let _offscreenDocP: Promise<void> | null = null
+function ensureOffscreen(): Promise<void> {
+  if (_offscreenDocP) return _offscreenDocP
+  _offscreenDocP = (async () => {
+    const exists = await chrome.offscreen?.hasDocument?.()
+    if (exists) return
+    await chrome.offscreen.createDocument({
+      url: chrome.runtime.getURL('src/offscreen/offscreen.html'),
+      reasons: ['BLOBS'],
+      justification: 'sqlite OPFS persistence via dedicated worker (spike)',
+    })
+  })()
+  return _offscreenDocP
 }
+
+/**
+ * Clear the cached offscreen promise so the next ensureOffscreen() call will
+ * do a real hasDocument() check and recreate the document if it has died.
+ * Used by callOffscreen on timeout-retry.
+ */
+function resetOffscreen(): void {
+  _offscreenDocP = null
+}
+
+// offscreenReady: resolves after both DB init AND offscreen doc creation complete.
+// The run-webgpu-bench relay awaits this so the bench message is only sent once
+// the offscreen doc's onMessage listeners are registered.
+const offscreenReady: Promise<void> = ready.then(() => ensureOffscreen())
+
+// ---------------------------------------------------------------------------
+// Spike: reliable SW<->offscreen RPC (additive, isolated).
+// Install the SW-side reply listener and register the offscreen lifecycle
+// callbacks so callOffscreen() can ensure/recreate the document as needed.
+// ---------------------------------------------------------------------------
+installSwRpcListener()
+registerOffscreenEnsurer(ensureOffscreen, resetOffscreen)
+
+// Relay 'run-webgpu-bench': ensure the offscreen doc is alive, then write the
+// storage trigger key so the offscreen doc's onChanged listener starts the bench.
+// The Playwright test can also write the trigger directly from the popup page.
+chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
+  if (msg.type !== 'run-webgpu-bench') return false
+  ;(async () => {
+    try {
+      await offscreenReady
+      // Write the trigger key — offscreen doc's storage.onChanged listener picks it up.
+      await chrome.storage.local.set({ __run_bench_trigger: true })
+      sendResponse({ status: 'started' })
+    } catch (e) {
+      sendResponse({ status: 'error', error: String(e) })
+    }
+  })()
+  return true
+})
 
 // The existing onMessage listener returns false for unknown types, so
 // 'spike-bump' is ignored there and handled only by the offscreen document.
-ready.then(() => {
-  ensureOffscreen()
+offscreenReady
     .then(() => chrome.runtime.sendMessage({ type: 'spike-bump' }))
     .then((res: any) => {
       console.log('[recall/spike] persistent counter =', res?.counter, '| webgpu:', res?.webgpu)
@@ -190,4 +242,55 @@ ready.then(() => {
       })
     })
     .catch((e) => console.error('[recall/spike] FAILED:', e))
+
+// ---------------------------------------------------------------------------
+// Spike: rpc-stress handler (additive, isolated).
+// Drives N concurrent callOffscreen() round-trips and returns a summary so
+// the Playwright stress test can assert 100% delivery + correct correlation.
+// ---------------------------------------------------------------------------
+chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
+  if (msg?.type !== 'rpc-stress') return false
+  ;(async () => {
+    const count: number = Number(msg.count) || 0
+    const t0 = Date.now()
+
+    // Ensure the offscreen is alive before firing any calls.
+    await offscreenReady
+
+    // Fire all calls concurrently; collect settled results.
+    const settled = await Promise.allSettled(
+      Array.from({ length: count }, (_, i) =>
+        callOffscreen<{ echoed: unknown; n: number }>({ n: i }),
+      ),
+    )
+
+    let ok = 0
+    let mismatches = 0
+    let missing = 0
+
+    for (let i = 0; i < count; i++) {
+      const r = settled[i]
+      if (r.status === 'rejected') {
+        missing++
+        console.warn('[rpc-stress] missing id=', i, ':', r.reason)
+      } else {
+        // Echo handler returns { echoed: { n: i }, n: i + 1 }.
+        // Correct correlation: result.n === i + 1.
+        const n = (r.value as any)?.n
+        if (n === i + 1) {
+          ok++
+        } else {
+          mismatches++
+          console.warn('[rpc-stress] mismatch id=', i, ': expected n=', i + 1, 'got n=', n)
+        }
+      }
+    }
+
+    const elapsedMs = Date.now() - t0
+    console.log(
+      `[rpc-stress] done: total=${count} ok=${ok} mismatches=${mismatches} missing=${missing} elapsedMs=${elapsedMs}`,
+    )
+    sendResponse({ total: count, ok, mismatches, missing, elapsedMs })
+  })()
+  return true // keep the response channel open for the async sendResponse above
 })
