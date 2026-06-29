@@ -8,6 +8,11 @@ function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
 }
 
+function hostDenied(host: string, denyHosts: string[]): boolean {
+  if (!host) return false
+  return denyHosts.some((d) => host === d || host.endsWith('.' + d))
+}
+
 export class CaptureGate {
   private readonly denylist: RegExp[]
   private readonly minWords: number
@@ -21,7 +26,7 @@ export class CaptureGate {
     if (settings.paused) return { capture: false, reason: 'paused' }
     // Hard gate (privacy): built-in denylist + user "don't remember" hosts. Applies to manual.
     if (isDenylisted(input.url, this.denylist)) return { capture: false, reason: 'denylisted' }
-    if (settings.userDenyHosts.includes(hostOf(input.url))) return { capture: false, reason: 'denylisted' }
+    if (hostDenied(hostOf(input.url), settings.userDenyHosts)) return { capture: false, reason: 'denylisted' }
     // Soft gate (quality): skipped for explicit manual save.
     if (!input.manual) {
       const words = input.text.trim().split(/\s+/).filter(Boolean).length
