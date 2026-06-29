@@ -3,9 +3,14 @@ import { ParagraphChunker } from '../../src/core/paragraph-chunker'
 import { MemoryVectorStore } from '../../src/adapters/memory-vector-store'
 import type { EmbeddingPort } from '../../src/core/ports'
 
+// Deterministic fake: distinct unit direction per word count, so cosine can rank.
+function embedText(t: string): Float32Array {
+  const n = t.split(/\s+/).length
+  return new Float32Array([Math.cos(n), Math.sin(n)])
+}
 const fakeEmbedder: EmbeddingPort = {
   async embed(texts) {
-    return texts.map((t) => new Float32Array([t.split(/\s+/).length]))
+    return texts.map(embedText)
   },
 }
 
@@ -15,7 +20,7 @@ test('captures a page into stored, embedded chunks', async () => {
 
   await svc.capture({ url: 'http://x/a', title: 'A', text: 'one two\n\nthree four five' })
 
-  const results = await store.search(new Float32Array([3]), 10)
+  const results = await store.search(embedText('three four five'), 10)
   expect(results.length).toBe(2)
   expect(results[0].chunk.text).toBe('three four five')
   expect(results[0].page.url).toBe('http://x/a')
@@ -27,7 +32,7 @@ test('uses passage prefix kind for embedding', async () => {
   const spy: EmbeddingPort = {
     async embed(texts, kind) {
       kinds.push(kind)
-      return texts.map(() => new Float32Array([1]))
+      return texts.map(() => new Float32Array([1, 0]))
     },
   }
   const svc = new CaptureService(new ParagraphChunker(220), spy, store)
