@@ -9,6 +9,14 @@ import type { EmbeddingPort } from '../core/ports'
 // Chrome extension service workers.  numThreads=1 disables the proxy worker.
 env.backends.onnx.wasm.numThreads = 1
 
+// Serve the ONNX runtime wasm from inside the extension (supply-chain: do not
+// fetch unverified executable code from a CDN).
+// Guard: chrome is undefined under the node test runner, where transformers
+// uses its own local runtime path — this block must not run there.
+if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+  env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('onnx/')
+}
+
 // Module-level singleton: loaded once, shared across all InlineEmbedder instances.
 let extractorP: Promise<FeatureExtractionPipeline> | null = null
 

@@ -17,10 +17,10 @@ export default defineManifest({
   // data to arbitrary hosts.  huggingface.co starts model-file requests;
   // *.aws.cdn.hf.co is the actual HuggingFace CDN that ALL file downloads redirect to
   // (even small JSON files — verified with curl -sI resolve/main/tokenizer.json);
-  // cdn.jsdelivr.net serves the ONNX WASM runtime (will be removed once the runtime is
-  // bundled locally, then that origin can be dropped here too).
+  // cdn.jsdelivr.net has been removed: the ONNX WASM runtime is now bundled into
+  // the extension under public/onnx/ and served via chrome.runtime.getURL('onnx/').
   content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.aws.cdn.hf.co https://cdn.jsdelivr.net",
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.aws.cdn.hf.co",
   },
   permissions: ['storage', 'unlimitedStorage', 'activeTab', 'scripting'],
   host_permissions: ['<all_urls>'],
