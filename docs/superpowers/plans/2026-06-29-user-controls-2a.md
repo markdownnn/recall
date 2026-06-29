@@ -4,7 +4,13 @@
 
 **Goal:** Two privacy controls in the popup, persisted locally: a global **Pause** (stop capturing anything during a sensitive session) and **"Don't remember this site"** (add the current page's host to a user denylist so it is never captured). Settings live in the OPFS sqlite (no new permission).
 
-**Architecture:** Hexagonal, unchanged shape. `CaptureGate` stays PURE — `decide()` now takes a `settings` argument (paused + user-denied hosts) so it remains unit-testable. Persistence is a new `SettingsPort` implemented by the offscreen sqlite worker. The offscreen `capture` op loads settings and passes them to the gate. The popup reads/writes settings over RPC through the SW relay.
+**Architecture:** Hexagonal. The CORE depends only on domain ports — `VectorSearchPort` (exists) and a new `SettingsPort`. `CaptureGate` stays PURE: `decide()` takes a `settings` argument (paused + user-denied hosts) so it remains unit-testable.
+
+DB access is abstracted into ONE primitive — `SqliteWorkerClient` — that owns the single dedicated sqlite worker (request/reply correlation, timeout, onerror-reject, all in one place). The two store ADAPTERS (`WorkerVectorStore`, `WorkerSettingsStore`) are thin DECLARATIVE mappings: each port method is a one-line `client.request('op', args)`. No worker plumbing is duplicated; both stores share one worker.
+
+The WORKER itself is declarative too: a `SCHEMA` array of DDL statements and an op -> handler MAP (`{ upsertPage, putChunks, getSettings, setPaused, ... }`), not a hand-rolled if/else chain. Adding an op = adding a row to the map.
+
+The offscreen `capture` op loads settings via `SettingsPort` and passes them to the gate. The popup reads/writes settings over RPC through the SW relay.
 
 **Tech Stack:** TypeScript · existing offscreen/SW/content architecture · OPFS sqlite (settings tables) · Vitest (pure gate) · Preact popup.
 
@@ -21,13 +27,17 @@
 ```
 src/core/ports.ts                       # MODIFY: add SettingsPort + AppSettings
 src/core/capture-gate.ts                # MODIFY: decide(input, settings) — pause + user hosts
-src/offscreen/sqlite-worker.ts          # MODIFY: settings + user_denylist tables + ops
-src/offscreen/offscreen-settings-store.ts  # NEW: SettingsPort adapter (talks to worker)
-src/offscreen/offscreen.ts              # MODIFY: gate uses settings; handle settings RPC ops
+src/offscreen/sqlite-worker-client.ts   # NEW: SqliteWorkerClient (owns the worker; request/reply/timeout/onerror)
+src/offscreen/sqlite-worker.ts          # MODIFY: declarative SCHEMA[] + op->handler MAP; add settings ops
+src/offscreen/worker-vector-store.ts    # NEW: VectorSearchPort over the client (declarative one-liners)
+src/offscreen/worker-settings-store.ts  # NEW: SettingsPort over the client (declarative one-liners)
+src/offscreen/offscreen-worker-store.ts # DELETE: replaced by sqlite-worker-client + worker-vector-store
+src/offscreen/offscreen.ts              # MODIFY: build client + both stores; gate uses settings; settings RPC ops
 src/background/index.ts                 # MODIFY: relay settings ops
 src/messaging.ts                        # MODIFY: settings messages
 src/ui/popup/App.tsx                    # MODIFY: pause toggle + "don't remember this site"
 tests/core/capture-gate.test.ts          # MODIFY: pause + user-host cases
+tests/core/sqlite-worker-client.test.ts  # NEW: client correlation/timeout/onerror (fake worker)
 ```
 
 ---
@@ -141,56 +151,175 @@ git commit -m "feat(core): gate honors pause + user deny-hosts (SettingsPort)"
 
 ---
 
-## Task 2: Settings persistence in the sqlite worker
+## Task 2: Abstract DB access — one worker client + declarative worker + port adapters
 
-**Files:** Modify `src/offscreen/sqlite-worker.ts`; Create `src/offscreen/offscreen-settings-store.ts`
+This replaces the ad-hoc `OffscreenWorkerStore` (which owns the worker AND implements the port AND duplicates plumbing) with a clean split: ONE `SqliteWorkerClient` owns the worker; thin declarative adapters implement each port; the worker is a declarative schema + handler map.
 
-- [ ] **Step 1: Add settings schema + ops in the worker**
+**Files:** Create `src/offscreen/sqlite-worker-client.ts`, `src/offscreen/worker-vector-store.ts`, `src/offscreen/worker-settings-store.ts`, `tests/core/sqlite-worker-client.test.ts`; Modify `src/offscreen/sqlite-worker.ts`; Delete `src/offscreen/offscreen-worker-store.ts`.
 
-In `src/offscreen/sqlite-worker.ts`, on init create:
-```sql
-CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-CREATE TABLE IF NOT EXISTS user_denylist (host TEXT PRIMARY KEY);
-```
-Add these message ops (same `{ id, op, args }` -> `{ id, result }` protocol as the existing store ops):
-- `getSettings` -> read `settings` where key='paused' (default '0'), and all rows from `user_denylist`; return `{ paused: value==='1', userDenyHosts: string[] }`.
-- `setPaused` (args: boolean) -> `INSERT OR REPLACE INTO settings (key,value) VALUES ('paused', ?)` with '1'/'0'.
-- `addDenyHost` (args: string) -> `INSERT OR IGNORE INTO user_denylist (host) VALUES (?)`.
+- [ ] **Step 1: Write the failing client test**
 
-- [ ] **Step 2: Create the SettingsPort adapter**
+**Scenario:** Every DB call must resolve with the matching reply and never hang: a worker error must reject the right call, and a worker crash must reject ALL in-flight calls (not leak). This is the single primitive all persistence relies on.
+**Coverage:** ✅ integration (fake Worker; real correlation/timeout/onerror logic)
 
 ```ts
-// src/offscreen/offscreen-settings-store.ts
-import type { AppSettings, SettingsPort } from '../core/ports'
+// tests/core/sqlite-worker-client.test.ts
+import { SqliteWorkerClient } from '../../src/offscreen/sqlite-worker-client'
 
-// Talks to the same dedicated sqlite worker via a request/reply call function.
-// `call(op, args)` is provided by the offscreen (reuse the worker-call helper used
-// by OffscreenWorkerStore, or pass the worker's call method in).
-export class OffscreenSettingsStore implements SettingsPort {
-  constructor(private readonly call: (op: string, args?: unknown) => Promise<unknown>) {}
-  async get(): Promise<AppSettings> {
-    return (await this.call('getSettings')) as AppSettings
+function fakeWorker() {
+  const w: any = { posted: [], onmessage: null, onerror: null,
+    postMessage(m: any) { this.posted.push(m) } }
+  return w
+}
+
+test('request resolves with the matching reply', async () => {
+  const w = fakeWorker()
+  const c = new SqliteWorkerClient(w)
+  const p = c.request('getSettings')
+  const id = w.posted[0].id
+  w.onmessage({ data: { id, result: { paused: true } } })
+  await expect(p).resolves.toEqual({ paused: true })
+})
+
+test('worker error rejects only the matching call', async () => {
+  const w = fakeWorker()
+  const c = new SqliteWorkerClient(w)
+  const a = c.request('a'); const b = c.request('b')
+  w.onmessage({ data: { id: w.posted[0].id, error: 'boom' } })
+  await expect(a).rejects.toThrow('boom')
+  w.onmessage({ data: { id: w.posted[1].id, result: 1 } })
+  await expect(b).resolves.toBe(1)
+})
+
+test('worker onerror rejects all in-flight calls', async () => {
+  const w = fakeWorker()
+  const c = new SqliteWorkerClient(w)
+  const a = c.request('a'); const b = c.request('b')
+  w.onerror(new Error('crash'))
+  await expect(a).rejects.toBeTruthy()
+  await expect(b).rejects.toBeTruthy()
+})
+```
+
+- [ ] **Step 2: Implement the client**
+
+```ts
+// src/offscreen/sqlite-worker-client.ts
+// Owns the single dedicated sqlite worker. Correlates {id,op,args} requests to
+// {id,result|error} replies; times out; rejects all pending on worker fault.
+export class SqliteWorkerClient {
+  private nextId = 0
+  private pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void; timer: ReturnType<typeof setTimeout> }>()
+
+  constructor(private readonly worker: { postMessage: (m: unknown) => void; onmessage: ((e: { data: any }) => void) | null; onerror: ((e: unknown) => void) | null }, private readonly timeoutMs = 30_000) {
+    this.worker.onmessage = (e) => {
+      const { id, result, error } = e.data
+      const entry = this.pending.get(id)
+      if (!entry) return
+      clearTimeout(entry.timer)
+      this.pending.delete(id)
+      if (error) entry.reject(new Error(String(error)))
+      else entry.resolve(result)
+    }
+    this.worker.onerror = (e) => this.rejectAll(e)
   }
-  async setPaused(paused: boolean): Promise<void> {
-    await this.call('setPaused', paused)
+
+  request<T>(op: string, args?: unknown): Promise<T> {
+    const id = this.nextId++
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`[sqlite] timeout: ${op}`))
+      }, this.timeoutMs)
+      this.pending.set(id, { resolve, reject, timer })
+      this.worker.postMessage({ id, op, args })
+    })
   }
-  async addDenyHost(host: string): Promise<void> {
-    await this.call('addDenyHost', host)
+
+  private rejectAll(cause: unknown): void {
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer)
+      reject(new Error(`[sqlite] worker fault: ${String(cause)}`))
+    }
+    this.pending.clear()
   }
 }
 ```
-(Implementation note: `OffscreenWorkerStore` already owns the worker + a request/reply map. Expose its call method — e.g. a public `call(op, args)` — or have both stores share one worker-call helper. Wire `OffscreenSettingsStore` to that same worker so there is ONE sqlite worker.)
+Run: `npx vitest run tests/core/sqlite-worker-client.test.ts` -> PASS (3 tests).
 
-- [ ] **Step 3: Typecheck**
+- [ ] **Step 3: Make the worker declarative + add settings (`src/offscreen/sqlite-worker.ts`)**
 
-Run: `npx tsc --noEmit`
-Expected: errors only where offscreen.ts wires it (next task).
+Restructure the worker to a declarative `SCHEMA` array and an op -> handler MAP. Move the existing chunk SQL into handler functions unchanged; add the new settings tables + handlers. Sketch:
 
-- [ ] **Step 4: Commit**
+```ts
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, url TEXT, title TEXT, capturedAt INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, pageId TEXT, idx INTEGER, text TEXT, vector BLOB)`,
+  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
+  `CREATE TABLE IF NOT EXISTS user_denylist (host TEXT PRIMARY KEY)`,
+]
 
+const handlers: Record<string, (db: any, args: any) => unknown> = {
+  upsertPage: (db, page) => { /* existing SQL */ },
+  putChunks: (db, { pageId, chunks }) => { /* existing */ },
+  pendingChunks: (db, { limit }) => { /* existing */ },
+  setVector: (db, { id, vector }) => { /* existing */ },
+  search: (db, { query, k }) => { /* existing */ },
+  getSettings: (db) => {
+    let paused = false
+    db.exec({ sql: `SELECT value FROM settings WHERE key='paused'`, rowMode: 'array', callback: (r: any) => { paused = r[0] === '1' } })
+    const userDenyHosts: string[] = []
+    db.exec({ sql: `SELECT host FROM user_denylist`, rowMode: 'array', callback: (r: any) => userDenyHosts.push(r[0]) })
+    return { paused, userDenyHosts }
+  },
+  setPaused: (db, paused: boolean) => db.exec({ sql: `INSERT OR REPLACE INTO settings (key,value) VALUES ('paused',?)`, bind: [paused ? '1' : '0'] }),
+  addDenyHost: (db, host: string) => db.exec({ sql: `INSERT OR IGNORE INTO user_denylist (host) VALUES (?)`, bind: [host] }),
+}
+
+// init: SCHEMA.forEach(sql => db.exec(sql))
+// onmessage: const { id, op, args } = e.data
+//   try { postMessage({ id, result: handlers[op](db, args) }) }
+//   catch (err) { postMessage({ id, error: String(err) }) }
+```
+(Keep the OPFS SAH pool init exactly as it is. The vector args carry Float32Array via structured clone — unchanged.)
+
+- [ ] **Step 4: Port adapters over the client (declarative)**
+
+```ts
+// src/offscreen/worker-vector-store.ts
+import type { VectorSearchPort } from '../core/ports'
+import type { CapturedPage, Chunk, RankedResult } from '../core/model'
+import type { SqliteWorkerClient } from './sqlite-worker-client'
+
+export class WorkerVectorStore implements VectorSearchPort {
+  constructor(private readonly c: SqliteWorkerClient) {}
+  upsertPage = (p: CapturedPage) => this.c.request<void>('upsertPage', p)
+  putChunks = (pageId: string, chunks: Chunk[]) => this.c.request<void>('putChunks', { pageId, chunks })
+  pendingChunks = (limit: number) => this.c.request<Chunk[]>('pendingChunks', { limit })
+  setVector = (id: string, vector: Float32Array) => this.c.request<void>('setVector', { id, vector })
+  search = (query: Float32Array, k: number) => this.c.request<RankedResult[]>('search', { query, k })
+}
+```
+```ts
+// src/offscreen/worker-settings-store.ts
+import type { AppSettings, SettingsPort } from '../core/ports'
+import type { SqliteWorkerClient } from './sqlite-worker-client'
+
+export class WorkerSettingsStore implements SettingsPort {
+  constructor(private readonly c: SqliteWorkerClient) {}
+  get = () => this.c.request<AppSettings>('getSettings')
+  setPaused = (paused: boolean) => this.c.request<void>('setPaused', paused)
+  addDenyHost = (host: string) => this.c.request<void>('addDenyHost', host)
+}
+```
+Delete `src/offscreen/offscreen-worker-store.ts` (its plumbing now lives in the client; its port impl is `WorkerVectorStore`).
+
+- [ ] **Step 5: Verify + commit**
+
+Run: `npx vitest run` (client tests pass; core unaffected). `npx tsc --noEmit` (errors only in offscreen.ts wiring, fixed in Task 3).
 ```bash
-git add src/offscreen/sqlite-worker.ts src/offscreen/offscreen-settings-store.ts
-git commit -m "feat(offscreen): persist settings + user denylist in sqlite worker"
+git add src/offscreen/sqlite-worker-client.ts src/offscreen/sqlite-worker.ts src/offscreen/worker-vector-store.ts src/offscreen/worker-settings-store.ts tests/core/sqlite-worker-client.test.ts
+git rm src/offscreen/offscreen-worker-store.ts
+git commit -m "refactor(offscreen): SqliteWorkerClient + declarative worker + port adapters"
 ```
 
 ---
@@ -199,14 +328,21 @@ git commit -m "feat(offscreen): persist settings + user denylist in sqlite worke
 
 **Files:** Modify `src/offscreen/offscreen.ts`
 
-- [ ] **Step 1: Load settings and pass to the gate; add settings ops**
+- [ ] **Step 1: Build the client + both stores; gate with settings; add settings ops**
 
-- Construct `const settingsStore = new OffscreenSettingsStore(<worker call>)` sharing the same worker as the store.
-- In the `capture` op: `const settings = await settingsStore.get()`, then `gate.decide({ url, text, manual }, settings)`. Keep the rest (store + drain) unchanged.
-- Add RPC ops:
-  - `get-settings` -> `return await settingsStore.get()`
-  - `set-paused` (payload.paused) -> `await settingsStore.setPaused(payload.paused); return { ok: true }`
-  - `deny-host` (payload.host) -> `await settingsStore.addDenyHost(payload.host); return { ok: true }`
+- Construct ONE worker + client + both adapters:
+  ```ts
+  const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module' })
+  const client = new SqliteWorkerClient(worker)
+  const store = new WorkerVectorStore(client)        // VectorSearchPort
+  const settings = new WorkerSettingsStore(client)   // SettingsPort
+  ```
+  (Replaces the old `new OffscreenWorkerStore()`. Core services are still constructed with `store` exactly as before.)
+- In the `capture` op: `const s = await settings.get()`, then `gate.decide({ url, text, manual }, s)`. Keep the rest (store + drain) unchanged.
+- Add RPC ops (declarative, mirroring the SettingsPort):
+  - `get-settings` -> `return await settings.get()`
+  - `set-paused` (payload.paused) -> `await settings.setPaused(payload.paused); return { ok: true }`
+  - `deny-host` (payload.host) -> `await settings.addDenyHost(payload.host); return { ok: true }`
 
 - [ ] **Step 2: Typecheck + build**
 
@@ -372,7 +508,8 @@ git commit -m "test(e2e): pause blocks capture and unpause restores it"
 **Deferred (increment 2b):** denylist viewer/editor, remove-host, "forget this site's history" (deleteByDomain), SERP/scroll signals.
 
 **Notes / risks:**
-- One sqlite worker must back BOTH the chunk store and the settings store. Wire `OffscreenSettingsStore` to the SAME worker (expose the worker-call helper), do NOT spawn a second worker.
+- ONE worker, ONE client: `WorkerVectorStore` and `WorkerSettingsStore` share a single `SqliteWorkerClient` (Task 2/3). Do NOT spawn a second worker. The client is the only place with worker plumbing.
+- The Task 2 refactor (extract client, declarative worker, delete `offscreen-worker-store.ts`) must keep `recall-flow` + `persistence` e2e green — it is a structure change, not a behavior change. Run them after Task 3.
 - Pause semantics: blocks manual too (privacy-clear). If a user wants to save one thing while paused, they unpause — acceptable.
 - "Don't remember this site" uses exact hostname; subdomains differ (mail.x.com vs x.com). Domain-level blocking is increment 2b.
 - The deny-host popup action reads the ACTIVE tab url; on a restricted tab (chrome://) `new URL(tab.url)` may throw — guard it and show a benign message.
