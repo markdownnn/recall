@@ -13,7 +13,7 @@ import type { AppSettings } from '../core/ports'
 // ---------------------------------------------------------------------------
 
 const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, url TEXT, title TEXT, capturedAt INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS pages (id TEXT PRIMARY KEY, url TEXT, title TEXT, capturedAt INTEGER, host TEXT)`,
   `CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, pageId TEXT, idx INTEGER, text TEXT, vector BLOB NULL)`,
   `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
   `CREATE TABLE IF NOT EXISTS user_denylist (host TEXT PRIMARY KEY)`,
@@ -128,9 +128,14 @@ function opRemoveDenyHost(db: any, host: string): void {
 }
 
 function opDeletePagesByHost(db: any, host: string): void {
-  const where = `(host = ? OR host LIKE '%.' || ?)`
-  db.exec({ sql: `DELETE FROM chunks WHERE pageId IN (SELECT id FROM pages WHERE ${where})`, bind: [host, host] })
-  db.exec({ sql: `DELETE FROM pages WHERE ${where}`, bind: [host, host] })
+  const esc = host.replace(/[\\%_]/g, '\\$&')
+  const where = `(host = ? OR host LIKE '%.' || ? ESCAPE '\\')`
+  db.exec('BEGIN')
+  try {
+    db.exec({ sql: `DELETE FROM chunks WHERE pageId IN (SELECT id FROM pages WHERE ${where})`, bind: [host, esc] })
+    db.exec({ sql: `DELETE FROM pages WHERE ${where}`, bind: [host, esc] })
+    db.exec('COMMIT')
+  } catch (e) { db.exec('ROLLBACK'); throw e }
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +170,8 @@ const initPromise: Promise<void> = (async () => {
       db.exec({ sql })
     }
     // Idempotent migration: add host column if not already present.
-    try { db.exec(`ALTER TABLE pages ADD COLUMN host TEXT`) } catch { /* already exists */ }
+    try { db.exec(`ALTER TABLE pages ADD COLUMN host TEXT`) }
+    catch (e) { if (!String(e).toLowerCase().includes('duplicate column')) throw e }
     // Backfill host for existing rows that predate the column.
     const toFix: { id: string; url: string }[] = []
     db.exec({ sql: `SELECT id, url FROM pages WHERE host IS NULL`, rowMode: 'object', callback: (r: any) => toFix.push({ id: r.id, url: r.url }) })
