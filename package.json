@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/fetch-model.mjs",
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",

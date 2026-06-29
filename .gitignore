@@ -7,3 +7,6 @@ playwright-report/
 recall-extension.zip
 .DS_Store
 src/.DS_Store
+# Bundled embedding model — fetched by scripts/fetch-model.mjs (run via prebuild).
+# Not committed: 135MB binary, reproducible via pinned SHA.
+public/models/

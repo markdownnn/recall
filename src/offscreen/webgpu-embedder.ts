@@ -24,6 +24,8 @@ const BATCH = 32
 
 // Configure the ONNX runtime ONCE to load its WASM from the bundled extension
 // dir (public/onnx-hf/), not a CDN.  Both WASM and WebGPU backends need asyncify.wasm.
+// The model itself is also bundled under public/models/ (fetched at build time by
+// scripts/fetch-model.mjs) so connect-src no longer needs huggingface.co at runtime.
 let _envConfigured = false
 function configureEnv(): void {
   if (_envConfigured) return
@@ -34,9 +36,11 @@ function configureEnv(): void {
       wasm: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.wasm`,
       mjs: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.mjs`,
     }
+    // Load the model from the bundled extension path, never from a remote host.
+    env.allowLocalModels = true
+    env.localModelPath = chrome.runtime.getURL('models/')
+    env.allowRemoteModels = false
   }
-  // We never bundle the model itself; go straight to the pinned remote fetch.
-  env.allowLocalModels = false
 }
 
 export class WebGpuEmbedder {
@@ -93,6 +97,8 @@ export class WebGpuEmbedder {
     try {
       const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
         device: 'webgpu',
+        // dtype:'q8' requests model_quantized.onnx — the file we bundle in public/models/.
+        dtype: 'q8',
         progress_callback: onProgress,
       })) as FeatureExtractionPipeline
       await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
@@ -107,6 +113,8 @@ export class WebGpuEmbedder {
     ;(env.backends.onnx as any).wasm.numThreads = 1
     const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
       device: 'wasm',
+      // dtype:'q8' requests model_quantized.onnx — the same bundled file used by WebGPU path.
+      dtype: 'q8',
       progress_callback: onProgress,
     })) as FeatureExtractionPipeline
     await pipe(['query: warmup'], { pooling: 'mean', normalize: true })

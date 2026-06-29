@@ -18,6 +18,7 @@
 
 ## Consequences
 
-- 모델 가중치는 HF에서 1회 받아 캐시(불변 SHA 핀, ADR 0001/0014), v4의 ONNX 런타임 wasm은 번들(`public/onnx-hf/`)해 CDN 미사용.
+- 모델 가중치(tokenizer + int8 ONNX, ~135MB)는 익스텐션 패키지에 번들(`public/models/`). 빌드 시 `scripts/fetch-model.mjs`가 pinned SHA에서 내려받으며, 최종 사용자 기기에서는 네트워크 요청이 없다(ADR 0001 해소). v4의 ONNX 런타임 wasm은 `public/onnx-hf/`에 번들.
+- `dtype: 'q8'`로 `model_quantized.onnx`(int8 양자화)를 로드하며, WebGPU/WASM 양쪽 경로에서 동일 파일을 사용한다.
 - WASM 폴백 경로를 유지해 WebGPU 미지원 하드웨어에서도 동작(느리지만)한다.
 - 실제 90청크 페이지 기준 WebGPU ~수 초(비동기 색인이라 비차단), WASM이면 분 단위.
