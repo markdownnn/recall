@@ -11,6 +11,7 @@ import { CaptureService } from '../core/capture-service'
 import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
+import { CaptureGate } from '../core/capture-gate'
 import type { EmbeddingPort } from '../core/ports'
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ const chunker = new ParagraphChunker(220)
 const capture = new CaptureService(chunker, store)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
+const gate = new CaptureGate()
 
 // ---------------------------------------------------------------------------
 // Drain helper: run drain and push progress events to the SW.
@@ -90,16 +92,21 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   const p = (payload ?? {}) as Record<string, unknown>
   const op = p.op as string | undefined
 
-  // --- capture: store chunks immediately, fire-and-forget drain ---
+  // --- capture: run gate, store chunks immediately, fire-and-forget drain ---
   if (op === 'capture') {
     const url = p.url as string
     const title = p.title as string
     const text = p.text as string
+    const manual = p.manual as boolean
+    const decision = gate.decide({ url, text, manual })
+    if (!decision.capture) {
+      return { captured: false, chunkCount: 0, reason: decision.reason }
+    }
     const { chunkCount } = await capture.capture({ url, title, text })
     console.log(`[recall] captured ${chunkCount} chunks`)
     // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
     runDrainWithProgress()
-    return { chunkCount }
+    return { captured: true, chunkCount }
   }
 
   // --- recall: embed query, cosine search ---
