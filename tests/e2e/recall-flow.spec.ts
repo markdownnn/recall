@@ -58,13 +58,37 @@ test('capture an article then recall the matching chunk', async () => {
   //    First run downloads the e5-small model, hence the generous timeout.
   await expect(popup.getByText('captured')).toBeVisible({ timeout: 120_000 })
 
+  // --- Search 1: hormone query ---
+  // Scenario: query about sleep hormones must surface the cortisol chunk first,
+  // proving both chunks were stored and the cortisol one ranks above the tax one.
+
   // 6. Search for the hormone-related content.
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
 
-  // 7. The cortisol paragraph must be the top-ranked result.
-  const first = popup.locator('li').first()
+  // 7. Both chunks must be stored (exactly 2 results returned).
+  const items = popup.locator('li')
+  await expect(items).toHaveCount(2, { timeout: 30_000 })
+
+  // 8. The cortisol paragraph must be the top-ranked result.
+  const first = items.first()
   await expect(first).toContainText('Cortisol', { timeout: 30_000 })
+
+  // --- Search 2: bookkeeping query ---
+  // Scenario: a completely different query must surface the tax chunk first and
+  // NOT the cortisol chunk, proving ranking is query-driven (not a constant winner).
+
+  // 9. Clear the input and search for the bookkeeping content.
+  const input = popup.getByPlaceholder('recall...')
+  await input.fill('')
+  await input.fill('double entry bookkeeping tax')
+  await input.press('Enter')
+
+  // 10. The bookkeeping/tax chunk must now be first.
+  const firstAfter = popup.locator('li').first()
+  await expect(firstAfter).toContainText('bookkeeping', { timeout: 30_000 })
+  // Cortisol chunk must NOT be the top result for this query.
+  await expect(firstAfter).not.toContainText('Cortisol', { timeout: 5_000 })
 
   await ctx.close()
 })
