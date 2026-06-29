@@ -4,12 +4,17 @@ export type Msg =
   | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
   | { type: 'recall'; text: string; k: number }
   | { type: 'model-status' }
+  | { type: 'get-settings' }
+  | { type: 'set-paused'; paused: boolean }
+  | { type: 'deny-host'; host: string }
 
 export type MsgResult =
-  | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'denylisted' | 'thin' }
+  | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
   | { type: 'recalled'; results: RankedResult[] }
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
+  | { type: 'settings'; paused: boolean; userDenyHosts: string[] }
+  | { type: 'ok' }
 
 // Push message sent from background to popup (not a request/response pair).
 export type ModelProgressMsg = { type: 'model-progress'; status: import('./core/model-progress').ModelStatus }

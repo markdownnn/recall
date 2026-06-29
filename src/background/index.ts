@@ -139,7 +139,13 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     return true
   }
 
-  if (msg.type !== 'capture' && msg.type !== 'recall') return false
+  if (
+    msg.type !== 'capture' &&
+    msg.type !== 'recall' &&
+    msg.type !== 'get-settings' &&
+    msg.type !== 'set-paused' &&
+    msg.type !== 'deny-host'
+  ) return false
 
   ;(async () => {
     try {
@@ -150,7 +156,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
           sendResponse({ type: 'captured', captured: false, chunkCount: 0 } satisfies MsgResult)
           return
         }
-        const r = await callOffscreen<{ captured: boolean; chunkCount: number; reason?: 'denylisted' | 'thin' }>({
+        const r = await callOffscreen<{ captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }>({
           op: 'capture',
           url: msg.url,
           title: msg.title,
@@ -168,6 +174,15 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
         modelStatus = { state: 'ready', percent: 100 }
         broadcastModelStatus(modelStatus)
         sendResponse({ type: 'recalled', results: r.results } satisfies MsgResult)
+      } else if (msg.type === 'get-settings') {
+        const r = await callOffscreen<{ paused: boolean; userDenyHosts: string[] }>({ op: 'get-settings' })
+        sendResponse({ type: 'settings', paused: r.paused, userDenyHosts: r.userDenyHosts } satisfies MsgResult)
+      } else if (msg.type === 'set-paused') {
+        await callOffscreen({ op: 'set-paused', paused: msg.paused })
+        sendResponse({ type: 'ok' } satisfies MsgResult)
+      } else if (msg.type === 'deny-host') {
+        await callOffscreen({ op: 'deny-host', host: msg.host })
+        sendResponse({ type: 'ok' } satisfies MsgResult)
       }
     } catch (err) {
       console.error('[recall/bg]', msg.type, 'FAILED:', err)
