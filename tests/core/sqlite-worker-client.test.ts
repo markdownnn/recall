@@ -33,3 +33,21 @@ test('worker onerror rejects all in-flight calls', async () => {
   await expect(a).rejects.toBeTruthy()
   await expect(b).rejects.toBeTruthy()
 })
+
+// Scenario: a hung worker must not block the caller indefinitely; the pending
+// Map entry must be cleaned up so a late reply arriving after the timeout is
+// silently ignored rather than crashing.
+// Coverage: integration (real setTimeout; no fake timers needed for 10ms).
+test('per-call timeout rejects when no reply arrives', async () => {
+  const w = fakeWorker()
+  const c = new SqliteWorkerClient(w, 10) // 10ms timeout
+  const p = c.request('x')
+
+  // Never send a reply — let the 10ms timeout fire.
+  await expect(p).rejects.toThrow(/timeout/)
+
+  // Pending entry must be cleaned up: a late reply for that id must be silently
+  // ignored and must NOT throw or resolve anything.
+  const id = w.posted[0].id
+  expect(() => w.onmessage({ data: { id, result: 'late' } })).not.toThrow()
+})
