@@ -131,6 +131,16 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     return { ok: true }
   }
 
+  if (op === 'remove-deny-host') {
+    await settings.removeDenyHost(p.host as string)
+    return { ok: true }
+  }
+
+  if (op === 'forget-host') {
+    await store.deletePagesByHost(p.host as string)
+    return { ok: true }
+  }
+
   // --- recall: embed query, cosine search ---
   if (op === 'recall') {
     const text = p.text as string

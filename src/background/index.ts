@@ -156,7 +156,9 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'recall' &&
     msg.type !== 'get-settings' &&
     msg.type !== 'set-paused' &&
-    msg.type !== 'deny-host'
+    msg.type !== 'deny-host' &&
+    msg.type !== 'remove-deny-host' &&
+    msg.type !== 'forget-host'
   ) return false
 
   ;(async () => {
@@ -194,6 +196,12 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
         sendResponse({ type: 'ok' } satisfies MsgResult)
       } else if (msg.type === 'deny-host') {
         await callOffscreen({ op: 'deny-host', host: msg.host })
+        sendResponse({ type: 'ok' } satisfies MsgResult)
+      } else if (msg.type === 'remove-deny-host') {
+        await callOffscreen({ op: 'remove-deny-host', host: msg.host })
+        sendResponse({ type: 'ok' } satisfies MsgResult)
+      } else if (msg.type === 'forget-host') {
+        await callOffscreen({ op: 'forget-host', host: msg.host })
         sendResponse({ type: 'ok' } satisfies MsgResult)
       }
     } catch (err) {

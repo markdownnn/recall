@@ -7,6 +7,8 @@ export type Msg =
   | { type: 'get-settings' }
   | { type: 'set-paused'; paused: boolean }
   | { type: 'deny-host'; host: string }
+  | { type: 'remove-deny-host'; host: string }
+  | { type: 'forget-host'; host: string }
 
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
