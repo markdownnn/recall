@@ -1,71 +1,72 @@
-// Spike: offscreen document that owns a dedicated Worker running sqlite-wasm with
-// the OPFS SAH pool VFS.  The service worker forwards 'spike-bump' messages here;
-// we relay them to the worker and send the reply back.
-//
-// This file is ADDITIVE and isolated — it does not touch the existing
-// capture / recall / embedding flow.
+// Offscreen document: the engine room.
+// Owns: WebGpuEmbedder, OffscreenWorkerStore (OPFS via worker), and
+//       the three core services (Capture, Indexing, Recall).
+// Handles high-level RPC ops from the SW: capture, recall, ensureLoaded, ping.
+// Drain (embedding queue) runs here so it stays alive independent of the SW.
 
 import { installOffscreenRpcHandler } from './offscreen-rpc'
 import { WebGpuEmbedder } from './webgpu-embedder'
+import { OffscreenWorkerStore } from './offscreen-worker-store'
+import { CaptureService } from '../core/capture-service'
+import { IndexingService } from '../core/indexing-service'
+import { RecallService } from '../core/recall-service'
+import { ParagraphChunker } from '../core/paragraph-chunker'
+import type { EmbeddingPort } from '../core/ports'
 
-const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module' })
+// ---------------------------------------------------------------------------
+// Core services
+// ---------------------------------------------------------------------------
 
-// Pending request map: id -> resolve function
-const pending = new Map<number, (value: { counter?: number; error?: string }) => void>()
-let nextId = 0
+const embedder = new WebGpuEmbedder()
 
-worker.onmessage = (e: MessageEvent) => {
-  const { id, counter, error } = e.data as { id: number; counter?: number; error?: string }
-  const resolve = pending.get(id)
-  if (resolve) {
-    pending.delete(id)
-    resolve(error != null ? { error } : { counter })
-  }
+// Adapter: WebGpuEmbedder.embed() returns number[][] (legacy type for RPC wire
+// compatibility). Core services need Float32Array[]. Convert in one place.
+const localEmbedder: EmbeddingPort = {
+  async embed(texts: string[], kind: 'query' | 'passage'): Promise<Float32Array[]> {
+    if (texts.length === 0) return []
+    const vecs = await embedder.embed(texts, kind)
+    return vecs.map((a) => new Float32Array(a))
+  },
 }
 
-worker.onerror = (e) => {
-  console.error('[recall/offscreen] worker error:', e.message)
+const store = new OffscreenWorkerStore()
+const chunker = new ParagraphChunker(220)
+const capture = new CaptureService(chunker, store)
+const indexing = new IndexingService(store, localEmbedder)
+const recall = new RecallService(localEmbedder, store)
+
+// ---------------------------------------------------------------------------
+// Drain helper: run drain and push progress events to the SW.
+// The SW relays them to the popup as indexing-progress broadcast messages.
+// ---------------------------------------------------------------------------
+
+function runDrainWithProgress(): void {
+  let totalEmbedded = 0
+  indexing
+    .drain((n) => {
+      totalEmbedded += n
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'indexing-progress', embedded: totalEmbedded })
+        .catch(() => {})
+    })
+    .then(() => {
+      // Signal "drain complete" so the popup shows "indexed".
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'indexing-complete', totalEmbedded })
+        .catch(() => {})
+    })
+    .catch((e) => console.error('[recall/offscreen] drain failed:', e))
 }
 
-function bumpCounter(): Promise<{ counter?: number; error?: string }> {
-  return new Promise((resolve) => {
-    const id = nextId++
-    pending.set(id, resolve)
-    worker.postMessage({ type: 'bump', id })
-  })
-}
+// On load: resume any pending chunks left from a previous session.
+// The store worker may still be initialising its OPFS DB; pendingChunks() will
+// wait for the worker's initPromise before replying, so this is safe to call now.
+runDrainWithProgress()
 
-// WebGPU probe — offscreen documents have DOM / navigator APIs.
-async function checkWebGPU(): Promise<string> {
-  const gpu = (navigator as any).gpu as any
-  if (!gpu) return 'no navigator.gpu'
-  try {
-    const adapter = await gpu.requestAdapter()
-    return adapter ? 'adapter OK' : 'no adapter'
-  } catch (e) {
-    return 'error: ' + String(e)
-  }
-}
+// ---------------------------------------------------------------------------
+// WebGPU bench (additive, independent of storage/core).
+// ---------------------------------------------------------------------------
 
-// Cache the WebGPU result so the first bump response can include it.
-const webgpuPromise = checkWebGPU()
-
-// Only handle 'spike-bump'; return false for everything else so other
-// listeners (popup, etc.) are not interfered with.
-chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
-  if (msg.type !== 'spike-bump') return false
-  ;(async () => {
-    const [workerResult, webgpu] = await Promise.all([bumpCounter(), webgpuPromise])
-    sendResponse({ ...workerResult, webgpu })
-  })()
-  return true // keep the message channel open for the async reply
-})
-
-// Spike: WebGPU vs WASM embedding benchmark.
-// The Playwright test sets '__run_bench_trigger: true' in chrome.storage.local
-// from the popup page.  We poll storage every 2 seconds so we don't depend on
-// chrome.storage.onChanged or chrome.runtime.sendMessage, both of which have
-// proven unreliable from SW/popup → offscreen document in this Chrome version.
 let _benchRunning = false
 
 async function _runBenchIfTriggered(): Promise<void> {
@@ -73,9 +74,8 @@ async function _runBenchIfTriggered(): Promise<void> {
   const data = (await chrome.storage.local.get(['__run_bench_trigger'])) as Record<string, unknown>
   if (data['__run_bench_trigger'] !== true) return
   _benchRunning = true
-  // Consume the trigger immediately so a restart does not re-fire.
   await chrome.storage.local.remove(['__run_bench_trigger'])
-  console.log('[recall/offscreen] webgpu-bench: trigger detected via polling, starting...')
+  console.log('[recall/offscreen] webgpu-bench: trigger detected, starting...')
   await chrome.storage.local.set({ __webgpu_bench_started: Date.now() })
   try {
     const { runBench } = await import('./webgpu-bench')
@@ -101,8 +101,6 @@ async function _runBenchIfTriggered(): Promise<void> {
   }
 }
 
-// Poll every 2s.  2s latency is acceptable for a multi-minute benchmark.
-// Also write a heartbeat counter so the Playwright test can confirm the loop is alive.
 let _pollCount = 0
 setInterval(() => {
   _pollCount++
@@ -111,46 +109,66 @@ setInterval(() => {
 }, 2_000)
 
 // ---------------------------------------------------------------------------
-// Real embedder (multilingual-e5-small, WebGPU with WASM fallback) lives here.
-// The SW holds only a proxy that forwards embed/ensureLoaded over RPC.
+// RPC handler: dispatches on payload.op
 // ---------------------------------------------------------------------------
-const embedder = new WebGpuEmbedder()
 
-// RPC handler dispatches on payload.op:
-//   'embed'        -> { vectors: number[][] }  (Float32Array can't cross the wire)
-//   'ensureLoaded' -> { device }  + fire-and-forget model-progress events to the SW
-//   (default)      -> echo {echoed, n+1}  (keeps the rpc-stress spike test green)
 installOffscreenRpcHandler(async (payload: unknown) => {
   const p = (payload ?? {}) as Record<string, unknown>
   const op = p.op as string | undefined
 
-  if (op === 'embed') {
-    const texts = (p.texts as string[]) ?? []
-    const kind = (p.kind as 'query' | 'passage') ?? 'passage'
-    const t0Embed = Date.now()
-    const vectors = await embedder.embed(texts, kind)
-    const embedMs = Date.now() - t0Embed
-    return { vectors, embedMs, chunkCount: texts.length }
+  // --- capture: store chunks immediately, fire-and-forget drain ---
+  if (op === 'capture') {
+    const url = p.url as string
+    const title = p.title as string
+    const text = p.text as string
+    const t0 = Date.now()
+    const { chunkCount } = await capture.capture({ url, title, text })
+    console.log(`[recall/offscreen] capture done: ${chunkCount} chunks in ${Date.now() - t0}ms`)
+    // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
+    runDrainWithProgress()
+    return { chunkCount }
   }
 
+  // --- recall: embed query, cosine search ---
+  if (op === 'recall') {
+    const text = p.text as string
+    const k = p.k as number
+    const t0 = Date.now()
+    const results = await recall.recall({ text, k })
+    console.log(`[recall/offscreen] recall done: ${results.length} results in ${Date.now() - t0}ms`)
+    return { results }
+  }
+
+  // --- ensureLoaded: warm up the model, push progress events ---
   if (op === 'ensureLoaded') {
     await embedder.ensureLoaded((e) => {
-      // Fire-and-forget: push download progress to the SW so the popup can show it.
       chrome.runtime
         .sendMessage({ channel: 'rpc-event', kind: 'model-progress', status: e })
-        .catch(() => {
-          // SW/popup may be closed; ignore.
-        })
+        .catch(() => {})
     })
-    console.log('[recall/offscreen] ensureLoaded done, embedding device =', embedder.device)
+    console.log('[recall/offscreen] ensureLoaded done, device =', embedder.device)
     return { device: embedder.device, pipelineMs: embedder.pipelineMs, warmupMs: embedder.warmupMs }
   }
 
-  // Default: echo (additive spike — proves RPC delivery/correlation under load).
+  // --- embed: kept for any callers that still use direct embed RPC (spike tests) ---
+  if (op === 'embed') {
+    const texts = (p.texts as string[]) ?? []
+    const kind = (p.kind as 'query' | 'passage') ?? 'passage'
+    const t0 = Date.now()
+    const vectors = await embedder.embed(texts, kind)
+    return { vectors, embedMs: Date.now() - t0, chunkCount: texts.length }
+  }
+
+  // --- ping: keep-alive from the SW ---
+  if (op === 'ping') {
+    return { pong: true }
+  }
+
+  // --- default: echo (keeps rpc-stress spike test green) ---
   return {
     echoed: payload,
     n: ((p.n as number) ?? 0) + 1,
   }
 })
 
-console.log('[recall/offscreen] document loaded, worker spawned')
+console.log('[recall/offscreen] document loaded, core services ready')
