@@ -13,8 +13,9 @@ const dir = path.dirname(fileURLToPath(import.meta.url))
 const distPath = path.resolve(dir, '../../dist-ext')
 
 test('capture an article then recall the matching chunk', async () => {
-  // Allow up to 150s: first run downloads the e5-small model (~23 MB)
-  test.setTimeout(150_000)
+  // Allow up to 270s: first run downloads the e5-small model (~23 MB), then indexes.
+  // Capture is now instant; indexing is async, so model download happens during indexing.
+  test.setTimeout(270_000)
 
   // Launch Chrome with the built extension loaded.
   // headless:false is required for MV3 service workers in Playwright.
@@ -54,37 +55,44 @@ test('capture an article then recall the matching chunk', async () => {
   //    without focusing the popup tab, so activeTab query returns the article.
   await popup.getByText('Capture this page').click()
 
-  // 5. Wait for capture to complete (Readability extract -> background embed+store).
-  //    First run downloads the e5-small model, hence the generous timeout.
-  await expect(popup.getByText('captured')).toBeVisible({ timeout: 120_000 })
+  // 5. Wait for capture to complete.  Capture now stores chunks immediately without
+  //    embedding, so this responds within seconds even on first run.
+  //    Status will be "captured (indexing N chunks...)" when chunkCount > 0.
+  await expect(popup.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
+
+  // 6. Wait for indexing to complete.
+  //    The background drain embeds all pending chunks (may need to download the model
+  //    first on a fresh browser context).  The popup shows "indexed" once the background
+  //    broadcasts pending=0.  Give up to 240s — same budget as the old synchronous capture.
+  await expect(popup.getByText('indexed')).toBeVisible({ timeout: 240_000 })
 
   // --- Search 1: hormone query ---
   // Scenario: query about sleep hormones must surface the cortisol chunk first,
-  // proving both chunks were stored and the cortisol one ranks above the tax one.
+  // proving both chunks were indexed and the cortisol one ranks above the tax one.
 
-  // 6. Search for the hormone-related content.
+  // 7. Search for the hormone-related content.
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
 
-  // 7. Both chunks must be stored (exactly 2 results returned).
+  // 8. Both chunks must be stored (exactly 2 results returned).
   const items = popup.locator('li')
   await expect(items).toHaveCount(2, { timeout: 30_000 })
 
-  // 8. The cortisol paragraph must be the top-ranked result.
+  // 9. The cortisol paragraph must be the top-ranked result.
   const first = items.first()
-  await expect(first).toContainText('Cortisol', { timeout: 30_000 })
+  await expect(first).toContainText('Cortisol', { timeout: 10_000 })
 
   // --- Search 2: bookkeeping query ---
   // Scenario: a completely different query must surface the tax chunk first and
   // NOT the cortisol chunk, proving ranking is query-driven (not a constant winner).
 
-  // 9. Clear the input and search for the bookkeeping content.
+  // 10. Clear the input and search for the bookkeeping content.
   const input = popup.getByPlaceholder('recall...')
   await input.fill('')
   await input.fill('double entry bookkeeping tax')
   await input.press('Enter')
 
-  // 10. The bookkeeping/tax chunk must now be first.
+  // 11. The bookkeeping/tax chunk must now be first.
   const firstAfter = popup.locator('li').first()
   await expect(firstAfter).toContainText('bookkeeping', { timeout: 30_000 })
   // Cortisol chunk must NOT be the top result for this query.

@@ -4,25 +4,43 @@ import { cosineSimilarity } from '../core/cosine'
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
-  private chunks = new Map<string, { chunk: Chunk; vector: Float32Array }>()
+  private chunks = new Map<string, { chunk: Chunk; vector: Float32Array | null }>()
 
   async upsertPage(page: CapturedPage): Promise<void> {
     this.pages.set(page.id, page)
   }
 
-  async upsertChunk(chunk: Chunk, vector: Float32Array): Promise<void> {
-    this.chunks.set(chunk.id, { chunk, vector })
-  }
-
-  async clearChunks(pageId: string): Promise<void> {
+  async putChunks(pageId: string, chunks: Chunk[]): Promise<void> {
+    // Delete all existing entries for this pageId.
     for (const [id, { chunk }] of this.chunks) {
       if (chunk.pageId === pageId) this.chunks.delete(id)
     }
+    // Insert each chunk with no vector yet (pending).
+    for (const chunk of chunks) {
+      this.chunks.set(chunk.id, { chunk, vector: null })
+    }
+  }
+
+  async pendingChunks(limit: number): Promise<Chunk[]> {
+    const result: Chunk[] = []
+    for (const { chunk, vector } of this.chunks.values()) {
+      if (vector === null) {
+        result.push(chunk)
+        if (result.length >= limit) break
+      }
+    }
+    return result
+  }
+
+  async setVector(chunkId: string, vector: Float32Array): Promise<void> {
+    const entry = this.chunks.get(chunkId)
+    if (entry) entry.vector = vector
   }
 
   async search(queryVector: Float32Array, k: number): Promise<RankedResult[]> {
     const scored: RankedResult[] = []
     for (const { chunk, vector } of this.chunks.values()) {
+      if (vector === null) continue // pending chunks are not searchable
       const page = this.pages.get(chunk.pageId)
       if (!page) continue
       scored.push({ chunk, page, score: cosineSimilarity(queryVector, vector) })

@@ -14,8 +14,9 @@ async function seed(store: MemoryVectorStore) {
   await store.upsertPage(page)
   const sleepChunk: Chunk = { id: 'p1#0', pageId: 'p1', index: 0, text: 'cortisol disrupts sleep' }
   const taxChunk: Chunk = { id: 'p1#1', pageId: 'p1', index: 1, text: 'tax basics' }
-  await store.upsertChunk(sleepChunk, new Float32Array([1, 1]))
-  await store.upsertChunk(taxChunk, new Float32Array([0, 1]))
+  await store.putChunks('p1', [sleepChunk, taxChunk])
+  await store.setVector('p1#0', new Float32Array([1, 1]))
+  await store.setVector('p1#1', new Float32Array([0, 1]))
 }
 
 test('returns the semantically closest chunk first', async () => {

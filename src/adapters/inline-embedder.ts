@@ -14,6 +14,10 @@ env.backends.onnx.wasm.numThreads = 1
 // Guard: chrome is undefined under the node test runner, where transformers
 // uses its own local runtime path — this block must not run there.
 if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+  // We never bundle the model itself, so skip the local-path probe entirely.
+  // (Removes the noisy "Unable to load from local path ... Failed to fetch" warnings
+  // and goes straight to the pinned remote fetch.)
+  env.allowLocalModels = false
   env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('onnx/')
 }
 
@@ -46,14 +50,18 @@ export class InlineEmbedder implements EmbeddingPort {
   }
 
   private async runEmbed(texts: string[], kind: 'query' | 'passage'): Promise<Float32Array[]> {
+    console.log(`[recall/bg] embed start: ${texts.length} texts (${kind}), BATCH=${InlineEmbedder.BATCH}`)
     const out: Float32Array[] = []
     for (let i = 0; i < texts.length; i += InlineEmbedder.BATCH) {
       const slice = texts.slice(i, i + InlineEmbedder.BATCH)
+      const t0 = Date.now()
       const extractor = await this.getExtractor()
       const prefixed = slice.map((t) => `${kind}: ${t}`)
       const output = await extractor(prefixed, { pooling: 'mean', normalize: true })
       for (const arr of output.tolist() as number[][]) out.push(new Float32Array(arr))
+      console.log(`[recall/bg] embed batch ${Math.floor(i / InlineEmbedder.BATCH) + 1}: ${slice.length} texts in ${Date.now() - t0}ms (total ${out.length}/${texts.length})`)
     }
+    console.log(`[recall/bg] embed done: ${out.length} vectors`)
     return out
   }
 

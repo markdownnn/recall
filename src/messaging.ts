@@ -6,10 +6,14 @@ export type Msg =
   | { type: 'model-status' }
 
 export type MsgResult =
-  | { type: 'captured' }
+  | { type: 'captured'; chunkCount: number }
   | { type: 'recalled'; results: RankedResult[] }
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
 
 // Push message sent from background to popup (not a request/response pair).
 export type ModelProgressMsg = { type: 'model-progress'; status: import('./core/model-progress').ModelStatus }
+
+// Push message sent from background to popup for indexing progress.
+// pending = chunks still waiting for a vector; embedded = done so far this drain.
+export type IndexingProgressMsg = { type: 'indexing-progress'; pending: number; embedded: number }

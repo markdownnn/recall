@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
-import type { MsgResult, ModelProgressMsg } from '../../messaging'
+import type { MsgResult, ModelProgressMsg, IndexingProgressMsg } from '../../messaging'
 import type { RankedResult } from '../../core/model'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
@@ -21,9 +21,13 @@ export function App() {
       if (res?.type === 'model-status') setModelStatus(res.status)
     }).catch(() => {})
 
-    // Subscribe to progress broadcasts from the background.
-    const listener = (msg: ModelProgressMsg) => {
+    // Subscribe to broadcasts from the background.
+    const listener = (msg: ModelProgressMsg | IndexingProgressMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
+      if (msg?.type === 'indexing-progress') {
+        if (msg.pending === 0) setStatus('indexed')
+        else setStatus(`indexing... ${msg.embedded} done`)
+      }
     }
     chrome.runtime.onMessage.addListener(listener)
     return () => {
@@ -35,8 +39,12 @@ export function App() {
     setStatus('capturing...')
     try {
       const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
-      if (res?.type === 'captured') setStatus('captured')
-      else setStatus('capture failed: ' + (res && 'error' in res ? res.error : 'unknown'))
+      if (res?.type === 'captured') {
+        if (res.chunkCount > 0) setStatus(`captured (indexing ${res.chunkCount} chunks...)`)
+        else setStatus('nothing to capture')
+      } else {
+        setStatus('capture failed: ' + (res && 'error' in res ? res.error : 'unknown'))
+      }
     } catch (e) {
       setStatus('capture failed: ' + String(e))
     }
