@@ -18,8 +18,6 @@ export default defineConfig(({ command }) => ({
       // emits it to dist-ext/ at the same path (src/offscreen/offscreen.html).
       input: {
         offscreen: 'src/offscreen/offscreen.html',
-        // Spike: dedicated bench page opened by Playwright.  Not linked from extension UI.
-        bench: 'src/bench/bench.html',
       },
     },
   },
