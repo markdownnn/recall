@@ -42,7 +42,9 @@ export function App() {
     try {
       const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
       if (res?.type === 'captured') {
-        if (res.chunkCount > 0) setStatus(`captured (indexing ${res.chunkCount} chunks...)`)
+        if (res.captured && res.chunkCount > 0) setStatus(`captured (indexing ${res.chunkCount} chunks...)`)
+        else if (!res.captured && res.reason === 'denylisted') setStatus('not saved: this site is on the no-remember list')
+        else if (!res.captured) setStatus('nothing substantial to capture')
         else setStatus('nothing to capture')
       } else {
         setStatus('capture failed: ' + (res && 'error' in res ? res.error : 'unknown'))
