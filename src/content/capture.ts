@@ -27,17 +27,50 @@ function sendCapture(manual: boolean): void {
 // and extensions do not inject content scripts in incognito unless explicitly allowed.
 // We do NOT check chrome.extension here: chrome.extension is unreliable/undefined in
 // MV3 content scripts and would throw, killing both auto- and manual-capture.
+//
+// Dwell counts VISIBLE time, not wall-clock: a page only auto-captures after the user
+// has actually looked at it (tab focused / not hidden) for DWELL_MS. Background tabs
+// (e.g. middle-click-opened links) never accumulate and are never captured. The timer
+// pauses when the tab is hidden and resumes when it becomes visible again.
 {
-  let dwellTimer: ReturnType<typeof setTimeout> | undefined
   let currentUrl = ''
+  let visibleMs = 0 // accumulated visible time for the current candidate
+  let streakStart: number | null = null // start of the ongoing visible streak, or null if hidden
+  let captured = false
+
+  const isVisible = (): boolean => document.visibilityState === 'visible'
+
+  const flushStreak = (): void => {
+    if (streakStart !== null) {
+      visibleMs += Date.now() - streakStart
+      streakStart = null
+    }
+  }
+
   const startCandidate = (url: string): void => {
     currentUrl = url
-    if (dwellTimer) clearTimeout(dwellTimer)
-    dwellTimer = setTimeout(() => sendCapture(false), DWELL_MS)
+    visibleMs = 0
+    captured = false
+    streakStart = isVisible() ? Date.now() : null
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (isVisible()) streakStart = Date.now()
+    else flushStreak()
+  })
+
   startCandidate(location.href)
   setInterval(() => {
-    if (location.href !== currentUrl) startCandidate(location.href)
+    if (location.href !== currentUrl) {
+      startCandidate(location.href) // SPA navigation or bounce -> new candidate
+      return
+    }
+    if (captured) return
+    const ongoing = streakStart !== null ? Date.now() - streakStart : 0
+    if (visibleMs + ongoing >= DWELL_MS) {
+      captured = true
+      sendCapture(false)
+    }
   }, POLL_MS)
 }
 
