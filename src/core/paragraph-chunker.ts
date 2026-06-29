@@ -12,46 +12,43 @@ export class ParagraphChunker implements ContentChunkerPort {
   ) {}
 
   chunk(input: { pageId: string; text: string }): Chunk[] {
-    const paras = input.text
-      .split(/\n\s*\n/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0)
+    // Treat the entire text as one word stream.
+    // Splitting on /\s+/ means blank lines (paragraph boundaries) are just whitespace —
+    // they do NOT force a flush. Short paragraphs are merged together.
+    const words = input.text.split(/\s+/).filter((w) => w.length > 0)
 
     const pieces: string[] = []
+    let current: string[] = []
 
-    for (const para of paras) {
-      const words = para.split(/\s+/)
-      let current: string[] = []
-
-      for (const word of words) {
-        const codePoints = Array.from(word).length
-
-        if (codePoints > this.maxCharsPerWord) {
-          // Flush the current word buffer before hard-splitting this token.
-          if (current.length > 0) {
-            pieces.push(current.join(' '))
-            current = []
-          }
-          // Hard-split at code-point boundaries so surrogate pairs / emoji are never torn.
-          const cps = Array.from(word)
-          for (let i = 0; i < cps.length; i += this.maxCharsPerWord) {
-            pieces.push(cps.slice(i, i + this.maxCharsPerWord).join(''))
-          }
-          continue
-        }
-
-        // Normal word: flush the buffer if it has reached the word budget.
-        if (current.length >= this.maxWords) {
-          pieces.push(current.join(' '))
-          current = []
-        }
-        current.push(word)
-      }
-
+    const flushCurrent = () => {
       if (current.length > 0) {
         pieces.push(current.join(' '))
+        current = []
       }
     }
+
+    for (const word of words) {
+      const codePoints = Array.from(word).length
+
+      if (codePoints > this.maxCharsPerWord) {
+        // Flush any accumulated words first, then hard-split this token
+        // at code-point boundaries so surrogate pairs / emoji are never torn.
+        flushCurrent()
+        const cps = Array.from(word)
+        for (let i = 0; i < cps.length; i += this.maxCharsPerWord) {
+          pieces.push(cps.slice(i, i + this.maxCharsPerWord).join(''))
+        }
+        continue
+      }
+
+      // Normal word: flush the buffer when it has reached the word budget.
+      if (current.length >= this.maxWords) {
+        flushCurrent()
+      }
+      current.push(word)
+    }
+
+    flushCurrent()
 
     return pieces.map((text, index) => ({
       id: `${input.pageId}#${index}`,

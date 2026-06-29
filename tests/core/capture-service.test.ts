@@ -18,11 +18,12 @@ test('captures a page into stored, embedded chunks', async () => {
   const store = new MemoryVectorStore()
   const svc = new CaptureService(new ParagraphChunker(220), fakeEmbedder, store)
 
+  // With word-stream chunker, 'one two' + 'three four five' (5 words < 220) merge into 1 chunk.
   await svc.capture({ url: 'http://x/a', title: 'A', text: 'one two\n\nthree four five' })
 
-  const results = await store.search(embedText('three four five'), 10)
-  expect(results.length).toBe(2)
-  expect(results[0].chunk.text).toBe('three four five')
+  const results = await store.search(embedText('one two three four five'), 10)
+  expect(results.length).toBe(1)
+  expect(results[0].chunk.text).toBe('one two three four five')
   expect(results[0].page.url).toBe('http://x/a')
 })
 
@@ -44,7 +45,7 @@ test('re-capture of same URL leaves exactly the new chunk count (no stale chunks
   const store = new MemoryVectorStore()
   const svc = new CaptureService(new ParagraphChunker(220), fakeEmbedder, store)
 
-  // First capture: 3 paragraphs -> 3 chunks
+  // First capture: 3 paragraphs, 9 words total -> 1 chunk (word-stream merges them, 9 < 220).
   await svc.capture({
     url: 'http://x/a',
     title: 'A',
@@ -79,7 +80,7 @@ test('failed re-capture embed preserves the original chunks in the store', async
 
   const svc = new CaptureService(new ParagraphChunker(220), flakyEmbedder, store)
 
-  // First capture succeeds: 3 paragraphs -> 3 chunks.
+  // First capture succeeds: 3 paragraphs, 9 words -> 1 chunk (word-stream merges, 9 < 220).
   await svc.capture({
     url: 'http://x/b',
     title: 'B',
@@ -91,9 +92,9 @@ test('failed re-capture embed preserves the original chunks in the store', async
     svc.capture({ url: 'http://x/b', title: 'B', text: 'new content here' }),
   ).rejects.toThrow('embed failed on second call')
 
-  // All 3 original chunks are still searchable.
+  // The 1 original chunk is still searchable.
   const results = await store.search(embedText('para one'), 10)
-  expect(results.length).toBe(3)
+  expect(results.length).toBe(1)
 })
 
 // Scenario: Credentials in a URL must not create a duplicate entry vs the clean URL.
