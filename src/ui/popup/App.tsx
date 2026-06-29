@@ -1,6 +1,8 @@
-import { useState } from 'preact/hooks'
-import type { MsgResult } from '../../messaging'
+import { useState, useEffect } from 'preact/hooks'
+import type { MsgResult, ModelProgressMsg } from '../../messaging'
 import type { RankedResult } from '../../core/model'
+import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
+import type { ModelStatus } from '../../core/model-progress'
 
 async function activeTabId(): Promise<number> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -11,6 +13,23 @@ export function App() {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
   const [results, setResults] = useState<RankedResult[]>([])
+  const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
+
+  useEffect(() => {
+    // Query current model status on mount.
+    chrome.runtime.sendMessage({ type: 'model-status' }).then((res: MsgResult) => {
+      if (res?.type === 'model-status') setModelStatus(res.status)
+    }).catch(() => {})
+
+    // Subscribe to progress broadcasts from the background.
+    const listener = (msg: ModelProgressMsg) => {
+      if (msg?.type === 'model-progress') setModelStatus(msg.status)
+    }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => {
+      chrome.runtime.onMessage.removeListener(listener)
+    }
+  }, [])
 
   const capture = async () => {
     setStatus('capturing...')
@@ -29,8 +48,29 @@ export function App() {
     else if (res.type === 'error') setStatus(res.error)
   }
 
+  function renderModelStatus() {
+    if (modelStatus.state === 'loading') {
+      return (
+        <div style="font-size:11px; color:#666; margin-bottom:6px;">
+          Loading model... {modelStatus.percent}%
+          <div style="height:3px; background:#eee; border-radius:2px; margin-top:2px;">
+            <div style={`height:3px; width:${modelStatus.percent}%; background:#4a90d9; border-radius:2px; transition:width 0.3s;`} />
+          </div>
+        </div>
+      )
+    }
+    if (modelStatus.state === 'error') {
+      return <div style="font-size:11px; color:#c00; margin-bottom:6px;">Model failed to load</div>
+    }
+    if (modelStatus.state === 'ready') {
+      return <div style="font-size:11px; color:#4a9; margin-bottom:6px;">Model ready</div>
+    }
+    return null
+  }
+
   return (
     <div style="padding: 12px;">
+      {renderModelStatus()}
       <button onClick={capture}>Capture this page</button>
       <span style="margin-left:8px;">{status}</span>
       <hr />

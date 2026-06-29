@@ -5,3 +5,4 @@ dist-ext/
 test-results/
 playwright-report/
 recall-extension.zip
+.DS_Store

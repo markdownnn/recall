@@ -17,31 +17,39 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
   env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('onnx/')
 }
 
-// Module-level singleton: loaded once, shared across all InlineEmbedder instances.
-let extractorP: Promise<FeatureExtractionPipeline> | null = null
-
-function getExtractor(): Promise<FeatureExtractionPipeline> {
-  if (!extractorP) {
-    // Pinned to an immutable commit (supply-chain: HF 'main' must not be trusted to stay constant).
-    extractorP = pipeline('feature-extraction', 'Xenova/multilingual-e5-small', {
-      revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
-    })
-  }
-  return extractorP
-}
-
 export class InlineEmbedder implements EmbeddingPort {
   // Max texts per single ONNX forward pass — bounds peak memory in the service worker.
   private static BATCH = 32
 
+  // Instance-level singleton: loaded once per InlineEmbedder instance.
+  private extractorP: Promise<FeatureExtractionPipeline> | null = null
+
+  constructor(private readonly onProgress?: (e: { status: string; progress?: number }) => void) {}
+
+  private getExtractor(): Promise<FeatureExtractionPipeline> {
+    if (!this.extractorP) {
+      // Pinned to an immutable commit (supply-chain: HF 'main' must not be trusted to stay constant).
+      this.extractorP = pipeline('feature-extraction', 'Xenova/multilingual-e5-small', {
+        revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+        progress_callback: this.onProgress,
+      })
+    }
+    return this.extractorP
+  }
+
   // Serializes concurrent embed() calls so ONNX never receives two overlapping inputs.
   private queue: Promise<unknown> = Promise.resolve()
+
+  // Triggers download/load without running inference. Used for pre-warming.
+  ensureLoaded(): Promise<void> {
+    return this.getExtractor().then(() => undefined)
+  }
 
   private async runEmbed(texts: string[], kind: 'query' | 'passage'): Promise<Float32Array[]> {
     const out: Float32Array[] = []
     for (let i = 0; i < texts.length; i += InlineEmbedder.BATCH) {
       const slice = texts.slice(i, i + InlineEmbedder.BATCH)
-      const extractor = await getExtractor()
+      const extractor = await this.getExtractor()
       const prefixed = slice.map((t) => `${kind}: ${t}`)
       const output = await extractor(prefixed, { pooling: 'mean', normalize: true })
       for (const arr of output.tolist() as number[][]) out.push(new Float32Array(arr))
