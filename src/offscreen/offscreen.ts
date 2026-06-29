@@ -1,12 +1,15 @@
 // Offscreen document: the engine room.
-// Owns: WebGpuEmbedder, OffscreenWorkerStore (OPFS via worker), and
+// Owns: WebGpuEmbedder, one SqliteWorkerClient (OPFS via worker), and
 //       the three core services (Capture, Indexing, Recall).
-// Handles high-level RPC ops from the SW: capture, recall, ensureLoaded, ping.
+// Handles high-level RPC ops from the SW: capture, recall, ensureLoaded, ping,
+// get-settings, set-paused, deny-host.
 // Drain (embedding queue) runs here so it stays alive independent of the SW.
 
 import { installOffscreenRpcHandler } from './offscreen-rpc'
 import { WebGpuEmbedder } from './webgpu-embedder'
-import { OffscreenWorkerStore } from './offscreen-worker-store'
+import { SqliteWorkerClient } from './sqlite-worker-client'
+import { WorkerVectorStore } from './worker-vector-store'
+import { WorkerSettingsStore } from './worker-settings-store'
 import { CaptureService } from '../core/capture-service'
 import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
@@ -41,7 +44,10 @@ const localEmbedder: EmbeddingPort = {
   },
 }
 
-const store = new OffscreenWorkerStore()
+const worker = new Worker(new URL('./sqlite-worker.ts', import.meta.url), { type: 'module' })
+const client = new SqliteWorkerClient(worker as any)
+const store = new WorkerVectorStore(client)      // VectorSearchPort
+const settings = new WorkerSettingsStore(client)  // SettingsPort
 const chunker = new ParagraphChunker(220)
 const capture = new CaptureService(chunker, store)
 const indexing = new IndexingService(store, localEmbedder)
@@ -92,13 +98,14 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   const p = (payload ?? {}) as Record<string, unknown>
   const op = p.op as string | undefined
 
-  // --- capture: run gate, store chunks immediately, fire-and-forget drain ---
+  // --- capture: load settings, run gate, store chunks immediately, fire-and-forget drain ---
   if (op === 'capture') {
     const url = p.url as string
     const title = p.title as string
     const text = p.text as string
     const manual = p.manual as boolean
-    const decision = gate.decide({ url, text, manual })
+    const s = await settings.get()
+    const decision = gate.decide({ url, text, manual }, s)
     if (!decision.capture) {
       return { captured: false, chunkCount: 0, reason: decision.reason }
     }
@@ -107,6 +114,21 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
     runDrainWithProgress()
     return { captured: true, chunkCount }
+  }
+
+  // --- settings RPC ops: relay to WorkerSettingsStore ---
+  if (op === 'get-settings') {
+    return await settings.get()
+  }
+
+  if (op === 'set-paused') {
+    await settings.setPaused(p.paused as boolean)
+    return { ok: true }
+  }
+
+  if (op === 'deny-host') {
+    await settings.addDenyHost(p.host as string)
+    return { ok: true }
   }
 
   // --- recall: embed query, cosine search ---
