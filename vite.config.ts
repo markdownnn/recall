@@ -12,5 +12,13 @@ export default defineConfig(({ command }) => ({
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   build: {
     outDir: command === 'build' ? 'dist-ext' : 'dist',
+    rollupOptions: {
+      // offscreen.html is not referenced by the manifest so crxjs won't pick it
+      // up automatically.  Adding it here ensures Vite/Rollup bundles it and
+      // emits it to dist-ext/ at the same path (src/offscreen/offscreen.html).
+      input: {
+        offscreen: 'src/offscreen/offscreen.html',
+      },
+    },
   },
 }))

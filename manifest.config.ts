@@ -22,6 +22,6 @@ export default defineManifest({
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.aws.cdn.hf.co",
   },
-  permissions: ['storage', 'unlimitedStorage', 'activeTab', 'scripting'],
+  permissions: ['storage', 'unlimitedStorage', 'activeTab', 'scripting', 'offscreen'],
   host_permissions: ['<all_urls>'],
 })
