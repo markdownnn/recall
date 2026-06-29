@@ -20,7 +20,13 @@ export type PipelineFactory = (
 ) => Promise<FeatureExtractionPipeline>
 
 const MODEL_ID = 'Xenova/multilingual-e5-small'
-const BATCH = 32
+// Small batches + a yield between them keep indexing GPU-gentle: a big single
+// submission monopolizes the GPU and makes the page the user is currently reading
+// stutter. Smaller submissions with gaps let the foreground keep rendering. A single
+// query (1 text => 1 batch) never hits the inter-batch yield, so search stays fast.
+const BATCH = 8
+const YIELD_MS = 120
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 // Configure the ONNX runtime ONCE to load its WASM from the bundled extension
 // dir (public/onnx-hf/), not a CDN.  Both WASM and WebGPU backends need asyncify.wasm.
@@ -143,6 +149,9 @@ export class WebGpuEmbedder {
       const prefixed = slice.map((t) => `${kind}: ${t}`)
       const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
       for (const arr of output.tolist() as number[][]) out.push(arr)
+      // Yield the GPU between batches (not after the last) so the foreground page
+      // the user is reading keeps rendering smoothly during background indexing.
+      if (i + BATCH < texts.length) await sleep(YIELD_MS)
     }
     return out
   }

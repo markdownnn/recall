@@ -80,18 +80,18 @@ test('kind prefix: query/passage prefixes reach the model', async () => {
   expect(flat).toContain('passage: bar')
 })
 
-// Scenario: a large capture (40 chunks) must be embedded in batches of 32 and
-// return one vector per input, not drop or merge any.
-// Coverage: integration (fake records each batch size; asserts 32 + 8).
-test('batching: 40 texts embed in batches of 32 and return 40 vectors', async () => {
+// Scenario: a large capture (20 chunks) must be embedded in small GPU-gentle batches
+// of 8 and return one vector per input, not drop or merge any.
+// Coverage: integration (fake records each batch size; asserts 8 + 8 + 4).
+test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
-  const texts = Array.from({ length: 40 }, (_, i) => `t${i}`)
+  const texts = Array.from({ length: 20 }, (_, i) => `t${i}`)
 
   const vecs = await embedder.embed(texts, 'passage')
 
-  expect(vecs.length).toBe(40)
+  expect(vecs.length).toBe(20)
   expect(vecs[0].length).toBe(4)
   const batchSizes = fake.calls.filter((c) => c[0].startsWith('passage: ')).map((c) => c.length)
-  expect(batchSizes).toEqual([32, 8])
+  expect(batchSizes).toEqual([8, 8, 4])
 })
