@@ -6,7 +6,7 @@
 import { pipeline } from '@xenova/transformers'
 import { cosineSimilarity } from '../../src/core/cosine'
 
-test('cross-lingual: korean query is closest to matching english passage', async () => {
+test('cross-lingual english: english query is closest to matching english passage', async () => {
   const extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
   const embed = async (t: string) => {
     const out = await extractor([t], { pooling: 'mean', normalize: true })
@@ -18,7 +18,26 @@ test('cross-lingual: korean query is closest to matching english passage', async
 
   const simRight = cosineSimilarity(query, right)
   const simWrong = cosineSimilarity(query, wrong)
-  console.log('sim(query, right):', simRight, '  sim(query, wrong):', simWrong)
+  console.log('sim(english query, right):', simRight, '  sim(english query, wrong):', simWrong)
+
+  expect(simRight).toBeGreaterThan(simWrong)
+}, 120_000)
+
+// Non-ASCII allowed here: verifying cross-lingual retrieval with a Korean query.
+test('cross-lingual korean query: korean query is closest to matching english passage', async () => {
+  const extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
+  const embed = async (t: string) => {
+    const out = await extractor([t], { pooling: 'mean', normalize: true })
+    return new Float32Array((out.tolist() as number[][])[0])
+  }
+  // Korean: "hormone that ruins sleep"
+  const query = await embed('query: 잠을 망치는 호르몬')
+  const right = await embed('passage: cortisol disrupts REM sleep')
+  const wrong = await embed('passage: basics of tax accounting')
+
+  const simRight = cosineSimilarity(query, right)
+  const simWrong = cosineSimilarity(query, wrong)
+  console.log('sim(korean query, right):', simRight, '  sim(korean query, wrong):', simWrong)
 
   expect(simRight).toBeGreaterThan(simWrong)
 }, 120_000)
