@@ -116,7 +116,7 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
 // Message router: capture / recall / model-status -> offscreen RPC
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
   if (msg.type === 'model-status') {
     // A freshly-woken SW has modelStatus = INITIAL even when the model is
     // actually loaded in the (surviving) offscreen. Ask the offscreen for the
@@ -146,13 +146,18 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
       await ensureOffscreen()
 
       if (msg.type === 'capture') {
-        const r = await callOffscreen<{ chunkCount: number }>({
+        if (sender.tab?.incognito) {
+          sendResponse({ type: 'captured', captured: false, chunkCount: 0 } satisfies MsgResult)
+          return
+        }
+        const r = await callOffscreen<{ captured: boolean; chunkCount: number; reason?: 'denylisted' | 'thin' }>({
           op: 'capture',
           url: msg.url,
           title: msg.title,
           text: msg.text,
+          manual: msg.manual,
         })
-        sendResponse({ type: 'captured', chunkCount: r.chunkCount } satisfies MsgResult)
+        sendResponse({ type: 'captured', captured: r.captured, chunkCount: r.chunkCount, reason: r.reason } satisfies MsgResult)
       } else if (msg.type === 'recall') {
         const r = await callOffscreen<{ results: RankedResult[] }>({
           op: 'recall',
