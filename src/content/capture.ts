@@ -1,31 +1,50 @@
 import { Readability } from '@mozilla/readability'
 import type { Msg, MsgResult } from '../messaging'
 
-chrome.runtime.onMessage.addListener((msg: { type: 'extract-and-capture' }, _s, sendResponse) => {
-  if (msg.type !== 'extract-and-capture') return
-  console.log('[recall/cs] extract-and-capture received')
+const DWELL_MS = 10_000
+const POLL_MS = 1_000
+
+function extract(): { title: string; text: string } | null {
   try {
     const docClone = document.cloneNode(true) as Document
     const article = new Readability(docClone).parse()
-    // Use || so an empty-string textContent falls through to body.innerText.
-    // Guard document.body which may be null on XML/SVG/non-HTML documents.
     const text = (article?.textContent?.trim()) || (document.body?.innerText ?? '')
-    console.log('[recall/cs] extracted text length =', text.length)
-    if (!text) {
-      sendResponse({ type: 'error', error: 'no extractable text' } satisfies MsgResult)
-      return true
-    }
-    const title = article?.title ?? document.title
-    const capture: Msg = { type: 'capture', url: location.href, title, text }
-    console.log('[recall/cs] sent to background, awaiting response...')
-    chrome.runtime.sendMessage(capture, (res: MsgResult) => {
-      console.log('[recall/cs] background responded:', res?.type, chrome.runtime.lastError?.message ?? '')
-      sendResponse(res)
-    })
-    return true
-  } catch (e) {
-    console.error('[recall/cs] extraction error:', e)
-    sendResponse({ type: 'error', error: String(e) } satisfies MsgResult)
+    if (!text) return null
+    return { title: article?.title ?? document.title, text }
+  } catch {
+    return null
+  }
+}
+
+function sendCapture(manual: boolean): void {
+  const ex = extract()
+  if (!ex) return
+  const capture: Msg = { type: 'capture', url: location.href, title: ex.title, text: ex.text, manual }
+  chrome.runtime.sendMessage(capture, () => void chrome.runtime.lastError)
+}
+
+if (!chrome.extension.inIncognitoContext) {
+  let dwellTimer: ReturnType<typeof setTimeout> | undefined
+  let currentUrl = ''
+  const startCandidate = (url: string): void => {
+    currentUrl = url
+    if (dwellTimer) clearTimeout(dwellTimer)
+    dwellTimer = setTimeout(() => sendCapture(false), DWELL_MS)
+  }
+  startCandidate(location.href)
+  setInterval(() => {
+    if (location.href !== currentUrl) startCandidate(location.href)
+  }, POLL_MS)
+}
+
+chrome.runtime.onMessage.addListener((msg: { type: 'extract-and-capture' }, _s, sendResponse) => {
+  if (msg.type !== 'extract-and-capture') return
+  const ex = extract()
+  if (!ex) {
+    sendResponse({ type: 'error', error: 'no extractable text' } satisfies MsgResult)
     return true
   }
+  const capture: Msg = { type: 'capture', url: location.href, title: ex.title, text: ex.text, manual: true }
+  chrome.runtime.sendMessage(capture, (res: MsgResult) => sendResponse(res))
+  return true
 })
