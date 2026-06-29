@@ -10,6 +10,15 @@ import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/tran
 
 type ProgressCb = (e: { status: string; progress?: number }) => void
 
+// The transformers pipeline() factory, narrowed to what this class uses.
+// Injectable via the constructor so unit tests can supply a FAKE factory and
+// exercise the load/retry/batching logic without downloading a real model.
+export type PipelineFactory = (
+  task: string,
+  model: string,
+  options?: unknown,
+) => Promise<FeatureExtractionPipeline>
+
 const MODEL_ID = 'Xenova/multilingual-e5-small'
 const BATCH = 32
 
@@ -36,10 +45,24 @@ export class WebGpuEmbedder {
   private _device: 'webgpu' | 'wasm' | null = null
   // Single-flight queue so ONNX never receives two overlapping inputs.
   private queue: Promise<unknown> = Promise.resolve()
+  // Default progress sink. Used by the LAZY load path (a capture/recall that
+  // triggers getPipe() without an explicit onProgress) so the popup still sees
+  // model-load progress instead of a silent wait.
+  private progressSink?: ProgressCb
+
+  // pipelineFactory defaults to the real transformers pipeline(); tests inject a fake.
+  constructor(private readonly pipelineFactory: PipelineFactory = pipeline as unknown as PipelineFactory) {}
 
   // Which backend actually won. Null until the pipeline has been created.
   get device(): 'webgpu' | 'wasm' | null {
     return this._device
+  }
+
+  // Register a default progress callback used whenever getPipe() runs without an
+  // explicit one (the lazy-load path). The offscreen wires this to model-progress
+  // rpc-events so lazy loads show progress too.
+  setProgressSink(cb: ProgressCb): void {
+    this.progressSink = cb
   }
 
   // Create the pipeline (triggers the model download), wiring v4 progress events
@@ -49,7 +72,16 @@ export class WebGpuEmbedder {
   }
 
   private getPipe(onProgress?: ProgressCb): Promise<FeatureExtractionPipeline> {
-    if (!this.pipeP) this.pipeP = this.createPipe(onProgress)
+    if (!this.pipeP) {
+      // POISONED-PIPE FIX: if createPipe rejects, null out pipeP so the NEXT
+      // call retries (e.g. after the network recovers). Without this, the
+      // rejected promise stays cached forever and every later call replays the
+      // same rejection.
+      this.pipeP = this.createPipe(onProgress ?? this.progressSink).catch((e) => {
+        this.pipeP = null
+        throw e
+      })
+    }
     return this.pipeP
   }
 
@@ -59,10 +91,10 @@ export class WebGpuEmbedder {
     // --- WebGPU first. A failure in creation OR the warmup embed means WebGPU
     //     is unusable here, so we fall through to WASM. ---
     try {
-      const pipe = (await pipeline('feature-extraction', MODEL_ID, {
+      const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
         device: 'webgpu',
         progress_callback: onProgress,
-      } as any)) as FeatureExtractionPipeline
+      })) as FeatureExtractionPipeline
       await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
       this._device = 'webgpu'
       console.log('[recall] embedder ready on WebGPU')
@@ -73,10 +105,10 @@ export class WebGpuEmbedder {
 
     // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. ---
     ;(env.backends.onnx as any).wasm.numThreads = 1
-    const pipe = (await pipeline('feature-extraction', MODEL_ID, {
+    const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
       device: 'wasm',
       progress_callback: onProgress,
-    } as any)) as FeatureExtractionPipeline
+    })) as FeatureExtractionPipeline
     await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
     this._device = 'wasm'
     console.log('[recall] embedder ready on WASM (single-thread)')
