@@ -14,8 +14,13 @@ export function App() {
 
   const capture = async () => {
     setStatus('capturing...')
-    await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
-    setStatus('captured')
+    try {
+      const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
+      if (res?.type === 'captured') setStatus('captured')
+      else setStatus('capture failed: ' + (res && 'error' in res ? res.error : 'unknown'))
+    } catch (e) {
+      setStatus('capture failed: ' + String(e))
+    }
   }
 
   const search = async () => {
