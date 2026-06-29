@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
-import type { MsgResult, ModelProgressMsg, IndexingProgressMsg } from '../../messaging'
+import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg } from '../../messaging'
 import type { RankedResult } from '../../core/model'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
@@ -22,12 +22,14 @@ export function App() {
     }).catch(() => {})
 
     // Subscribe to broadcasts from the background.
-    const listener = (msg: ModelProgressMsg | IndexingProgressMsg) => {
+    const listener = (msg: ModelProgressMsg | IndexingProgressMsg | IndexingErrorMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
       if (msg?.type === 'indexing-progress') {
         if (msg.pending === 0) setStatus('indexed')
         else setStatus(`indexing... ${msg.embedded} done`)
       }
+      // Clears the stuck "indexing..." when a fire-and-forget drain fails.
+      if (msg?.type === 'indexing-error') setStatus(`indexing failed: ${msg.error}`)
     }
     chrome.runtime.onMessage.addListener(listener)
     return () => {
@@ -93,7 +95,7 @@ export function App() {
         {results.map((r) => (
           <li key={r.chunk.id} style="margin:8px 0; padding:8px; border:1px solid #eee;">
             <div style="font-size:13px;">{r.chunk.text}</div>
-            <a href={r.page.url} target="_blank" style="font-size:11px; color:#888;">
+            <a href={r.page.url} target="_blank" rel="noopener noreferrer" style="font-size:11px; color:#888;">
               {r.page.title} ({r.score.toFixed(3)})
             </a>
           </li>

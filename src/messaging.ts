@@ -17,3 +17,8 @@ export type ModelProgressMsg = { type: 'model-progress'; status: import('./core/
 // Push message sent from background to popup for indexing progress.
 // pending = chunks still waiting for a vector; embedded = done so far this drain.
 export type IndexingProgressMsg = { type: 'indexing-progress'; pending: number; embedded: number }
+
+// Push message sent from background to popup when an async indexing drain fails
+// (e.g. embedding errored). Without this the popup is stuck on "indexing..."
+// forever because the drain runs fire-and-forget after capture returns.
+export type IndexingErrorMsg = { type: 'indexing-error'; error: string }

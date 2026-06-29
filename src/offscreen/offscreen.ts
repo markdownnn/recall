@@ -19,6 +19,17 @@ import type { EmbeddingPort } from '../core/ports'
 
 const embedder = new WebGpuEmbedder()
 
+// Push model-load progress to the SW (which relays it to the popup). Wiring this
+// as the embedder's default sink means the LAZY load path (a capture/recall that
+// triggers the model load when it was not pre-warmed) also shows progress,
+// instead of a silent ~20s wait.
+function emitModelProgress(e: { status: string; progress?: number }): void {
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'model-progress', status: e })
+    .catch(() => {})
+}
+embedder.setProgressSink(emitModelProgress)
+
 // Adapter: WebGpuEmbedder.embed() returns number[][] (legacy type for RPC wire
 // compatibility). Core services need Float32Array[]. Convert in one place.
 const localEmbedder: EmbeddingPort = {
@@ -55,7 +66,15 @@ function runDrainWithProgress(): void {
         .sendMessage({ channel: 'rpc-event', kind: 'indexing-complete', totalEmbedded })
         .catch(() => {})
     })
-    .catch((e) => console.error('[recall/offscreen] drain failed:', e))
+    .catch((e) => {
+      // The drain runs fire-and-forget after capture returns, so an embedding
+      // failure would otherwise die in console.error and leave the popup stuck
+      // on "indexing..." forever. Surface it to the SW -> popup as well.
+      console.error('[recall/offscreen] drain failed:', e)
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'indexing-error', error: String(e) })
+        .catch(() => {})
+    })
 }
 
 // On load: resume any pending chunks left from a previous session.
@@ -100,6 +119,13 @@ installOffscreenRpcHandler(async (payload: unknown) => {
         .catch(() => {})
     })
     console.log('[recall] model ready, device =', embedder.device)
+    return { device: embedder.device }
+  }
+
+  // --- status: report whether the model is already loaded (device != null).
+  //     Lets a freshly-woken SW learn the real model state instead of reporting
+  //     stale INITIAL_MODEL_STATUS. Cheap: just reads embedder.device. ---
+  if (op === 'status') {
     return { device: embedder.device }
   }
 

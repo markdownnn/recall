@@ -56,6 +56,36 @@ test('single-flight: concurrent drains do not double-embed', async () => {
   expect((await store.pendingChunks(100)).length).toBe(0)
 })
 
+// Scenario: embedding fails partway through a drain (e.g. WebGPU dies on batch 2).
+// The already-embedded chunks must stay persisted, the rest must stay PENDING for
+// a later retry, and drain() must REJECT so the offscreen can surface the failure
+// to the popup instead of silently swallowing it.
+// Coverage: integration (real MemoryVectorStore; fake embedder throws on 2nd batch).
+test('drain rejects on embed failure; first batch persisted, rest stay pending', async () => {
+  const store = new MemoryVectorStore()
+  const capture = new CaptureService(new ParagraphChunker(1), store) // maxWords=1 -> one chunk per word
+  await capture.capture({ url: 'http://x/a', title: 'A', text: 'alpha beta gamma' })
+  const total = (await store.pendingChunks(100)).length
+  expect(total).toBe(3)
+
+  let embedCalls = 0
+  const flakyEmbedder: EmbeddingPort = {
+    async embed(texts) {
+      embedCalls++
+      if (embedCalls === 2) throw new Error('embed boom on batch 2')
+      return texts.map(() => new Float32Array([1, 0]))
+    },
+  }
+  const indexing = new IndexingService(store, flakyEmbedder, 1) // batch=1 -> one chunk per embed call
+
+  await expect(indexing.drain()).rejects.toThrow('embed boom')
+
+  // First batch persisted: exactly one chunk is now searchable.
+  expect((await store.search(new Float32Array([1, 0]), 100)).length).toBe(1)
+  // The rest stay pending so a later capture/load retries them.
+  expect((await store.pendingChunks(100)).length).toBe(total - 1)
+})
+
 // Scenario: drain on an empty store must be a no-op (no errors, no embed calls).
 // Coverage: integration (real store with no data, fake embedder with spy).
 test('drain on empty store is a no-op', async () => {
