@@ -59,7 +59,7 @@ export function App() {
   const denyHost = async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      const host = new URL(tab.url!).hostname
+      const host = new URL(tab.url!).hostname.replace(/^www\./, '')
       if (userDenyHosts.includes(host)) {
         setDenyStatus(`Already on the no-remember list: ${host}`)
         return
@@ -69,6 +69,22 @@ export function App() {
       setDenyStatus(`Won't remember ${host}`)
     } catch {
       setDenyStatus('Cannot add this page (restricted tab)')
+    }
+  }
+
+  const removeDeny = async (h: string) => {
+    await chrome.runtime.sendMessage({ type: 'remove-deny-host', host: h }).catch(() => {})
+    setUserDenyHosts((prev) => prev.filter((x) => x !== h))
+  }
+
+  const forgetHost = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const host = new URL(tab.url!).hostname.replace(/^www\./, '')
+      await chrome.runtime.sendMessage({ type: 'forget-host', host }).catch(() => {})
+      setDenyStatus(`Forgot everything from ${host}`)
+    } catch {
+      setDenyStatus('Cannot forget this page (restricted tab)')
     }
   }
 
@@ -141,10 +157,24 @@ export function App() {
         <button onClick={denyHost} style="font-size:12px;">
           {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? 'Already on no-remember list' : "Don't remember this site"}
         </button>
+        <button onClick={forgetHost} style="font-size:12px; margin-left:6px;">
+          Forget this site's history
+        </button>
         {denyStatus && (
           <span style="margin-left:8px; font-size:11px; color:#888;">{denyStatus}</span>
         )}
       </div>
+      {userDenyHosts.length > 0 && (
+        <div style="font-size:11px; margin-bottom:8px;">
+          <div style="color:#888;">No-remember sites:</div>
+          {userDenyHosts.map((h) => (
+            <div key={h} style="display:flex; justify-content:space-between; align-items:center;">
+              <span>{h}</span>
+              <button onClick={() => removeDeny(h)} style="font-size:10px;">remove</button>
+            </div>
+          ))}
+        </div>
+      )}
       <button onClick={capture}>Capture this page</button>
       <span style="margin-left:8px;">{status}</span>
       <hr />
