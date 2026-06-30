@@ -1,0 +1,261 @@
+{
+  "model": "onnx-community/granite-embedding-97m-multilingual-r2-ONNX",
+  "dtype": "q8",
+  "strip": true,
+  "minProse": 0.35,
+  "ci": false,
+  "agg": {
+    "precisionAt1": 0.4090909090909091,
+    "recallAt5": 0.8636363636363636,
+    "mrr": 0.5924242424242424
+  },
+  "comboAgg": {
+    "EN->EN": {
+      "n": 7,
+      "precisionAt1": 0.42857142857142855,
+      "recallAt5": 0.8571428571428571,
+      "mrr": 0.5761904761904761
+    },
+    "KO->KO": {
+      "n": 5,
+      "precisionAt1": 0.8,
+      "recallAt5": 1,
+      "mrr": 0.9
+    },
+    "KO->EN": {
+      "n": 5,
+      "precisionAt1": 0.4,
+      "recallAt5": 1,
+      "mrr": 0.7
+    },
+    "EN->KO": {
+      "n": 5,
+      "precisionAt1": 0,
+      "recallAt5": 0.6,
+      "mrr": 0.2
+    }
+  },
+  "refRate": 0,
+  "rows": [
+    {
+      "scenario": "S1",
+      "combo": "EN->EN",
+      "query": "bacteria",
+      "topPage": "https://en.wikipedia.org/wiki/Protein",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S1",
+      "combo": "EN->EN",
+      "query": "deep learning neural networks",
+      "topPage": "https://en.wikipedia.org/wiki/Deep_learning",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S2",
+      "combo": "EN->EN",
+      "query": "ingestion",
+      "topPage": "https://github.com/hashicorp/terraform-provider-aws/issues/31364",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S4",
+      "combo": "EN->EN",
+      "query": "hormone that ruins sleep",
+      "topPage": "https://en.wikinews.org/wiki/United_States_announces_blockade_on_the_Strait_of_Hormuz",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S4",
+      "combo": "EN->EN",
+      "query": "powerhouse of the cell",
+      "topPage": "https://en.wikipedia.org/wiki/Cell_(biology)",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.3333333333333333,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S5",
+      "combo": "EN->EN",
+      "query": "what is a protein",
+      "topPage": "https://en.wikipedia.org/wiki/Photosynthesis",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.2,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S5",
+      "combo": "EN->EN",
+      "query": "genetic material in chromosomes",
+      "topPage": "https://en.wikipedia.org/wiki/DNA",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "박테리아",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "광합성 명반응",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "면역 체계와 항체",
+      "topPage": "https://en.wikipedia.org/wiki/Immune_system",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "심층 학습 신경망",
+      "topPage": "https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "단백질이란 무엇인가",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "what is kimchi",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "the Korean alphabet Hangul created by King Sejong",
+      "topPage": "https://en.wikipedia.org/wiki/Deep_learning",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.25,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "Republic of Korea country overview",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%95%9C%EA%B8%80",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "the sun the star at the center of the solar system",
+      "topPage": "https://jvns.ca/blog/2021/04/03/what-problems-do-people-solve-with-strace/",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "artificial intelligence and machine learning",
+      "topPage": "https://jvns.ca/blog/2021/04/03/what-problems-do-people-solve-with-strace/",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.25,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S7",
+      "combo": "KO->KO",
+      "query": "김치 담그는 법",
+      "topPage": "https://ko.wikipedia.org/wiki/%EA%B9%80%EC%B9%98",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S7",
+      "combo": "KO->KO",
+      "query": "한글 창제 세종대왕 훈민정음",
+      "topPage": "https://ko.wikipedia.org/wiki/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S7",
+      "combo": "KO->KO",
+      "query": "대한민국 수도 인구",
+      "topPage": "https://ko.wikipedia.org/wiki/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S7",
+      "combo": "KO->KO",
+      "query": "태양 항성 태양계 중심",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S7",
+      "combo": "KO->KO",
+      "query": "인공지능 기계 학습 컴퓨터 과학",
+      "topPage": "https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    }
+  ]
+}
