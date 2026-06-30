@@ -21,7 +21,7 @@ test('pause blocks capture; unpausing restores it', async () => {
   const page = await ctx.newPage()
   await page.goto(articleUrl)
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
   const pauseBox = popup.getByLabel(/pause/i)
 
   // The popup's mount effect loads settings asynchronously (get-settings) and can reset
@@ -46,8 +46,8 @@ test('pause blocks capture; unpausing restores it', async () => {
   await popup.waitForTimeout(1_000)
 
   // Search finds nothing while paused.
-  await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+  await popup.getByRole('searchbox').press('Enter')
   await popup.waitForTimeout(2_000)
   await expect(popup.locator('article')).toHaveCount(0)
 
@@ -61,8 +61,8 @@ test('pause blocks capture; unpausing restores it', async () => {
   await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 30_000 })
   await page.goto('about:blank')
   await expect(async () => {
-    await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 90_000 })
 
@@ -103,7 +103,7 @@ test('deny-host blocks capture via real SQL path', async () => {
   await articlePage.goto(denyArticleUrl)
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
   // Keep article page as the active tab so popup reads its URL for deny-host.
   await articlePage.bringToFront()
@@ -158,7 +158,7 @@ test('removing a no-remember site re-enables capture (real SQL path)', async () 
   await articlePage.goto(url)
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
   await articlePage.bringToFront()
 
   // Deny the host; while denied, capture is blocked.

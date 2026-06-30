@@ -50,7 +50,7 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await sub.goto(subUrl)
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
   // Accept the destructive-forget confirmation dialog (raised in the popup page).
   popup.on('dialog', (d) => d.accept())
 
@@ -58,8 +58,8 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await apex.bringToFront()
   await popup.getByText('Capture this page').click()
   await expect(async () => {
-    await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
@@ -67,8 +67,8 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await sub.bringToFront()
   await popup.getByText('Capture this page').click()
   await expect(async () => {
-    await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('how do plants make food from sunlight')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('chlorophyll', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
@@ -79,14 +79,14 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await expect(popup.getByText(/forgot everything from forget-test\.example/i)).toBeVisible({ timeout: 10_000 })
 
   // Apex content gone.
-  await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+  await popup.getByRole('searchbox').press('Enter')
   await popup.waitForTimeout(2_000)
   await expect(popup.locator('article')).toHaveCount(0)
 
   // Subdomain content gone too (proves the LIKE subdomain delete branch).
-  await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill('how do plants make food from sunlight')
+  await popup.getByRole('searchbox').press('Enter')
   await popup.waitForTimeout(2_000)
   await expect(popup.locator('article')).toHaveCount(0)
 

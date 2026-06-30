@@ -39,10 +39,10 @@ test('capture an article then recall the matching chunk', async () => {
   const page = await ctx.newPage()
   await page.goto('file://' + path.resolve(dir, 'fixtures/article.html'))
 
-  // 2. Open the popup page (extension origin, has chrome.tabs access).
-  //    Popup path comes from dist/manifest.json action.default_popup.
+  // 2. Open the side panel page (extension origin, has chrome.tabs access).
+  //    Panel path comes from dist/manifest.json side_panel.default_path.
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
   // 3. Restore the article tab as the active tab.
   //    chrome.tabs.query({active:true, currentWindow:true}) inside the popup
@@ -60,6 +60,12 @@ test('capture an article then recall the matching chunk', async () => {
   //    Status will be "captured (indexing N chunks...)" when chunkCount > 0.
   await expect(popup.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
 
+  // Scenario: after capturing the active article, the panel's PAGE-scoped SAVED badge must
+  // flip to "saved" for that exact tab - the visible payoff of the has-page round-trip.
+  // Coverage: integration (built extension; real capture + offscreen has-page + panel render).
+  // exact:true so it cannot false-match the pre-capture "not saved yet" badge.
+  await expect(popup.getByText('saved', { exact: true })).toBeVisible({ timeout: 10_000 })
+
   // 6. Wait for indexing to complete.
   //    The background drain embeds all pending chunks (may need to download the model
   //    first on a fresh browser context).  The popup shows "indexed" once the background
@@ -71,8 +77,8 @@ test('capture an article then recall the matching chunk', async () => {
   // proving both chunks were indexed and the cortisol one ranks above the tax one.
 
   // 7. Search for the hormone-related content.
-  await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+  await popup.getByRole('searchbox').press('Enter')
 
   // 8. Both chunks must be stored, collapsed to ONE page result (one article card).
   const items = popup.locator('article')
@@ -87,7 +93,7 @@ test('capture an article then recall the matching chunk', async () => {
   // NOT the cortisol chunk, proving ranking is query-driven (not a constant winner).
 
   // 10. Clear the input and search for the bookkeeping content.
-  const input = popup.getByPlaceholder('recall...')
+  const input = popup.getByRole('searchbox')
   await input.fill('')
   await input.fill('double entry bookkeeping tax')
   await input.press('Enter')

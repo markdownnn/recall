@@ -27,11 +27,11 @@ test('auto-captures an article after dwell, recallable without clicking', async 
 
   // Now open the popup and recall  -  proves the article was auto-captured + indexed.
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
   await expect(async () => {
-    await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 90_000 })
 

@@ -33,14 +33,14 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
   await page.bringToFront()
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
   await page.bringToFront()
 
   // Wait out the 10s visible dwell -> page A auto-captures and becomes recallable.
   await expect(async () => {
     await popup.bringToFront()
-    await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
     await page.bringToFront()
   }).toPass({ timeout: 60_000 })
@@ -71,16 +71,16 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
   // recallable by ITS content -> proves the dwell reset + new-page capture.
   await expect(async () => {
     await popup.bringToFront()
-    await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill('how do plants make food from sunlight')
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('chlorophyll', { timeout: 5_000 })
     await page.bringToFront()
   }).toPass({ timeout: 60_000 })
 
   // Page A is still recallable too -> the two virtual pages are stored separately.
   await popup.bringToFront()
-  await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill('hormone that ruins sleep')
+  await popup.getByRole('searchbox').press('Enter')
   await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
 
   await ctx.close()

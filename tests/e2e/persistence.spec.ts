@@ -49,7 +49,7 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await articlePage.goto('file://' + path.resolve(dir, 'fixtures/article.html'))
 
     const popup1 = await ctx1.newPage()
-    await popup1.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+    await popup1.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
     // Keep the article page in front for the capture.
     await articlePage.bringToFront()
@@ -69,8 +69,8 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(popup1.getByText('indexed')).toBeVisible({ timeout: 240_000 })
 
     // Quick sanity: Cortisol ranks first in session 1.
-    await popup1.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup1.getByPlaceholder('recall...').press('Enter')
+    await popup1.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup1.getByRole('searchbox').press('Enter')
     const items1 = popup1.locator('article')
     await expect(items1).toHaveCount(1, { timeout: 30_000 })
     await expect(items1.first()).toContainText('Cortisol', { timeout: 10_000 })
@@ -101,11 +101,11 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     const extId = await getExtId(ctx2)
 
     const popup2 = await ctx2.newPage()
-    await popup2.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+    await popup2.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
     // Do NOT capture. Just search immediately.
-    await popup2.getByPlaceholder('recall...').fill('hormone that ruins sleep')
-    await popup2.getByPlaceholder('recall...').press('Enter')
+    await popup2.getByRole('searchbox').fill('hormone that ruins sleep')
+    await popup2.getByRole('searchbox').press('Enter')
 
     // Cortisol must still rank first  -  from the OPFS-persisted data.
     // 30s timeout: model loads from cache (no download needed); OPFS read is fast.

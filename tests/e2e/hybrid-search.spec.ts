@@ -49,8 +49,8 @@ async function capture(popup: any, page: any) {
 }
 
 async function search(popup: any, q: string) {
-  await popup.getByPlaceholder('recall...').fill(q)
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill(q)
+  await popup.getByRole('searchbox').press('Enter')
 }
 
 // Scenario: hybrid must add the LEXICAL signal, not just re-prove vector.
@@ -83,7 +83,7 @@ test('hybrid search: lexical win (isolated), vector win, Korean sub-word lexical
   }
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
   for (const p of pages) await capture(popup, p)
 

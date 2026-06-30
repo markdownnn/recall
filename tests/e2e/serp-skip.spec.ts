@@ -32,15 +32,15 @@ test('SERP is skipped by auto-capture but savable manually', async () => {
   await page.bringToFront()
 
   const popup = await ctx.newPage()
-  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
   // --- Auto leg (negative): keep the SERP visible past the dwell window, then confirm
   // nothing was auto-captured (the gate rejected it with reason 'serp'). ---
   await page.bringToFront()
   await page.waitForTimeout(13_000) // visible dwell (10s) + extract + send
 
-  await popup.getByPlaceholder('recall...').fill(query)
-  await popup.getByPlaceholder('recall...').press('Enter')
+  await popup.getByRole('searchbox').fill(query)
+  await popup.getByRole('searchbox').press('Enter')
   await popup.waitForTimeout(2_000)
   await expect(popup.locator('article')).toHaveCount(0)
 
@@ -51,8 +51,8 @@ test('SERP is skipped by auto-capture but savable manually', async () => {
   await page.goto('about:blank') // stop the dwell from re-running putChunks mid-embed
 
   await expect(async () => {
-    await popup.getByPlaceholder('recall...').fill(query)
-    await popup.getByPlaceholder('recall...').press('Enter')
+    await popup.getByRole('searchbox').fill(query)
+    await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('marsupial', { timeout: 5_000 })
   }).toPass({ timeout: 90_000 })
 
