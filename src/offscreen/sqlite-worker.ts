@@ -6,7 +6,14 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
 import { toFtsQuery } from '../core/fts-query'
-import { topPagesBySnippet, CANDIDATE_PAGE_LIMIT } from '../core/ranking'
+import {
+  topPagesBySnippet,
+  CANDIDATE_PAGE_LIMIT,
+  chooseSnippetChunk,
+  SNIPPET_EPSILON,
+  SNIPPET_TAU,
+  LEXICAL_RRF_WEIGHT,
+} from '../core/ranking'
 
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import type { AppSettings } from '../core/ports'
@@ -131,20 +138,26 @@ function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[
   //    the lane and collapsing the result to a single document.
   //    Reuse the shared cosineSimilarity (NOT a hand-rolled dot product, which would
   //    silently assume normalize:true and diverge from the core/memory-store ranking).
-  const vecBestByPage = new Map<string, { id: string; cos: number }>()
+  //    Fix 3: collect ALL of a page's chunks (not just the max-cosine one) so the snippet
+  //    chooser can swap a citation-list winner for a near-tie prose chunk; the page's RANK
+  //    score stays the max cosine, so the lane ordering is unchanged. Identical constants to
+  //    the in-memory store so the two engines stay byte-for-byte equivalent (ADR 0020).
+  const vecByPage = new Map<string, { id: string; cos: number; text: string }[]>()
   db.exec({
-    sql: `SELECT c.id AS id, c.pageId AS pageId, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
+    sql: `SELECT c.id AS id, c.pageId AS pageId, c.text AS text, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
     rowMode: 'object',
     callback: (r: any) => {
       const bytes = r.vector as Uint8Array
       const v = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
       const cos = cosineSimilarity(q, v)
-      const cur = vecBestByPage.get(r.pageId)
-      if (!cur || cos > cur.cos) vecBestByPage.set(r.pageId, { id: r.id, cos })
+      const arr = vecByPage.get(r.pageId) ?? []
+      arr.push({ id: r.id, cos, text: r.text })
+      vecByPage.set(r.pageId, arr)
     },
   })
-  const vectorIds = [...vecBestByPage.values()]
-    .sort((a, b) => b.cos - a.cos)
+  const vectorIds = [...vecByPage.values()]
+    .map((cands) => chooseSnippetChunk(cands, SNIPPET_EPSILON, SNIPPET_TAU))
+    .sort((a, b) => b.score - a.score)
     .slice(0, N)
     .map((x) => x.id)
 
@@ -178,7 +191,9 @@ function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[
   }
 
   // 3. Fuse the FULL list (no slice), hydrate every fused id, then collapse to k PAGES.
-  const fused = rrfFuse([vectorIds, lexicalIds]) // full ranking; bounded by the N=50 candidate caps
+  // Fix 4: up-weight the lexical lane so exact-term (FTS) matches beat irrelevant high-cosine
+  // vector matches. Full ranking; bounded by the N=50 candidate caps.
+  const fused = rrfFuse([vectorIds, lexicalIds], 60, [1, LEXICAL_RRF_WEIGHT])
   const hydrated = fused.map((hit) => hydrate(db, hit.id, hit.score)).filter(Boolean) as RankedResult[]
   return topPagesBySnippet(hydrated, k)
 }

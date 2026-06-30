@@ -2,7 +2,14 @@ import type { VectorSearchPort } from '../core/ports'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
-import { topPagesBySnippet, CANDIDATE_PAGE_LIMIT } from '../core/ranking'
+import {
+  topPagesBySnippet,
+  CANDIDATE_PAGE_LIMIT,
+  chooseSnippetChunk,
+  SNIPPET_EPSILON,
+  SNIPPET_TAU,
+  LEXICAL_RRF_WEIGHT,
+} from '../core/ranking'
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
@@ -55,17 +62,22 @@ export class MemoryVectorStore implements VectorSearchPort {
     //    best-cosine chunk PER pageId, then sorted by cosine desc and capped to N DISTINCT
     //    PAGES. Capping pages (not chunks) stops one busy page with >N high-scoring chunks
     //    from monopolizing the lane and collapsing the result to a single document.
-    const vecBestByPage = new Map<string, { id: string; cos: number }>()
+    //    Fix 3: collect ALL of a page's chunks (not just the max-cosine one) so the snippet
+    //    chooser can swap a citation-list winner for a near-tie prose chunk; the page's RANK
+    //    score stays the max cosine, so the lane ordering is unchanged.
+    const vecByPage = new Map<string, { id: string; cos: number; text: string }[]>()
     for (const { chunk, vector } of this.chunks.values()) {
       if (vector === null) continue // pending chunks are not searchable
       const page = this.pages.get(chunk.pageId)
       if (!page) continue
       const cos = cosineSimilarity(queryVector, vector)
-      const cur = vecBestByPage.get(chunk.pageId)
-      if (!cur || cos > cur.cos) vecBestByPage.set(chunk.pageId, { id: chunk.id, cos })
+      const arr = vecByPage.get(chunk.pageId) ?? []
+      arr.push({ id: chunk.id, cos, text: chunk.text })
+      vecByPage.set(chunk.pageId, arr)
     }
-    const vectorIds = [...vecBestByPage.values()]
-      .sort((a, b) => b.cos - a.cos)
+    const vectorIds = [...vecByPage.values()]
+      .map((cands) => chooseSnippetChunk(cands, SNIPPET_EPSILON, SNIPPET_TAU))
+      .sort((a, b) => b.score - a.score)
       .slice(0, CANDIDATE_PAGE_LIMIT)
       .map((x) => x.id)
 
@@ -97,7 +109,7 @@ export class MemoryVectorStore implements VectorSearchPort {
 
     // 3. Fuse both rankings with RRF over the FULL list (no slice), hydrate every fused
     //    id to a RankedResult, then collapse to top-k PAGES (best chunk per page).
-    const fused = rrfFuse([vectorIds, lexicalIds])
+    const fused = rrfFuse([vectorIds, lexicalIds], 60, [1, LEXICAL_RRF_WEIGHT])
     const chunkById = new Map(
       [...this.chunks.values()].map(({ chunk, vector }) => [chunk.id, { chunk, vector }]),
     )

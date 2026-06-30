@@ -1,5 +1,45 @@
-import { topPagesBySnippet } from '../../src/core/ranking'
+import { topPagesBySnippet, chooseSnippetChunk } from '../../src/core/ranking'
 import type { RankedResult, CapturedPage } from '../../src/core/model'
+
+// Fix 3: among a page's vector candidates, the displayed SNIPPET should prefer a prose
+// chunk within epsilon of the top cosine, while the page RANK score stays the max cosine
+// (ADR 0020). CITE is a citation-shaped chunk (proseScore low); PROSE is running text.
+const CITE = 'doi 10 1 x PMID 123 ISSN 0022 Bibcode 2003 2019 56 417 PMC 9 S2CID 8'
+const PROSE = 'bacteria are ubiquitous mostly free living single celled organisms today'
+
+// Scenario: max-cosine chunk is a citation list; a near-tie prose chunk should be shown.
+// Coverage: integration (pure function over real proseScore).
+test('prefers a prose chunk within epsilon of the top cosine', () => {
+  const cands = [
+    { id: 'p#0', cos: 0.81, text: CITE },
+    { id: 'p#1', cos: 0.79, text: PROSE },
+  ]
+  const r = chooseSnippetChunk(cands, 0.05, 0.35)
+  expect(r.id).toBe('p#1')
+  expect(r.score).toBeCloseTo(0.81) // PAGE score stays the MAX cosine (ADR 0020)
+})
+
+// Scenario: the only prose chunk is far below the top cosine; keep the max-cosine chunk.
+// Coverage: integration (pure function).
+test('keeps the max-cosine chunk when no prose chunk is within epsilon', () => {
+  const cands = [
+    { id: 'p#0', cos: 0.81, text: CITE },
+    { id: 'p#1', cos: 0.6, text: PROSE },
+  ]
+  const r = chooseSnippetChunk(cands, 0.05, 0.35)
+  expect(r.id).toBe('p#0')
+  expect(r.score).toBeCloseTo(0.81)
+})
+
+// Scenario: the max-cosine chunk is already prose; no swap needed.
+// Coverage: integration (pure function).
+test('keeps the max-cosine chunk when it is already prose', () => {
+  const cands = [
+    { id: 'p#0', cos: 0.81, text: PROSE },
+    { id: 'p#1', cos: 0.8, text: CITE },
+  ]
+  expect(chooseSnippetChunk(cands, 0.05, 0.35).id).toBe('p#0')
+})
 
 const page = (id: string): CapturedPage => ({ id, url: `http://x/${id}`, title: id.toUpperCase(), capturedAt: 1 })
 const r = (pageId: string, idx: number, score: number): RankedResult => ({
