@@ -1,0 +1,49 @@
+import { EN } from '../../src/ui/sidepanel/strings'
+
+const STATIC_KEYS = [
+  'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
+  'captureButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
+  'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
+  'modelReady', 'modelError', 'pauseLabel',
+  'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
+  'noRememberSitesHeader', 'removeLabel',
+  'couldNotAdd', 'couldNotRemove', 'couldNotForget', 'restrictedTabAdd', 'restrictedTabForget',
+] as const
+const FUNCTION_KEYS = [
+  'capturedChunks', 'indexingProgress', 'indexingFailed', 'captureFailed', 'searchFailed',
+  'loadingPercent', 'wonRemember', 'alreadyOnListHost', 'forgotEverythingFrom', 'forgetConfirm',
+] as const
+
+// Scenario: a component references a string key that was never added to EN, so the panel
+// renders `undefined`; this pins every static key as a present, non-empty string.
+// Coverage: integration (real EN object).
+test('EN exposes all static keys as non-empty strings', () => {
+  for (const k of STATIC_KEYS) {
+    expect(typeof EN[k], k).toBe('string')
+    expect((EN[k] as string).length, k).toBeGreaterThan(0)
+  }
+})
+// Scenario: a dynamic string (e.g. capturedChunks(n)) is mistyped as a plain string, so
+// calling it throws at runtime; this pins every dynamic key as a function.
+// Coverage: integration (real EN object).
+test('EN exposes all dynamic keys as functions', () => {
+  for (const k of FUNCTION_KEYS) expect(typeof EN[k], k).toBe('function')
+})
+// The e2e suite asserts these EXACT strings. They must stay byte-identical; this test is
+// the canary if a wording change ever sneaks into strings.ts.
+test('byte-identical e2e strings are preserved', () => {
+  expect(EN.captureButton).toBe('Capture this page')
+  expect(EN.indexed).toBe('indexed')
+  expect(EN.capturedChunks(3)).toBe('captured (indexing 3 chunks...)')
+  expect(EN.indexingProgress(5)).toBe('indexing... 5 done')
+  expect(EN.pausedNote).toBe('Paused - nothing is being saved')
+  expect(EN.notSavedDenylisted).toBe('not saved: this site is on the no-remember list')
+  expect(EN.dontRememberSite).toBe("Don't remember this site")
+  expect(EN.forgetSiteHistory).toBe("Forget this site's history")
+  expect(EN.removeLabel).toBe('remove')
+  expect(EN.pauseLabel).toBe('Pause capturing')
+  expect(EN.wonRemember('example.com')).toBe("Won't remember example.com")
+  expect(EN.forgotEverythingFrom('example.com')).toBe('Forgot everything from example.com')
+  expect(EN.forgetConfirm('example.com'))
+    .toBe('Delete ALL captured history from example.com and its subdomains? This cannot be undone.')
+})
