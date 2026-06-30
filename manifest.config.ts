@@ -41,7 +41,10 @@ export default defineManifest({
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
   },
-  permissions: ['unlimitedStorage', 'activeTab', 'offscreen', 'sidePanel'],
+  // 'alarms': an SW-independent re-drain. The 20s setInterval keep-alive ping does NOT survive
+  // an SW reap (sleep/memory pressure/reload), so a chrome.alarms alarm (>=1min) re-creates the
+  // offscreen and re-drains pending chunks even with the side panel closed.
+  permissions: ['unlimitedStorage', 'activeTab', 'offscreen', 'sidePanel', 'alarms'],
   host_permissions: ['<all_urls>'],
   // Keyboard shortcuts. open-panel TOGGLES the side panel (the SW calls sidePanel.open in the
   // command handler - a command is a user gesture - or posts a close signal to an already-open

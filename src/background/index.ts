@@ -80,7 +80,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
   })
   port.onDisconnect.addListener(() => {
-    if (windowId != null) panelPorts.delete(windowId)
+    // Guard the delete: a panel RELOAD connects a NEW port for the same windowId BEFORE the old
+    // port's disconnect fires. Deleting unconditionally would wipe the live new entry and break
+    // the toggle. Only delete if THIS port is still the one we have mapped.
+    if (windowId != null && panelPorts.get(windowId) === port) panelPorts.delete(windowId)
   })
 })
 
@@ -196,7 +199,8 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'remove-deny-host' &&
     msg.type !== 'forget-host' &&
     msg.type !== 'has-page' &&
-    msg.type !== 'recent-pages'
+    msg.type !== 'recent-pages' &&
+    msg.type !== 'indexing-status'
   ) return false
 
   ;(async () => {
@@ -257,6 +261,9 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
           { op: 'recent-pages', limit: msg.limit, beforeTs: msg.beforeTs },
         )
         sendResponse({ type: 'pages', pages: r.pages } satisfies MsgResult)
+      } else if (msg.type === 'indexing-status') {
+        const r = await callOffscreen<{ pending: number; embedded: number }>({ op: 'indexing-status' })
+        sendResponse({ type: 'indexing-status', pending: r.pending, embedded: r.embedded } satisfies MsgResult)
       }
     } catch (err) {
       console.error('[recall/bg]', msg.type, 'FAILED:', err)
@@ -306,6 +313,7 @@ function enableSidePanelOnActionClick(): void {
 
 chrome.runtime.onInstalled.addListener((details) => {
   enableSidePanelOnActionClick()
+  registerRedrainAlarm()
   void prewarm('onInstalled')
   // Show the onboarding page in a new tab on FIRST install only (not on update/
   // chrome_update). It's an extension page on our own origin, so tabs.create can
@@ -317,6 +325,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   enableSidePanelOnActionClick()
+  registerRedrainAlarm()
   void prewarm('onStartup')
 })
 
@@ -329,4 +338,32 @@ chrome.runtime.onStartup.addListener(() => {
 setInterval(() => {
   callOffscreen({ op: 'ping' }).catch(() => {})
 }, 20_000)
+
+// ---------------------------------------------------------------------------
+// SW-independent re-drain (chrome.alarms). The setInterval above keeps the offscreen warm only
+// while the SW itself is alive; an SW reap (sleep/memory pressure/reload) kills it AND any
+// in-flight drain, leaving freshly-captured NULL chunks un-embedded until the next user action.
+// A chrome.alarms alarm survives the SW reap: on fire it RE-CREATES the offscreen (ensureOffscreen)
+// and triggers a re-drain via the same ping op, so capture+embed completes even with the side
+// panel closed. The alarms minimum period is 1 minute; the setInterval stays as the fast path
+// while warm. Registered on BOTH install and startup since the SW is not durable.
+// ---------------------------------------------------------------------------
+
+const REDRAIN_ALARM = 'recall-redrain'
+
+function registerRedrainAlarm(): void {
+  chrome.alarms?.create(REDRAIN_ALARM, { periodInMinutes: 1 })
+}
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== REDRAIN_ALARM) return
+  void (async () => {
+    try {
+      await ensureOffscreen()
+      await callOffscreen({ op: 'ping' })
+    } catch (e) {
+      console.error('[recall/bg] redrain alarm failed:', e)
+    }
+  })()
+})
 
