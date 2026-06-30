@@ -181,3 +181,28 @@ test('search excludes pending chunks (vector not yet set)', async () => {
   expect(results.length).toBe(1)
   expect(results[0].chunk.id).toBe('p1#0')
 })
+
+// Scenario: the re-index re-embeds one page at a time. Clearing page p1 must re-queue ONLY
+// p1's chunks (removing them from search until re-embedded) while page p2 stays searchable.
+// This per-page scope is what keeps the corpus from going blank during a migration.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort contract).
+test('clearVectorsForPage re-queues only that page and leaves others searchable', async () => {
+  const store = new MemoryVectorStore()
+  const p1: CapturedPage = { id: 'p1', url: 'http://x', title: 'X', capturedAt: 1 }
+  const p2: CapturedPage = { id: 'p2', url: 'http://y', title: 'Y', capturedAt: 2 }
+  const a: Chunk = { id: 'p1#0', pageId: 'p1', index: 0, text: 'cortisol and sleep' }
+  const b: Chunk = { id: 'p2#0', pageId: 'p2', index: 0, text: 'tax accounting basics' }
+  await store.upsertPage(p1)
+  await store.upsertPage(p2)
+  await store.putChunks('p1', [a])
+  await store.putChunks('p2', [b])
+  await store.setVector('p1#0', new Float32Array([1, 0]))
+  await store.setVector('p2#0', new Float32Array([0, 1]))
+
+  await store.clearVectorsForPage('p1')
+
+  const pending = await store.pendingChunks(100)
+  expect(pending.map((c) => c.id)).toEqual(['p1#0']) // only p1 re-queued
+  // p2 is still embedded and searchable.
+  expect((await store.search(new Float32Array([0, 1]), '', 10)).length).toBeGreaterThan(0)
+})

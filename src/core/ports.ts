@@ -24,6 +24,11 @@ export interface VectorSearchPort {
   pendingChunks(limit: number): Promise<Chunk[]>
   // Attach a vector to a chunk, marking it embedded/searchable.
   setVector(chunkId: string, vector: Float32Array): Promise<void>
+  // Reset ONE page's chunk vectors to pending (NULL). Used by the model-swap migration to
+  // re-embed the corpus a page at a time: after this, pendingChunks() returns this page's
+  // chunks and the drain re-embeds them with the loaded model. Every OTHER page keeps its
+  // vectors and stays searchable. Page and chunk text are untouched.
+  clearVectorsForPage(pageId: string): Promise<void>
   // True if this page id is already stored (drives the panel's SAVED badge).
   hasPage(pageId: string): Promise<boolean>
   // Reverse-chronological browse for the History tab. `beforeTs` is a keyset cursor:

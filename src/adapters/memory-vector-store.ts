@@ -57,6 +57,12 @@ export class MemoryVectorStore implements VectorSearchPort {
     if (entry) entry.vector = vector
   }
 
+  async clearVectorsForPage(pageId: string): Promise<void> {
+    for (const entry of this.chunks.values()) {
+      if (entry.chunk.pageId === pageId) entry.vector = null
+    }
+  }
+
   async search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]> {
     // 1. Vector lane (PAGE-DIVERSE): cosine over all embedded chunks, reduced to the single
     //    best-cosine chunk PER pageId, then sorted by cosine desc and capped to N DISTINCT
