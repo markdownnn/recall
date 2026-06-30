@@ -1,9 +1,10 @@
 import { DEFAULT_DENYLIST, isDenylisted } from './denylist'
 import { isSerp } from './serp'
+import { isInternalHost } from './internal-host'
 import type { AppSettings } from './ports'
 
 export interface GateInput { url: string; text: string; manual: boolean }
-export interface GateDecision { capture: boolean; reason?: 'paused' | 'denylisted' | 'thin' | 'serp' }
+export interface GateDecision { capture: boolean; reason?: 'paused' | 'denylisted' | 'thin' | 'serp' | 'internal' }
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
@@ -32,6 +33,8 @@ export class CaptureGate {
     if (!input.manual) {
       // SERPs are navigational link lists, not content worth recalling.
       if (isSerp(input.url)) return { capture: false, reason: 'serp' }
+      // Internal / private-network hosts are not public content worth recalling.
+      if (isInternalHost(hostOf(input.url))) return { capture: false, reason: 'internal' }
       const words = input.text.trim().split(/\s+/).filter(Boolean).length
       if (words < this.minWords) return { capture: false, reason: 'thin' }
     }

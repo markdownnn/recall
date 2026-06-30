@@ -87,3 +87,27 @@ test('auto: non-SERP article still captured', () => {
   const d = gate.decide({ url: 'https://example.com/article/cortisol', text: long, manual: false }, open)
   expect(d.capture).toBe(true)
 })
+
+// Scenario: a page on a private network (here a 10.x intranet host) is not public web
+// content; auto-capture must skip it with reason 'internal'.
+// Coverage: integration (real CaptureGate + isInternalHost, soft-gate path).
+test('auto: internal host rejected with reason internal', () => {
+  const d = gate.decide({ url: 'http://10.0.0.5/wiki/onboarding', text: long, manual: false }, open)
+  expect(d.capture).toBe(false)
+  expect(d.reason).toBe('internal')
+})
+
+// Scenario: if the user EXPLICITLY clicks save on an internal doc, honor the intent - the
+// internal gate is auto-only, skipped for manual, like the SERP and thin gates (Option A).
+// Coverage: integration (real CaptureGate, manual path).
+test('manual: internal host IS captured (soft gate skipped)', () => {
+  const d = gate.decide({ url: 'http://10.0.0.5/wiki/onboarding', text: long, manual: true }, open)
+  expect(d.capture).toBe(true)
+})
+
+// Scenario: a normal public page must still pass - the internal gate must not over-block.
+// Coverage: integration (real CaptureGate).
+test('auto: public host still captured', () => {
+  const d = gate.decide({ url: 'https://en.wikipedia.org/wiki/Cortisol', text: long, manual: false }, open)
+  expect(d.capture).toBe(true)
+})
