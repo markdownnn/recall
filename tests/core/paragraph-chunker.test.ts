@@ -99,6 +99,25 @@ test('surrogate pairs are never split: emoji run round-trips through chunking', 
   expect(joined).toBe(original)
 })
 
+// Scenario: a long spaceless Chinese/Japanese run is one giant whitespace "word", so the
+// DEFAULT chunker must hard-split it small enough to stay under granite's 512-token limit.
+// The old default (350 code points) was sized for e5's ~1 token/char; granite's multilingual
+// subword tokenizer can emit >1 token per CJK char, so 350 CJK chars could exceed 512 tokens
+// and the chunk tail was silently truncated at embed time. Each chunk must be comfortably
+// bounded (<= 256 code points). CJK data via \u escapes so the test source stays ASCII-only.
+// Coverage: unit (no model; pure chunking logic).
+test('default chunker bounds a long spaceless CJK run under the token-safe limit', () => {
+  const defaultChunker = new ParagraphChunker()
+  const cjk = '\u6587'.repeat(1000) // 1000 CJK code points, no spaces => one "word"
+  const chunks = defaultChunker.chunk({ pageId: 'p1', text: cjk })
+  expect(chunks.length).toBeGreaterThan(1)
+  for (const c of chunks) {
+    expect([...c.text].length).toBeLessThanOrEqual(256)
+  }
+  // Slices must reconstruct the original with no gaps or duplication.
+  expect(chunks.map((c) => c.text).join('')).toBe(cjk)
+})
+
 // Scenario: A page with 300 short paragraphs (the real-world 369-chunk bug) must NOT
 // produce one chunk per paragraph. With word-stream merging, 300 x 3-word paragraphs
 // (900 words total) should yield ceil(900/220) = 5 chunks, NOT 300.

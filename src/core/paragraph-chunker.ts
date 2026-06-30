@@ -3,12 +3,21 @@ import type { Chunk } from './model'
 
 export class ParagraphChunker implements ContentChunkerPort {
   // maxWords:        max words accumulated before flushing a chunk.
-  // maxCharsPerWord: code-point threshold for hard-splitting a single spaceless token.
-  //                  Sized to keep spaceless CJK runs under e5's 512-token limit.
-  //                  Does NOT bound multi-word accumulation — only per-word hard splits.
+  // maxCharsPerWord: code-point threshold for hard-splitting a single spaceless token
+  //                  (long CJK runs, giant URLs). Does NOT bound multi-word accumulation.
+  //                  Sized to keep a spaceless run under the embedder's 512-token limit.
+  //                  The old 350 was derived for e5 (~1 token per char). The model is now
+  //                  granite, whose multilingual subword tokenizer can emit MORE than 1 token
+  //                  per CJK character, so 350 CJK chars could exceed 512 tokens and the chunk
+  //                  tail was silently truncated at embed time. granite's exact CJK
+  //                  char->token ratio is not pinned down here, so this is a CONSERVATIVE
+  //                  global limit: assuming a worst case of ~2.5 tokens/char, 200 chars stays
+  //                  ~500 tokens, leaving headroom under 512 (incl. special tokens). It only
+  //                  fires on pathological spaceless runs, so the extra chunks cost nothing
+  //                  for normal space-separated prose.
   constructor(
     private maxWords = 220,
-    private maxCharsPerWord = 350,
+    private maxCharsPerWord = 200,
   ) {}
 
   chunk(input: { pageId: string; text: string }): Chunk[] {
