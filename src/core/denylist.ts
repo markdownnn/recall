@@ -27,6 +27,20 @@ export const DEFAULT_DENYLIST: RegExp[] = [
 
   // Common auth/SSO subdomains.
   /^https?:\/\/(outlook|accounts|login|signin|auth)\./,
+
+  // Productivity / app UIs you OPERATE rather than READ - calendars, chat, task boards,
+  // cloud consoles, maps. These common "short-head" tool screens are not worth recalling
+  // as articles. Documents (docs.google.com) and code (github.com) are left OUT on
+  // purpose - those are content you may want to recall.
+  /^https?:\/\/(calendar|meet|drive|contacts|photos|chat|keep)\.google\./,
+  /^https?:\/\/maps\.(google|apple)\.com/,
+  /^https?:\/\/(www\.)?google\.[a-z.]+\/maps(\/|$|\?)/,
+  // Chat / messaging app screens.
+  /^https?:\/\/(app\.slack\.com|discord\.com\/(app|channels)|web\.whatsapp\.com|web\.telegram\.org|teams\.(microsoft|live)\.com|(www\.)?messenger\.com|web\.skype\.com)/,
+  // Task / project-management boards.
+  /^https?:\/\/[^/]*(trello\.com|asana\.com|\.atlassian\.net|monday\.com|clickup\.com|basecamp\.com)/,
+  // Cloud / infra consoles.
+  /^https?:\/\/(console\.aws\.amazon\.com|[^/]*\.console\.aws\.amazon\.com|portal\.azure\.com|console\.cloud\.google\.com)/,
 ]
 
 export function isDenylisted(url: string, list: RegExp[] = DEFAULT_DENYLIST): boolean {
