@@ -39,8 +39,8 @@ function HeroSection() {
   return (
     <header class="hero">
       <div class="brand">Recall</div>
-      <h1 class="tagline">Remember everything you read. Find it later in plain words.</h1>
-      <p class="calm">Everything runs on your device. Nothing ever leaves it.</p>
+      <h1 class="tagline">That page you read last week? Find it again in seconds.</h1>
+      <p class="calm">100% on your device. Nothing ever leaves it.</p>
     </header>
   )
 }
@@ -50,9 +50,9 @@ function HowItWorksSection() {
     <section class="card section">
       <h2>How it works</h2>
       <ul class="features">
-        <li><strong>Automatic.</strong> On-device AI saves the pages you actually read.</li>
-        <li><strong>Manual.</strong> Save any page yourself in one click.</li>
-        <li><strong>Private.</strong> Banking, email, and other sensitive sites are skipped - and you can pause anytime.</li>
+        <li><strong>Automatic.</strong> On-device AI quietly remembers the pages you actually read.</li>
+        <li><strong>Manual.</strong> Or save any page yourself - one click.</li>
+        <li><strong>Private.</strong> Banking, email, logins? Skipped. Pause anytime.</li>
       </ul>
     </section>
   )
@@ -62,7 +62,7 @@ function SearchByMeaningSection() {
   return (
     <section class="card section">
       <h2>Search by meaning</h2>
-      <p>Forgot the exact words? Search by what it was about.</p>
+      <p>Forgot the exact words? Just describe it.</p>
       <div class="chips">
         {EXAMPLE_QUERIES.map((q) => (
           <span class="chip" key={q}>{q}</span>

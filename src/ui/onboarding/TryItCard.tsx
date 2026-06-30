@@ -78,7 +78,7 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
   return (
     <section class="card section">
       <h2>Try it yourself</h2>
-      <p>Add three short example pages to your private on-device index, then search them by meaning - just like your own pages.</p>
+      <p>Add 3 sample pages, then search them by meaning - just like your own.</p>
 
       <ul class="sample-list">
         {section.samples.map((s) => <li key={s.url}>{s.title}</li>)}
