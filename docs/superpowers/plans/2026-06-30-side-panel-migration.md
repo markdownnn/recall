@@ -20,11 +20,11 @@ The toolbar icon now OPENS THE PANEL (no popup). The capture shortcut (Cmd/Ctrl+
 ## Confirmed decisions (bake these in - read first)
 
 - **No popup.** Drop `action.default_popup`. Keep a bare `action` so the toolbar icon still exists and is clickable. Add the `sidePanel` permission and `"side_panel": { "default_path": "src/ui/sidepanel/index.html" }`. In the service worker, call `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` on `onInstalled` AND `onStartup` (the SW is not durable, so set it on both). Clicking the icon then opens the panel - no JS click handler needed for the common path.
-- **Commands.** Keep `capture-page` (Cmd/Ctrl+Shift+U) exactly as-is (captures the active tab, no UI). Replace the reserved `_execute_action` (which only ever opened the popup) with a custom `open-panel` command (Cmd/Ctrl+Shift+K). Its SW handler calls `chrome.sidePanel.open({ windowId })` - a command IS a user gesture, so `open()` is allowed. Resolve `windowId` from the active tab in the handler.
+- **Commands.** Keep `capture-page` (Cmd/Ctrl+Shift+U) exactly as-is (captures the active tab, no UI). Replace the reserved `_execute_action` (which only ever opened the popup) with a custom `open-panel` command (Cmd/Ctrl+Shift+K). Its SW handler calls `chrome.sidePanel.open({ windowId })` - a command IS a user gesture, so `open()` is allowed. Read `windowId` from the `tab` argument the command listener already passes (`onCommand` fires with `(command, tab)`); do NOT hop through an async `chrome.tabs.query` callback, which would lose the gesture and make `open()` throw.
 - **One surface, controls VISIBLE (not in a closed menu).** The page-scoped + site-scoped controls (Capture, Pause, Don't remember this site, Forget this site's history, the no-remember list + each `remove`) render INLINE / always-visible in v1 - NOT inside a closed `<details>` or a closed `...` overflow. This is a hard requirement: the privacy e2e assert `toHaveCount(0)` and `.click()` against these controls, and a control hidden in a closed menu would make `toHaveCount(0)` falsely pass and `.click()` fail (the documented earlier lesson). A `...` overflow is a FUTURE enhancement; if it ever lands, the e2e must open it first.
 - **Active-tab reactivity.** The panel persists across tab switches (unlike the popup, which re-read on each open). The bar must refresh on `chrome.tabs.onActivated` and `chrome.tabs.onUpdated`, plus once on mount. This is browser glue (Coverage N/A); the only pure piece (hostOf, the SAVED-badge query contract) is unit-tested. **Active-tab state now carries the title too** (`{ url, host, title }` from `chrome.tabs.query`), because the bar shows the title as its primary line.
 - **"This page" bar = TITLE + host + scope-legible controls.** The active tab's TITLE is the primary line; the host is a secondary label under it. Capture + the SAVED badge are PAGE-scoped (this exact URL / pageId). Don't-remember + Forget are SITE-scoped (the host). The bar's copy/grouping must make those two scopes obvious to the user.
-- **Saved badge = a real backend round-trip.** "Saved" means the store already has this page. New `VectorSearchPort.hasPage(pageId)` -> memory impl + worker `hasPage` op + adapter + offscreen `has-page` op + messaging `{type:'has-page',url}` -> `{type:'page-status',exists}` + SW relay. The offscreen op normalizes the url with the SAME `pageIdFromUrl` that capture used to store the page, so the badge can't drift from what was saved. (After Task 2, that normalization also strips tracking params, so the badge ignores `?utm_*` junk - see below.)
+- **Saved badge = a real backend round-trip.** "Saved" means the store already has this page. New `VectorSearchPort.hasPage(pageId)` -> memory impl + worker `hasPage` op + adapter + offscreen `has-page` op + messaging `{type:'has-page',url}` -> `{type:'page-status',exists}` + SW relay. Capture stores the page under `pageIdFromUrl(sanitizeUrl(href))` (the content script sanitizes the url first, then capture normalizes). The offscreen `has-page` op applies the EXACT same two steps in the same order - `pageIdFromUrl(sanitizeUrl(url))` - so the badge id can't drift from the stored id, even for token-bearing urls (OAuth callbacks). (After Task 2, `pageIdFromUrl` also strips tracking params, so the badge ignores `?utm_*` junk too - see below.)
 - **Page identity ignores tracking junk (Task 2).** `pageIdFromUrl` and `sanitizeUrl` strip known tracking query params (`utm_*`, `gclid`, `fbclid`, ...). So `/article?utm_source=x` and `/article` are the SAME page: no duplicate captures, no SAVED-badge confusion when a user lands on a campaign link.
 - **Full-width layout (NOT a centered column).** The spike centered content in a ~480px column (`max-width:480px; margin:0 auto`), which left big empty side margins in the wide panel. v1 STRETCHES to fill the panel width: the body/container is FULL-WIDTH with side padding (`width:100%; padding:12px 14px; box-sizing:border-box`), responsive to the user resizing the panel - NOT a fixed/max-width centered block. The search bar, capture button, and result cards span the full width; results fill down the body. Keep the spike's clean light palette/vars; change only the width model.
 - **i18n-readiness, FOLDED IN (now a real piece of Task 5, not optional).** `src/ui/sidepanel/strings.ts` is the single canonical home for UI strings: a typed `UIStrings` interface + an English `EN` object + `export const t = EN`. `SidePanel` / `ThisPageBar` / `SearchTab` / `Tabs` import `t` from it AS THEY ARE FIRST WRITTEN - no write-then-replace later. A shape test lives at `tests/core/strings.test.ts` (repo convention is flat `tests/core/`, not `tests/ui/`). Do NOT build a real i18n system (no `chrome.i18n`, no locale switch) - just the typed-EN seam so Korean is a cheap add later. HARD rule: every e2e-asserted string stays BYTE-IDENTICAL (see the list under Task 5). The rotating example queries (`SUGGESTIONS`) stay in `suggestions.ts` (English data, fine to keep out of `strings.ts`).
@@ -67,13 +67,13 @@ export const TABS: { key: TabKey; label: string }[] = [
 | `src/adapters/memory-vector-store.ts` | Modify | Implement `hasPage` = `this.pages.has(pageId)`. |
 | `src/offscreen/sqlite-worker.ts` | Modify | Add `opHasPage` (`SELECT 1 FROM pages WHERE id=? LIMIT 1`) + a `hasPage` row in the handler map. |
 | `src/offscreen/worker-vector-store.ts` | Modify | Add `hasPage = (pageId) => this.c.request<boolean>('hasPage', pageId)`. |
-| `src/offscreen/offscreen.ts` | Modify | Add `has-page` op: `pageIdFromUrl(url)` -> `store.hasPage(pageId)` -> `{exists}`. |
+| `src/offscreen/offscreen.ts` | Modify | Add `has-page` op: `pageIdFromUrl(sanitizeUrl(url))` -> `store.hasPage(pageId)` -> `{exists}` (same `sanitizeUrl`+`pageIdFromUrl` order capture uses, so no badge drift). Add the `sanitizeUrl` import. |
 | `src/core/capture-service.ts` | Modify | `export` `pageIdFromUrl` (so the offscreen badge query uses the identical normalization) AND make it strip tracking params via `stripTrackingParams` (page identity ignores `?utm_*`). |
-| `tests/core/capture-service.test.ts` | Modify | If any existing assertion pins a pageId for a tracking-laden url, update it to the stripped id (pure-logic change). |
+| `tests/core/capture-service.test.ts` | Modify | If any existing assertion pins a pageId for a tracking-laden url, update it to the stripped id (pure-logic change). Add a dedup-identity test: `pageIdFromUrl(...utm_source...&id=1)` equals `pageIdFromUrl(...id=1)`. |
 | `src/ui/sidepanel/index.html` | Modify | Mount node `#app` + module script (from the spike); full-width body; `lang="en"`. |
 | `src/ui/sidepanel/main.tsx` | Keep/Modify | Import `./sidepanel.css`, render `<SidePanel/>` into `#app` (spike already does this). |
-| `src/ui/sidepanel/SidePanel.tsx` | Modify (split) | Root: holds model status + the `tab` state; renders `ThisPageBar`, the tab bar from `TABS`, and the active tab's content. The spike's monolith splits into the four components below; imports `t`. |
-| `src/ui/sidepanel/ThisPageBar.tsx` | Create | Active-tab-reactive bar. Active-tab state `{ url, host, title }`. Renders TITLE (primary) + host (secondary) + SAVED badge (page-scoped) + Capture (page-scoped) + Pause + Don't-remember (site-scoped) + Forget (site-scoped) + no-remember list (all visible). Owns the page-scoped handlers + `has-page` round-trip + tab listeners. Imports `t`. |
+| `src/ui/sidepanel/SidePanel.tsx` | Modify (split) | Root: holds model status, the `tab` state, AND the single combined capture/index `status` state (written by both `capture()` and the indexing listener, rendered once here); owns `capture()` and passes it to `ThisPageBar` as `onCapture`. Renders `ThisPageBar`, the tab bar from `TABS`, the active tab's content, and the one status line. The spike's monolith splits into the four components below; imports `t`. |
+| `src/ui/sidepanel/ThisPageBar.tsx` | Create | Active-tab-reactive bar. Active-tab state `{ url, host, title }`. Renders TITLE (primary, host/url fallback when title empty) + host (secondary) + SAVED badge (page-scoped) + Capture (page-scoped, fires the `onCapture` prop) + Pause + Don't-remember (site-scoped) + Forget (site-scoped) + no-remember list (all visible). Owns the site-scoped handlers, the `get-settings` seed, the `has-page` round-trip (skipped on non-http(s) tabs) + tab listeners. Does NOT own capture status (SidePanel does) and uses no `<article>` element. Imports `t`. |
 | `src/ui/sidepanel/Tabs.tsx` | Create | `TabKey` union + `TABS` array (label from `t`) + the presentational tab bar. The single extension point for future tabs. Imports `t`. |
 | `src/ui/sidepanel/SearchTab.tsx` | Create | Search hero: searchbox + accent Search button (label/aria from `t`), Enter-to-search, rotating suggested-query placeholder (`SUGGESTIONS`), `<article>` result cards. Imports `t`. |
 | `src/ui/sidepanel/suggestions.ts` | Create | Pure: `SUGGESTIONS: string[]` (~10 English), `randomIndex(len, rng)`, `nextIndex(cur, len)`. (English data stays here, not in `strings.ts`.) |
@@ -86,7 +86,7 @@ export const TABS: { key: TabKey; label: string }[] = [
 | `src/ui/popup/index.html` | Delete | Replaced by `src/ui/sidepanel/index.html`. |
 | `tests/core/memory-vector-store.test.ts` | Modify | Add `hasPage` contract tests (RED first). |
 | `tests/core/suggestions.test.ts` | Create | Pure tests for `randomIndex`/`nextIndex` (RED first). |
-| `tests/e2e/recall-flow.spec.ts` | Modify | popup path -> sidepanel path; `getByPlaceholder('recall...')` -> `getByRole('searchbox')`. |
+| `tests/e2e/recall-flow.spec.ts` | Modify | popup path -> sidepanel path; `getByPlaceholder('recall...')` -> `getByRole('searchbox')`; ADD a SAVED-badge false->true flip assert (`getByText('saved', { exact: true })`) after capture. |
 | `tests/e2e/persistence.spec.ts` | Modify | Same path + searchbox swap (2 popup pages). |
 | `tests/e2e/hybrid-search.spec.ts` | Modify | Same path + searchbox swap. |
 | `tests/e2e/forget-history.spec.ts` | Modify | Same path + searchbox swap (keeps the `toHaveCount(0)` privacy asserts). |
@@ -124,14 +124,15 @@ Browser glue only - no pure logic - so this task has no unit test; it is exercis
     ```ts
     chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
     ```
-  - Extend the existing `chrome.commands.onCommand` listener so `open-panel` opens the panel for the active window (a command is a user gesture, so `open()` is allowed). Resolve `windowId` from the active tab:
+  - Extend the existing `chrome.commands.onCommand` listener so `open-panel` opens the panel for the active window. `chrome.sidePanel.open()` MUST be called SYNCHRONOUSLY in the gesture handler - wrapping it in an async `chrome.tabs.query(...)` callback loses the user gesture and Chrome throws `"sidePanel.open() may only be called in response to a user gesture"`. So do NOT use `tabs.query`; use the `tab` argument the command listener already provides (the listener signature is `(command, tab)`):
     ```ts
-    if (command === 'open-panel') {
-      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    chrome.commands?.onCommand.addListener((command, tab) => {
+      if (command === 'open-panel') {
         if (tab?.windowId != null) chrome.sidePanel.open({ windowId: tab.windowId })
-      })
-      return
-    }
+        return
+      }
+      // capture-page branch unchanged (the existing chrome.tabs.query + sendMessage)
+    })
     ```
     Keep the `capture-page` branch exactly as-is. Update the stale `_execute_action` comment.
 
@@ -180,7 +181,7 @@ Page identity must ignore campaign/tracking junk so `/article?utm_source=x` and 
   // Scenario: tracking keys arrive in mixed case from some sites.
   // Coverage: integration (pure).
   test('matches tracking keys case-insensitively', () => {
-    expect(stripTrackingParams('https://x.com/a?UTM_SOURCE=a&Ref=b&id=1')).toBe('https://x.com/a?id=1')
+    expect(stripTrackingParams('https://x.com/a?UTM_SOURCE=a&GcLiD=b&id=1')).toBe('https://x.com/a?id=1')
   })
 
   // Scenario: a plain url with no query must be returned untouched (no trailing '?').
@@ -201,10 +202,14 @@ Page identity must ignore campaign/tracking junk so `/article?utm_source=x` and 
   ```ts
   // Known tracking/analytics query params that never change WHICH page you see, so they
   // must not be part of a page's identity. Case-insensitive keys. Pure + testable.
+  // NOTE: deliberately NO 'ref'/'ref_src'. Those are real CONTENT params on some sites
+  // (e.g. ?ref=<author> on docs/blogs, ?ref_src on Twitter embeds) - stripping them would
+  // merge two genuinely-different pages, breaking the "never merge distinct pages" guarantee.
+  // Only params that never change WHICH page you see belong here.
   const TRACKING_PARAMS = new Set([
     'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
     'gclid', 'fbclid', 'msclkid', 'mc_eid', 'igshid',
-    'ref', 'ref_src', '_hsenc', '_hsmi', 'vero_id', 'oly_enc_id',
+    '_hsenc', '_hsmi', 'vero_id', 'oly_enc_id',
   ])
 
   export function stripTrackingParams(url: string): string {
@@ -228,7 +233,16 @@ Page identity must ignore campaign/tracking junk so `/article?utm_source=x` and 
   // ... inside sanitizeUrl, before `return`, or wrap the result:
   return stripTrackingParams(u.toString())
   ```
-  Add a `tests/core/sanitize-url.test.ts` case: `https://x.com/a?utm_source=s&id=1` -> tracking gone, `id=1` kept. The existing token-strip / clean-url / bad-url cases still pass (none of them use tracking params).
+  Add a `tests/core/sanitize-url.test.ts` case proving the STORED url drops tracking but keeps real params:
+  ```ts
+  // Scenario: a campaign link is captured; the url we STORE must drop ?utm_* but keep the
+  // real ?id=1, so the stored url is clean yet still points at the right page.
+  // Coverage: integration (real sanitizeUrl, which now composes stripTrackingParams).
+  test('strips tracking params from the stored url, keeps real params', () => {
+    expect(sanitizeUrl('https://x.com/a?utm_source=s&id=1')).toBe('https://x.com/a?id=1')
+  })
+  ```
+  The existing token-strip / clean-url / bad-url cases still pass (none of them use tracking params).
 
 - [ ] **Step 4: apply to page IDENTITY (`src/core/capture-service.ts`)**
   Change `function pageIdFromUrl` to `export function pageIdFromUrl` AND strip tracking params inside it (so capture's stored id and the badge's `has-page` id - which normalizes the RAW tab url - agree, and tracking-laden urls don't make duplicates):
@@ -245,10 +259,21 @@ Page identity must ignore campaign/tracking junk so `/article?utm_source=x` and 
   ```
   If any existing `capture-service` test pins a pageId for a tracking-laden url, update it to the stripped value (a pure-logic change).
 
-  > Scenario: capture and the SAVED badge both ignore `?utm_*`, so a campaign-link visit and a clean-link visit are one page.
-  > Coverage: integration (the pure helper is unit-tested in Step 1; `pageIdFromUrl`/`sanitizeUrl` compose it). The badge round-trip itself is exercised by Task 3 + the migrated e2e.
+  Add a dedup-identity assertion to `tests/core/capture-service.test.ts` (import the now-exported `pageIdFromUrl`). Step 1 tests `stripTrackingParams` in isolation, but nothing yet PINS the actual product guarantee on `pageIdFromUrl` - that a campaign link and a clean link are the SAME page id:
+  ```ts
+  // Scenario: a user saves an article via a clean link, then re-visits it via a campaign
+  // link (?utm_source=...). The page must dedup to ONE id, or it saves twice and the
+  // SAVED badge misreads. Pins the guarantee directly on pageIdFromUrl (not just the helper).
+  // Coverage: integration (real exported pageIdFromUrl).
+  test('pageIdFromUrl gives a campaign link and a clean link the same id', () => {
+    expect(pageIdFromUrl('https://x.com/a?utm_source=s&id=1')).toBe(pageIdFromUrl('https://x.com/a?id=1'))
+  })
+  ```
 
-  > **Migration note:** this changes `pageIdFromUrl` output for tracking-laden URLs. Pages captured BEFORE this change keep their old (tracking-laden) ids; new captures use the stripped id. This is acceptable for the walking skeleton - no data migration is needed. The only visible effect is that a pre-change duplicate could linger; it ages out naturally and never corrupts new captures.
+  > Scenario: capture and the SAVED badge both ignore `?utm_*`, so a campaign-link visit and a clean-link visit are one page.
+  > Coverage: integration (the pure helper is unit-tested in Step 1; the dedup guarantee is pinned directly on `pageIdFromUrl` above; `sanitizeUrl` composes the helper too). The badge round-trip itself is exercised by Task 3 + the migrated e2e.
+
+  > **Migration note:** this changes `pageIdFromUrl` output for tracking-laden URLs. Pages captured BEFORE this change keep their old (tracking-laden) ids; new captures use the stripped id. This is acceptable for the walking skeleton - no data migration is needed. The only visible effect is that a pre-change duplicate could linger: there is no TTL or eviction, so the pre-change duplicate persists harmlessly until the user forgets the host; a full re-index would unify them (out of scope). It never corrupts new captures.
 
 ---
 
@@ -308,19 +333,20 @@ The badge needs a true/false answer: does the store already have this page? Add 
   > Coverage: N/A - sqlite-wasm + OPFS only run inside the offscreen document; the unit env has no OPFS. This is the mirror of the memory-store contract test (Step 1), which pins the same behavior on the pure adapter. (Same justification the existing worker ops carry.)
 
 - [ ] **Step 4: export `pageIdFromUrl` (`src/core/capture-service.ts`)**
-  Already done in Task 2 Step 4 (export + tracking-strip). Confirm the offscreen op imports THIS one so the badge's id matches exactly what capture stored (hash/credentials AND tracking params stripped identically).
+  Already done in Task 2 Step 4 (export + tracking-strip). Confirm the offscreen op imports THIS `pageIdFromUrl` AND wraps its input in `sanitizeUrl` first (Step 5), so the badge's id matches exactly what capture stored: capture does `pageIdFromUrl(sanitizeUrl(href))`, the badge does `pageIdFromUrl(sanitizeUrl(url))` - token params, hash/credentials, AND tracking params all stripped identically.
 
 - [ ] **Step 5: offscreen op (`src/offscreen/offscreen.ts`)**
+  The badge sends the RAW tab url. Capture stored the page under `pageIdFromUrl(sanitizeUrl(href))` - the content script (`src/content/capture.ts`) sanitizes FIRST, then capture normalizes. The badge MUST apply the SAME two steps in the SAME order, or a token-bearing url (e.g. an OAuth callback `?code=...`) yields a different id and the badge wrongly reads "not saved" for a saved page. The offscreen `has-page` op is the single choke point, so do BOTH `sanitizeUrl` then `pageIdFromUrl` here:
   ```ts
   if (op === 'has-page') {
-    const pageId = pageIdFromUrl(p.url as string)
+    const pageId = pageIdFromUrl(sanitizeUrl(p.url as string))
     return { exists: await store.hasPage(pageId) }
   }
   ```
-  Add `import { pageIdFromUrl } from '../core/capture-service'`.
+  Add `import { pageIdFromUrl } from '../core/capture-service'` AND `import { sanitizeUrl } from '../core/sanitize-url'`. (`ThisPageBar` therefore sends the raw `tab.url`; the offscreen owns the normalization so there is one choke point and the bar stays dumb.)
 
-  > Scenario: the offscreen normalizes the tab url the same way capture did (tracking stripped), then asks the store.
-  > Coverage: N/A - offscreen RPC dispatch glue; `pageIdFromUrl` itself is pure and already covered by capture/tracking tests.
+  > Scenario: a saved page visited via a token/tracking-bearing url (OAuth callback, campaign link) still reads SAVED, because the badge normalizes identically to capture (`sanitizeUrl` then `pageIdFromUrl`).
+  > Coverage: N/A - offscreen RPC dispatch glue; `sanitizeUrl` + `pageIdFromUrl` are pure and already covered by their unit tests. The false->true badge flip is asserted e2e (Task 7 recall-flow).
 
 - [ ] **Step 6: messaging types (`src/messaging.ts`)**
   - Add to `Msg`: `| { type: 'has-page'; url: string }`.
@@ -420,12 +446,18 @@ Expand the spike's single `SidePanel.tsx` into `SidePanel` (root) + `ThisPageBar
     'loadingPercent', 'wonRemember', 'alreadyOnListHost', 'forgotEverythingFrom', 'forgetConfirm',
   ] as const
 
+  // Scenario: a component references a string key that was never added to EN, so the panel
+  // renders `undefined`; this pins every static key as a present, non-empty string.
+  // Coverage: integration (real EN object).
   test('EN exposes all static keys as non-empty strings', () => {
     for (const k of STATIC_KEYS) {
       expect(typeof EN[k], k).toBe('string')
       expect((EN[k] as string).length, k).toBeGreaterThan(0)
     }
   })
+  // Scenario: a dynamic string (e.g. capturedChunks(n)) is mistyped as a plain string, so
+  // calling it throws at runtime; this pins every dynamic key as a function.
+  // Coverage: integration (real EN object).
   test('EN exposes all dynamic keys as functions', () => {
     for (const k of FUNCTION_KEYS) expect(typeof EN[k], k).toBe('function')
   })
@@ -556,7 +588,16 @@ Expand the spike's single `SidePanel.tsx` into `SidePanel` (root) + `ThisPageBar
 
 - [ ] **Step 4: `Tabs.tsx`** - the scaffold from "Tab extensibility" above: export `TabKey`, `TABS` (label `t.searchTabLabel`), and a presentational `<TabBar active onSelect>` that maps `TABS`. Renders even with one entry. Imports `t`.
 
-- [ ] **Step 5: `ThisPageBar.tsx`** - the active-tab-reactive bar. Move `denyHost`, `removeDeny`, `forgetHost`, `capture`, `togglePause` here UNCHANGED in behavior (same message types; strings now via `t`). Add:
+- [ ] **Step 5: `ThisPageBar.tsx`** - the active-tab-reactive bar. Move `denyHost`, `removeDeny`, `forgetHost`, `togglePause` here UNCHANGED in behavior (same message types; strings now via `t`).
+
+  **Capture status ownership (ONE status, owned by `SidePanel`).** There is exactly ONE combined capture/index `status` variable, and it lives in `SidePanel` (Step 7), NOT in `ThisPageBar`. `SidePanel` already owns the `indexing-progress`/`indexing-error` broadcast listener that overwrites this same line (`captured (indexing N chunks...)` -> `indexing... N done` -> `indexed`), so the capture write and the indexing write MUST share one state or the two would fight (two status lines, or a `getByText('captured'...)`/`getByText('indexed')` that can't find its target). Therefore `capture()` lives in `SidePanel` too, and `ThisPageBar` receives it as an `onCapture` callback prop wired to its Capture button. `ThisPageBar` renders NO capture status of its own - it only triggers the SidePanel-owned status. (The site/deny/forget/pause handlers stay local to `ThisPageBar`; only the capture/index status is hoisted.)
+
+  - the `get-settings` mount effect that seeds `paused` + `userDenyHosts` MOVES here from the spike/popup root, since the pause toggle + deny list it feeds now live in `ThisPageBar`.
+  - **badge READ guard:** skip the `has-page` round-trip when `tab.url` is missing or not `http(s)` (chrome://, extension, blank, or restricted tabs). The offscreen `pageIdFromUrl` has no try/catch and `new URL(undefined)` would throw; on a guarded tab just render "not saved yet" (or blank) without a round-trip.
+  - **empty title fallback:** if `tab.title` is empty, the PRIMARY line falls back to the host (or, if host is also empty, the url) so the bar is never blank.
+  - **NO `<article>` element:** `ThisPageBar` uses no `<article>` tag (that element is reserved for `SearchTab` result cards), so the e2e `locator('article').toHaveCount(...)` privacy/count asserts stay accurate.
+
+  Add:
   - active-tab state: on mount + on `chrome.tabs.onActivated` + `chrome.tabs.onUpdated` (filter to the active tab / `status==='complete'`), read `chrome.tabs.query({active,currentWindow})`, store **`{ url, host, title }`** (title is NEW - the bar shows it), and fire a `has-page` round-trip to set the SAVED badge.
   - render, scope-legible:
     - PRIMARY line = the active tab's **TITLE**; SECONDARY label = the **host**.
@@ -576,7 +617,11 @@ Expand the spike's single `SidePanel.tsx` into `SidePanel` (root) + `ThisPageBar
   > Scenario: a user types a query and clicks Search (or presses Enter) and sees one card per matching page.
   > Coverage: integration via the migrated e2e (real build, real recall). The placeholder rotation's index math is unit-tested (Task 4); the timer/focus gating is glue (Coverage N/A).
 
-- [ ] **Step 7: `SidePanel.tsx`** - root. Hold model status (the `model-status` query + `model-progress`/`indexing-progress`/`indexing-error` listener from the spike, strings now via `t` - `t.indexed`, `t.indexingProgress`, `t.indexingFailed`, `t.loadingPercent`, `t.modelReady`, `t.modelError`), the `tab` state, render `<ThisPageBar/>`, the `<TabBar/>`, and `{tab === 'search' && <SearchTab/>}`. The status strings e2e watch (`indexed`, `indexing... N done`, `captured ...`) must still render somewhere visible. Capture status uses `t.capturing`, `t.capturedChunks`, `t.captureFailed`, `t.pausedNote`, `t.notSavedDenylisted`, `t.nothingSubstantial`, `t.nothingToCapture`.
+- [ ] **Step 7: `SidePanel.tsx`** - root. Holds:
+  - model status (the `model-status` query + `model-progress`/`indexing-progress`/`indexing-error` listener from the spike, strings now via `t` - `t.indexed`, `t.indexingProgress`, `t.indexingFailed`, `t.loadingPercent`, `t.modelReady`, `t.modelError`);
+  - the `tab` state;
+  - **the ONE combined capture/index `status` state** (`const [status, setStatus] = useState('')`). This single variable is written by BOTH the indexing broadcast listener (`indexing-progress` -> `t.indexingProgress`/`t.indexed`, `indexing-error` -> `t.indexingFailed`) AND `capture()` (`t.capturing`, `t.capturedChunks`, `t.captureFailed`, `t.pausedNote`, `t.notSavedDenylisted`, `t.nothingSubstantial`, `t.nothingToCapture`), exactly like the spike/popup did - so the line replaces in sequence (`captured (indexing N chunks...)` -> `indexing... N done` -> `indexed`). `capture()` lives HERE (it reads the active tab via `chrome.tabs.query` itself, so it needs nothing from `ThisPageBar`).
+  - renders `<ThisPageBar onCapture={capture} />`, the `<TabBar/>`, `{tab === 'search' && <SearchTab/>}`, and the SINGLE `status` line ONCE (rendered by `SidePanel`, not `ThisPageBar`). The status strings e2e watch (`indexed`, `indexing... N done`, `captured ...`) render here, in this one place.
 
 ---
 
@@ -606,8 +651,15 @@ Also delete `tests/e2e/sidepanel-spike.spec.ts` (its concerns - build emit, mess
 > Scenario (shared): the product's promises (capture -> recall, persistence, hybrid ranking, privacy controls, SERP skip, SPA re-capture, auto-capture) all still work against the side panel surface.
 > Coverage: integration (built extension loaded in Chrome; real Readability + e5 + sqlite + side panel page). Full real path.
 
-- [ ] **`tests/e2e/recall-flow.spec.ts`** - path + searchbox swap. Counts already `toHaveCount(1)` (document-level); keep.
-- [ ] **`tests/e2e/persistence.spec.ts`** - path + searchbox swap on BOTH popup pages (`popup1`, `popup2`); pause `getByLabel(/pause/i)` unchanged.
+- [ ] **`tests/e2e/recall-flow.spec.ts`** - path + searchbox swap. Counts already `toHaveCount(1)` (document-level); keep. ALSO add a SAVED-badge flip assertion (the badge is the payoff of Task 3 and nothing else proves its false->true flip end to end). After the manual capture + `page.bringToFront()` on the article tab so `chrome.tabs.query({active})` returns it, assert the panel shows the saved badge:
+  ```ts
+  // Scenario: after capturing the active article, the panel's PAGE-scoped SAVED badge must
+  // flip to "saved" for that exact tab - the visible payoff of the has-page round-trip.
+  // Coverage: integration (built extension; real capture + offscreen has-page + panel render).
+  await expect(panel.getByText('saved', { exact: true })).toBeVisible()
+  ```
+  The asserted text is `EN.savedBadge` (= `'saved'`). Use `{ exact: true }` deliberately: the pre-capture badge reads `'not saved yet'` (`EN.notSavedBadge`), which CONTAINS the substring "saved" - an `exact:false` match would be green even before capture, defeating the flip assertion. `exact:true` matches the saved-badge text node only. (Use the `panel`/`popup` page variable the spec already drives.)
+- [ ] **`tests/e2e/persistence.spec.ts`** - path + searchbox swap on BOTH popup pages (`popup1`, `popup2`); pause `getByLabel(/pause/i)` unchanged. Both `locator('article').toHaveCount(1)` asserts are preserved untouched - the result-card markup stays `<article>` (and `ThisPageBar` adds none), so the counts still mean "one result card".
 - [ ] **`tests/e2e/hybrid-search.spec.ts`** - path + searchbox swap; the 3 `.first()` content asserts unchanged.
 - [ ] **`tests/e2e/forget-history.spec.ts`** - path + searchbox swap; KEEP `Forget this site's history` click and BOTH post-forget `locator('article').toHaveCount(0)` privacy asserts (now meaningful because the search input + results live in the visible panel).
 - [ ] **`tests/e2e/user-controls.spec.ts`** - path + searchbox swap; `Don't remember this site`, `not saved...`, `Won't remember ...`, and `getByRole('button', { name: 'remove' })` all unchanged (controls visible).
@@ -635,14 +687,15 @@ Also delete `tests/e2e/sidepanel-spike.spec.ts` (its concerns - build emit, mess
 ## Self-Review Checklist
 
 - [ ] `stripTrackingParams` test watched FAIL first; tracking params stripped, real params kept, no-query url unchanged, bad url returned as-is, keys case-insensitive. `sanitizeUrl` (stored url) AND `pageIdFromUrl` (identity + badge) both compose it; migration note recorded (old captures keep old ids, no migration).
-- [ ] `hasPage` test watched FAIL before the port/impl existed; memory + worker impls both return the existence boolean; offscreen `has-page` uses the SAME `pageIdFromUrl` capture used (now tracking-stripped) - no badge drift.
+- [ ] `hasPage` test watched FAIL before the port/impl existed; memory + worker impls both return the existence boolean; offscreen `has-page` applies BOTH `sanitizeUrl` THEN `pageIdFromUrl` (the same two steps, same order, capture uses) - so token-bearing/tracking-laden urls read the same id as the stored page, no badge drift. The false->true badge flip is asserted e2e (recall-flow).
 - [ ] `strings.ts` is REQUIRED and the single strings home; `SidePanel`/`ThisPageBar`/`SearchTab`/`Tabs` import `t` AS FIRST WRITTEN (no write-then-replace). Shape test at `tests/core/strings.test.ts` (flat convention, not `tests/ui/`), ASCII-only, and PINS the byte-identical e2e strings. `searchPlaceholder` dropped; `SUGGESTIONS` stays in `suggestions.ts`. New strings present: `capturing`, `captureFailed`, `searchFailed`, `forgetConfirm`, `savedBadge`/`notSavedBadge`, `searchTabLabel`, `searchButtonLabel`/`searchButtonAria`.
 - [ ] Layout is FULL-WIDTH with side padding (no `max-width`/`margin:0 auto` centered column); search bar, capture, result cards span the full width; reflows on resize.
 - [ ] `ThisPageBar` carries `{ url, host, title }`; renders TITLE (primary) + host (secondary); SAVED badge + Capture are PAGE-scoped, Don't-remember + Forget are SITE-scoped, and the bar reads so the user understands which is which.
 - [ ] Manifest: `default_popup` GONE, `side_panel.default_path` + `sidePanel` permission ADDED, `_execute_action` REPLACED by `open-panel`, `capture-page` UNCHANGED.
-- [ ] SW: `setPanelBehavior({openPanelOnActionClick:true})` set on BOTH install and startup (SW not durable); `open-panel` resolves a real `windowId`; `has-page` added to the handled-types guard AND dispatch.
+- [ ] SW: `setPanelBehavior({openPanelOnActionClick:true})` set on BOTH install and startup (SW not durable); `open-panel` calls `chrome.sidePanel.open()` SYNCHRONOUSLY using the `tab` argument from `onCommand(command, tab)` (NO async `tabs.query` hop, which would lose the gesture and throw); `has-page` added to the handled-types guard AND dispatch.
 - [ ] Page controls render VISIBLE (no closed `<details>`/overflow) so the privacy `toHaveCount(0)` and `.click()` asserts stay meaningful (no false-green).
-- [ ] e2e: every one of the 8 specs swapped path + searchbox; spike spec deleted; `<article>` result locators and all exact strings unchanged (wording byte-identical, only the literal's HOME moved into `EN`).
+- [ ] e2e: every one of the 8 specs swapped path + searchbox; spike spec deleted; `<article>` result locators and all exact strings unchanged (wording byte-identical, only the literal's HOME moved into `EN`). recall-flow ALSO asserts the SAVED-badge false->true flip (`getByText('saved', { exact: true })` - `exact:true` so it doesn't false-match `'not saved yet'`). persistence's two `toHaveCount(1)` preserved.
+- [ ] Capture/index status: there is exactly ONE `status` variable, owned by `SidePanel`, written by BOTH `capture()` and the indexing-progress/error listener, and rendered ONCE in `SidePanel`. `ThisPageBar` renders no capture status; its Capture button fires an `onCapture` prop. So `getByText('captured'...)`/`getByText('indexed')` resolve to a single line. The `get-settings` seed moved to `ThisPageBar`; the badge READ skips non-http(s) tabs; empty title falls back to host/url; `ThisPageBar` has no `<article>`.
 - [ ] Tab scaffold renders from `TABS`; adding History later = union + one `TABS` row + one content line (no other file touched).
 - [ ] Popup dir deleted; build emits the sidepanel entry only; `rg "ui/popup" src` empty.
 - [ ] Suggestions index math unit-tested; the timer/focus gating left as glue (Coverage N/A), never claimed as tested.
@@ -653,10 +706,10 @@ Also delete `tests/e2e/sidepanel-spike.spec.ts` (its concerns - build emit, mess
 
 - **Discoverability: side panel vs popup.** A popup pops in your face; a side panel can hide until opened. Mitigations baked in: (1) `openPanelOnActionClick` so the toolbar icon opens it with one click (the muscle-memory spot), (2) the `capture-page` shortcut still captures with zero UI, (3) the `open-panel` shortcut. A future first-run onboarding hint ("click the icon to open Recall") is noted but out of scope for v1.
 - **Tracking-param list is a denylist, not exhaustive.** New tracking params appear all the time; the fixed list catches the common ones (`utm_*`, `gclid`, `fbclid`, ...). A url with an unknown tracker still makes a distinct page id - acceptable (it only risks a rare duplicate, never data loss). The list lives in one pure file so it is cheap to extend, and it stays a DENYLIST (we never strip an unknown param, so we never accidentally merge two genuinely-different pages).
-- **pageId change has no migration.** Pre-change captures of tracking-laden urls keep their old ids; only new captures use the stripped id. For a walking skeleton this is fine - no user data is lost and new captures are correct. A full re-index would unify them but is out of scope.
+- **pageId change has no migration.** Pre-change captures of tracking-laden urls keep their old ids; only new captures use the stripped id. For a walking skeleton this is fine - no user data is lost and new captures are correct. There is no TTL or eviction, so the pre-change duplicate persists harmlessly until the user forgets the host; a full re-index would unify them (out of scope).
 - **Active-tab reactivity cost.** The panel persists, so it must listen to `tabs.onActivated`/`onUpdated` and re-query + re-run `has-page` on each switch. Cheap (`SELECT 1 ... LIMIT 1`), but it is per-switch chatter the popup never had. Debounce `onUpdated` to `status==='complete'`/active tab to avoid a query storm on noisy pages. The bar now also reads the tab TITLE, but that comes from the same `chrome.tabs.query` - no extra round-trip.
 - **Full-width vs readable line length.** Stretching to the full panel width can make long lines hard to scan on a very wide panel. v1 accepts this (the owner wants the stretch); if it ever reads poorly, a max line-length on the result `<p>` (not the whole body) is a contained future tweak.
 - **e2e dance for a panel-opened-as-a-tab.** Playwright can't drive a real Chrome side panel, so the specs open `sidepanel/index.html` as an ordinary tab and rely on `bringToFront()` to keep the article active. This works because the side panel page is just an extension-origin page with `chrome.tabs` access - identical to how the popup page was driven. The risk: the panel page in the e2e is NOT a true side panel, so the e2e validate the panel's CONTENT/handlers, not the `sidePanel.open` plumbing (that part is build- and eyeball-verified). Documented, accepted.
 - **Chrome version floor.** `chrome.sidePanel` needs Chrome 114+ (`setPanelBehavior`/`open` landed by 116). Older Chrome would have no panel and a dead icon. Acceptable for a walking-skeleton local-first extension; note it in the store listing. The `?.` guards on `chrome.sidePanel` keep the SW from throwing on an unsupported build.
-- **SAVED badge accuracy.** The badge is only as right as `pageIdFromUrl` - if capture and the badge ever normalized differently, a saved page could read "not saved." Sharing the exported, tracking-stripping `pageIdFromUrl` removes that drift by construction.
+- **SAVED badge accuracy.** The badge is only as right as the normalization - if capture and the badge ever ran a DIFFERENT pipeline, a saved page could read "not saved." Capture stores under `pageIdFromUrl(sanitizeUrl(href))`; the badge's offscreen op runs the identical `pageIdFromUrl(sanitizeUrl(url))`. Sharing the exact same two pure functions in the same order (one offscreen choke point, the bar sends the raw url) removes that drift by construction - including for token-bearing urls (OAuth `?code=`) and tracking-laden campaign links.
 - **i18n seam, not a system.** `strings.ts` is typed EN only - no runtime locale switch, no `chrome.i18n`. That keeps v1 simple while making Korean a cheap, type-checked add later. The manifest `name`/`description` localization (Chrome's `_locales` + `__MSG_x__`) is a separate, later deliverable, untouched here.
