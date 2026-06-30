@@ -52,6 +52,17 @@ export class MemoryVectorStore implements VectorSearchPort {
     return result
   }
 
+  // Declarative embed-queue snapshot (mirrors WorkerVectorStore.chunkCounts for parity/tests).
+  async chunkCounts(): Promise<{ pending: number; embedded: number }> {
+    let pending = 0
+    let embedded = 0
+    for (const { vector } of this.chunks.values()) {
+      if (vector === null) pending++
+      else embedded++
+    }
+    return { pending, embedded }
+  }
+
   async setVector(chunkId: string, vector: Float32Array): Promise<void> {
     const entry = this.chunks.get(chunkId)
     if (entry) entry.vector = vector

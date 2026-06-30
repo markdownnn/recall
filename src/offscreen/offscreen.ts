@@ -133,20 +133,33 @@ function emitReindexTotal(p: { done: number; total: number }): void {
 // `total`), which the side panel renders as the "updating search index N of M" state.
 // The store worker may still be initialising its OPFS DB; pendingChunks() waits for the
 // worker's initPromise before replying, so this is safe to start now.
+// Set once the model failed on BOTH WebGPU and WASM. After that, capture/ping/alarm re-drains
+// MUST NOT re-attempt the doomed full model load every time (battery): capture still stores NULL
+// chunks, but no drain is spun. Memoized so a 'give up' is decided exactly once per session.
+let embedderUnavailable = false
+
 embedder
   .ensureLoaded()
   .then(async () => {
-    await migrateEmbeddingModel(
-      store,
-      settings,
-      EMBED_MODEL_VERSION,
-      () =>
-        new Promise<void>((done) => {
-          // Re-embed the currently-pending chunks (this page's) and resolve when the drain ends.
-          indexing.drain((n) => bumpReindexProgress(n)).then(() => done())
-        }),
-      (p) => emitReindexTotal(p),
-    )
+    // Suppress capture/ping/alarm keep-alive drains for the duration of the model-swap migration
+    // so they cannot steal the embed slot and defeat the gradual page-by-page re-index. The
+    // migration drives indexing.drainForMigration() per page instead.
+    indexing.beginMigration()
+    try {
+      await migrateEmbeddingModel(
+        store,
+        settings,
+        EMBED_MODEL_VERSION,
+        // Re-embed this page's freshly-nulled chunks to completion, even under a concurrent
+        // keep-alive drain. Return the drain promise DIRECTLY (no new Promise(done=>...) wrapper)
+        // so a drain rejection PROPAGATES to migrateEmbeddingModel -> the outer .catch, instead
+        // of silently never resolving and hanging the whole offscreen init chain.
+        () => indexing.drainForMigration((n) => bumpReindexProgress(n)),
+        (p) => emitReindexTotal(p),
+      )
+    } finally {
+      indexing.endMigration()
+    }
     await runDrainWithProgress() // finish any freshly-captured chunks
   })
   .catch((e) => {
@@ -155,6 +168,7 @@ embedder
     // so the user isn't left with capture silently piling up NULL-vector chunks that never
     // become searchable. Do NOT spin the drain - every embed would just fail.
     console.error('[recall/offscreen] granite unavailable on this device:', e)
+    embedderUnavailable = true
     chrome.runtime
       .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'unavailable' })
       .catch(() => {})
@@ -191,7 +205,9 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     }
     console.log(`[recall] captured ${chunkCount} chunks`)
     // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
-    runDrainWithProgress()
+    // If the model is known-unavailable on this device, store the NULL chunks but do NOT spin a
+    // drain (every embed would just fail and re-pay the doomed model load - battery).
+    if (!embedderUnavailable) runDrainWithProgress()
     return { captured: true, chunkCount }
   }
 
@@ -205,7 +221,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = p.text as string
     const { chunkCount } = await capture.capture({ url, title, text, force: true })
     console.log(`[recall] capture-text seeded ${chunkCount} chunks`)
-    runDrainWithProgress()
+    if (!embedderUnavailable) runDrainWithProgress()
     return { captured: true, chunkCount }
   }
 
@@ -282,12 +298,22 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     return { device: embedder.device }
   }
 
-  // --- ping: keep-alive from the SW ---
+  // --- ping: keep-alive from the SW (20s setInterval while warm) OR the chrome.alarms
+  //     re-drain (SW-independent, survives SW reaps). Both re-attempt any pending chunks left
+  //     by a failed/interrupted drain so capture+embed completes even with the panel closed. ---
   if (op === 'ping') {
     // Re-attempt any pending (un-embedded) chunks left by a failed/interrupted drain.
-    // Single-flight + empty-fast, so this is free when there is nothing to do.
-    runDrainWithProgress()
+    // Single-flight + empty-fast, so this is free when there is nothing to do. Skip entirely
+    // when the model is known-unavailable (every embed would fail; don't re-pay the model load).
+    if (!embedderUnavailable) runDrainWithProgress()
     return { ok: true }
+  }
+
+  // --- indexing-status: declarative snapshot of the embed queue for the side panel's MOUNT
+  //     effect. Lets a panel opened mid-drain (the auto-capture case) seed its indexing
+  //     indicator from STATE instead of waiting for a future indexing-progress event. ---
+  if (op === 'indexing-status') {
+    return await store.chunkCounts()
   }
 })
 

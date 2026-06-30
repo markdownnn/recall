@@ -89,6 +89,25 @@ function opPendingChunks(db: any, { limit }: { limit: number }): Chunk[] {
   return result
 }
 
+// Declarative snapshot of the embed queue: how many chunks still need a vector (pending) and
+// how many already have one (embedded). Drives the side panel's mount-time indexing indicator.
+function opChunkCounts(db: any): { pending: number; embedded: number } {
+  let pending = 0
+  let embedded = 0
+  db.exec({
+    sql: `SELECT
+            SUM(CASE WHEN vector IS NULL THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN vector IS NOT NULL THEN 1 ELSE 0 END) AS embedded
+          FROM chunks`,
+    rowMode: 'object',
+    callback: (r: any) => {
+      pending = Number(r.pending ?? 0)
+      embedded = Number(r.embedded ?? 0)
+    },
+  })
+  return { pending, embedded }
+}
+
 function opSetVector(db: any, { id, vector }: { id: string; vector: Float32Array }): void {
   // vector arrives via structured clone — it is a real Float32Array.
   // Store the raw bytes as BLOB so we can reconstruct it on search.
@@ -276,6 +295,7 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   hasPage: (db, args) => opHasPage(db, args as string),
   recentPages: (db, args) => opRecentPages(db, args),
   pendingChunks: (db, args) => opPendingChunks(db, args),
+  chunkCounts: (db) => opChunkCounts(db),
   setVector: (db, args) => { opSetVector(db, args) },
   search: (db, args) => opSearch(db, args),
   getSettings: (db) => opGetSettings(db),
