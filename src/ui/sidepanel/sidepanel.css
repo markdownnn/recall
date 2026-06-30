@@ -13,7 +13,21 @@
   --accent-hover: #4338ca;
   --accent-soft: #eef2ff;
   --danger: #b91c1c;
+  /* Positive / saved state. ONE green source used for both the model-status dot and the
+     SAVED badge so the panel never shows two unrelated greens. */
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --success-border: #a7f3d0;
   --radius: 10px;
+  --radius-sm: 6px;
+  /* 4px-based spacing scale (matches the onboarding page) - all panel gaps/padding route
+     through these so the vertical rhythm is even instead of ad-hoc. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
@@ -29,19 +43,21 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app { width: 100%; padding: 12px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
+.app { width: 100%; padding: var(--space-3) var(--space-4); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-3); }
 
 /* Header */
 .head { display: flex; align-items: center; justify-content: space-between; }
 .brand { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; }
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
-.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #10b981; }
+/* Micro status chip. Lowercased via text-transform (NOT by editing strings) so the
+   model-status word reads in the same lowercase system as the SAVED badge + "indexed". */
+.status { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 11.5px; color: var(--muted); text-transform: lowercase; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
 .status.loading::before { background: #f59e0b; }
 .status.error::before { background: var(--danger); }
 
 /* "this page" bar - reacts to the active content tab. */
-.thispage { display: flex; flex-direction: column; gap: 10px; }
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.thispage { display: flex; flex-direction: column; gap: var(--space-3); }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
 .page-id { min-width: 0; }
 .page-title {
   font-weight: 600; font-size: 13px; color: var(--text);
@@ -49,10 +65,10 @@ body {
 }
 .page-host { margin-top: 1px; font-size: 11.5px; color: var(--muted); }
 
-/* SAVED pill (PAGE-scoped). */
+/* SAVED pill (PAGE-scoped). Lowercased via text-transform to match the status chip. */
 .badge {
   flex: none;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   font-size: 10.5px;
   font-weight: 550;
   color: var(--muted);
@@ -60,19 +76,20 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   white-space: nowrap;
+  text-transform: lowercase;
 }
-.badge.saved { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+.badge.saved { color: var(--success); background: var(--success-soft); border-color: var(--success-border); }
 
 .page-actions { display: flex; }
-.site-actions { display: flex; flex-direction: column; gap: 10px; }
+.site-actions { display: flex; flex-direction: column; gap: var(--space-3); }
 
 /* Tab bar - renders even with a single tab. */
-.tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.tabbar { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); }
 .tab {
   background: none;
   border: 0;
   border-bottom: 2px solid transparent;
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-2);
   font-size: 12.5px;
   font-weight: 550;
   color: var(--muted);
@@ -84,12 +101,12 @@ body {
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Search */
-.searchtab { display: flex; flex-direction: column; gap: 10px; }
-.searchbar { display: flex; gap: 8px; align-items: stretch; }
+.searchtab { display: flex; flex-direction: column; gap: var(--space-3); }
+.searchbar { display: flex; gap: var(--space-2); align-items: stretch; }
 .searchbar input {
   flex: 1;
   min-width: 0;
-  padding: 9px 12px;
+  padding: 9px var(--space-3);
   font-size: 13px;
   color: var(--text);
   background: #fff;
@@ -103,7 +120,7 @@ body {
 .searchbar input::placeholder { color: var(--faint); }
 .searchbtn {
   flex: none;
-  padding: 9px 16px;
+  padding: 9px var(--space-4);
   font-size: 13px;
   font-weight: 550;
   color: #fff;
@@ -116,19 +133,19 @@ body {
 .searchbtn:hover { background: var(--accent-hover); }
 
 /* Results - full-width cards filling straight down the body. */
-.results { display: flex; flex-direction: column; gap: 8px; }
+.results { display: flex; flex-direction: column; gap: var(--space-2); }
 .card {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   background: #fff;
   box-shadow: var(--shadow);
 }
 .card > a { display: block; color: var(--accent); font-weight: 600; font-size: 12.5px; text-decoration: none; }
 .card > a:hover { text-decoration: underline; }
 .card > p {
-  margin: 5px 0 0;
+  margin: var(--space-1) 0 0;
   color: #374151;
   font-size: 12.5px;
   line-height: 1.45;
@@ -137,12 +154,14 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.card .meta { margin-top: 6px; font-size: 10.5px; color: var(--faint); }
+.card .meta { margin-top: var(--space-1); font-size: 10.5px; color: var(--faint); }
 
 /* History tab - reuses .results/.card/.meta; only spacing for the load-more button. */
-.historytab { display: flex; flex-direction: column; gap: 10px; }
+.historytab { display: flex; flex-direction: column; gap: var(--space-3); }
 .loadmore { align-self: flex-start; }
 
+/* Secondary status/meta lines - one muted-grey token, one size, so the capture/index
+   status reads in the same system as the model status chip. */
 .hint { font-size: 11.5px; color: var(--muted); }
 .note { font-size: 11.5px; color: var(--muted); }
 .note.paused { color: var(--danger); }
@@ -173,7 +192,7 @@ body {
   0%   { left: -40%; }
   100% { left: 100%; }
 }
-.indexing-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.indexing-meta { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 11.5px; color: var(--muted); }
 .indexing-spark { color: var(--accent); line-height: 1; animation: indexing-pulse 1.2s ease-in-out infinite; }
 @keyframes indexing-pulse {
   0%, 100% { opacity: 0.35; transform: scale(0.9); }
@@ -191,12 +210,12 @@ body {
   .indexing-spark { animation: none; opacity: 1; transform: none; }
 }
 
-.rule { width: 100%; height: 1px; background: var(--border); margin: 2px 0; border: 0; }
+.rule { width: 100%; height: 1px; background: var(--border); margin: var(--space-1) 0; border: 0; }
 
 /* Primary capture button (PAGE-scoped) - full width. */
 .capture {
   width: 100%;
-  padding: 9px 12px;
+  padding: 9px var(--space-3);
   font-size: 13px;
   font-weight: 550;
   color: #fff;
@@ -216,8 +235,10 @@ body {
 }
 .capture.saved:hover { background: #e3e8ff; }
 
-/* Secondary / tertiary controls (SITE-scoped). */
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Secondary / tertiary controls (SITE-scoped). The deny/forget links sit in ONE
+   left-aligned group with a consistent gap (not pushed to opposite edges) so they read
+   as a related pair. */
+.toolbar { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3); }
 .linkbtn {
   background: none;
   border: 0;
@@ -225,7 +246,7 @@ body {
   font-size: 11.5px;
   color: var(--muted);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
 }
 .linkbtn:hover { color: var(--text); text-decoration: underline; }
@@ -233,7 +254,7 @@ body {
 
 /* Pause toggle. The checkbox overlays the track at full size (transparent) rather than
    0x0, so it keeps a real bounding box and stays clickable for tests/accessibility. */
-.toggle { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none; }
+.toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--text); cursor: pointer; user-select: none; }
 .switch { position: relative; width: 34px; height: 20px; flex: none; }
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
 .track { position: absolute; inset: 0; border-radius: 999px; background: #d6d8de; transition: background 0.15s; }
@@ -253,5 +274,5 @@ body {
 /* No-remember list (shown inline only when non-empty). */
 .denylist { font-size: 11.5px; display: flex; flex-direction: column; gap: 1px; }
 .denylist-head { color: var(--muted); padding: 2px 0 3px; }
-.denyrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.denyrow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 3px 0; }
 .denyrow span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
