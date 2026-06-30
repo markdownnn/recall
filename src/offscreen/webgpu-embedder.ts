@@ -168,14 +168,25 @@ export class WebGpuEmbedder {
   private async runEmbed(texts: string[], kind: 'query' | 'passage'): Promise<number[][]> {
     const pipe = await this.getPipe()
     const out: number[][] = []
-    for (let i = 0; i < texts.length; i += BATCH) {
-      const slice = texts.slice(i, i + BATCH)
-      const prefixed = slice.map((t) => `${kind}: ${t}`)
-      const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
-      for (const arr of output.tolist() as number[][]) out.push(arr)
-      // Yield the GPU between batches (not after the last) so the foreground page
-      // the user is reading keeps rendering smoothly during background indexing.
-      if (i + BATCH < texts.length) await sleep(YIELD_MS)
+    try {
+      for (let i = 0; i < texts.length; i += BATCH) {
+        const slice = texts.slice(i, i + BATCH)
+        const prefixed = slice.map((t) => `${kind}: ${t}`)
+        const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
+        for (const arr of output.tolist() as number[][]) out.push(arr)
+        // Yield the GPU between batches (not after the last) so the foreground page
+        // the user is reading keeps rendering smoothly during background indexing.
+        if (i + BATCH < texts.length) await sleep(YIELD_MS)
+      }
+    } catch (e) {
+      // DEAD-PIPE FIX: an inference can throw AFTER the pipe resolved (e.g. a
+      // WebGPU "device lost" mid-run). The cached pipe is now dead, so null it
+      // out — the NEXT embed (or the drain's next retry) reloads the model and
+      // self-heals instead of replaying this failure forever. Single-flight
+      // guarantees one runEmbed at a time, so no concurrent caller is mid-use of
+      // this promise; nulling it here is safe.
+      this.pipeP = null
+      throw e
     }
     return out
   }

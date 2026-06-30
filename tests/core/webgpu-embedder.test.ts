@@ -15,14 +15,26 @@ interface FakeHandle {
 // failTimes: number of leading factory() invocations that throw. Note createPipe
 // tries WebGPU then WASM, so one full createPipe round consumes TWO factory
 // calls; failTimes:2 makes an entire first load fail and the next one succeed.
-function makeFake(opts: { failTimes?: number } = {}): FakeHandle {
+// failInference: number of leading NON-warmup inference calls that throw (the
+// warmup embed inside createPipe is excluded so the model still LOADS fine and
+// only a real embed fails). Models a WebGPU "device lost" mid-run.
+function makeFake(opts: { failTimes?: number; failInference?: number } = {}): FakeHandle {
   const h: FakeHandle = { factory: null as unknown as PipelineFactory, factoryCalls: 0, calls: [], maxActive: 0 }
   let active = 0
+  let realInferenceCalls = 0
 
   const extractor = async (inputs: string[]) => {
     active++
     h.maxActive = Math.max(h.maxActive, active)
     await new Promise((r) => setTimeout(r, 5)) // hold the slot so any overlap is visible
+    const isWarmup = inputs.some((t) => t.includes('warmup'))
+    if (!isWarmup) {
+      realInferenceCalls++
+      if (realInferenceCalls <= (opts.failInference ?? 0)) {
+        active--
+        throw new Error(`fake inference failure #${realInferenceCalls}`)
+      }
+    }
     h.calls.push(inputs)
     active--
     return { tolist: () => inputs.map(() => [0.1, 0.2, 0.3, 0.4]) }
@@ -51,6 +63,26 @@ test('poisoned pipe: a failed load does not poison later calls (pipeP cleared)',
   // Without the fix, pipeP stays cached as a rejected promise and this rejects too.
   await expect(embedder.ensureLoaded()).resolves.toBeUndefined()
   expect(embedder.device).toBe('webgpu')
+})
+
+// Scenario: a WebGPU "device lost" makes a real embed throw AFTER the pipe was
+// already loaded. The dead pipe must NOT stay cached: the next embed has to
+// reload the model (factory invoked again) and self-heal, otherwise the drain's
+// retry loop replays the same failure until the offscreen document restarts.
+// Coverage: integration (real WebGpuEmbedder run/cache path, fake factory whose
+// first real inference throws and which counts factory invocations).
+test('inference failure resets the cached pipe so the next embed reloads', async () => {
+  const fake = makeFake({ failInference: 1 }) // first real embed throws, then OK
+  const embedder = new WebGpuEmbedder(fake.factory)
+
+  // First embed loads the pipe, then the inference throws -> embed rejects.
+  await expect(embedder.embed(['x'], 'passage')).rejects.toThrow()
+  const callsAfterFirst = fake.factoryCalls
+  expect(callsAfterFirst).toBeGreaterThan(0) // it did load once
+
+  // Without the fix the dead pipe is reused and this rejects too / no reload.
+  await expect(embedder.embed(['y'], 'passage')).resolves.toBeDefined()
+  expect(fake.factoryCalls).toBeGreaterThan(callsAfterFirst) // pipe was reloaded
 })
 
 // Scenario: two captures/recalls run embeds at the same time; ONNX must never
