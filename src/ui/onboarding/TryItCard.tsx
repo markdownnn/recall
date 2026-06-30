@@ -69,6 +69,12 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
     setRemoved(true)
   }
 
+  // A result's page.url is the recall-demo storage url (a fake host that 404s on click). Map
+  // it back to the sample's REAL sourceUrl so the link opens a live page. Storage + "Remove
+  // demo data" still key on the demo url - only the link href is swapped.
+  const sourceByUrl = new Map(section.samples.map((s) => [s.url, s.sourceUrl]))
+  const linkFor = (url: string) => sourceByUrl.get(url) ?? url
+
   return (
     <section class="card section">
       <h2>Try it yourself</h2>
@@ -114,7 +120,7 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
             <div class="results">
               {results.map((r) => (
                 <article class="card" key={r.chunk.id}>
-                  <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
+                  <a href={linkFor(r.page.url)} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
                   <p>{r.chunk.text}</p>
                   <div class="meta">{hostOf(r.page.url)}</div>
                 </article>

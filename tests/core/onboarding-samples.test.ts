@@ -31,7 +31,8 @@ test('sample urls are unique', () => {
 // Scenario: isValidSample must REJECT a blank or mis-hosted doc, or the guard is useless.
 // Coverage: integration (real samples.ts).
 test('isValidSample rejects blank and off-host docs', () => {
-  expect(isValidSample({ url: 'https://recall-demo.example/x', title: '', text: 'hi there' })).toBe(false)
-  expect(isValidSample({ url: 'https://evil.example/x', title: 'T', text: 'some words here' })).toBe(false)
-  expect(isValidSample({ url: 'not a url', title: 'T', text: 'some words here' })).toBe(false)
+  const src = 'https://en.wikipedia.org/wiki/X'
+  expect(isValidSample({ url: 'https://recall-demo.example/x', sourceUrl: src, title: '', text: 'hi there' })).toBe(false)
+  expect(isValidSample({ url: 'https://evil.example/x', sourceUrl: src, title: 'T', text: 'some words here' })).toBe(false)
+  expect(isValidSample({ url: 'not a url', sourceUrl: src, title: 'T', text: 'some words here' })).toBe(false)
 })

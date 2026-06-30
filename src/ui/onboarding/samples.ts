@@ -3,7 +3,13 @@
 // the card's "Remove demo data" (forget-host on DEMO_HOST) cleans them in one call.
 
 export interface SampleDoc {
+  // Storage url: on DEMO_HOST so capture + forget-by-host work as one unit. This is what the
+  // pages table keys on.
   url: string
+  // The REAL public page this sample summarizes. The try-it result card links here so a click
+  // opens a live page instead of the fake demo host (which would 404). Storage/forget still
+  // key on `url`, untouched.
+  sourceUrl: string
   title: string
   text: string
 }
@@ -15,6 +21,7 @@ export const DEMO_HOST = 'recall-demo.example'
 export const SAMPLES: SampleDoc[] = [
   {
     url: 'https://recall-demo.example/photosynthesis',
+    sourceUrl: 'https://en.wikipedia.org/wiki/Photosynthesis',
     title: 'How photosynthesis works',
     text:
       'Photosynthesis is how a green plant makes its own food from sunlight. Inside the ' +
@@ -32,6 +39,7 @@ export const SAMPLES: SampleDoc[] = [
   },
   {
     url: 'https://recall-demo.example/sleep-and-cortisol',
+    sourceUrl: 'https://en.wikipedia.org/wiki/Cortisol',
     title: 'Sleep, cortisol, and the body clock',
     text:
       'Cortisol is a stress hormone made by the adrenal glands, two small organs that sit ' +
@@ -48,6 +56,7 @@ export const SAMPLES: SampleDoc[] = [
   },
   {
     url: 'https://recall-demo.example/http-caching',
+    sourceUrl: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching',
     title: 'How HTTP caching speeds up the web',
     text:
       'When your browser loads a web page it has to fetch many files: the page itself, the ' +
