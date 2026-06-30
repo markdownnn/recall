@@ -166,9 +166,12 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
         <span class={saved ? 'badge saved' : 'badge'}>{saved ? t.savedBadge : t.notSavedBadge}</span>
       </div>
 
-      {/* PAGE-scoped: acts on THIS exact URL. */}
+      {/* PAGE-scoped: acts on THIS exact URL. Already-saved -> "Update" + faded style; the
+          default/loading (not-yet-resolved) state stays the prominent "Capture this page". */}
       <div class="page-actions">
-        <button class="capture" onClick={onCapture}>{t.captureButton}</button>
+        <button class={saved ? 'capture saved' : 'capture'} onClick={onCapture}>
+          {saved ? t.updateButton : t.captureButton}
+        </button>
       </div>
 
       {/* SITE-scoped: acts on the HOST. */}

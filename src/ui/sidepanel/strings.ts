@@ -8,6 +8,7 @@ export interface UIStrings {
   searchButtonAria: string     // its aria-label
   // Capture + status
   captureButton: string
+  updateButton: string          // label when the active page is already saved
   indexed: string
   capturing: string
   capturedChunks: (n: number) => string
@@ -55,6 +56,7 @@ export const EN: UIStrings = {
   searchButtonLabel: 'Search',
   searchButtonAria: 'Search',
   captureButton: 'Capture this page',
+  updateButton: 'Update this page',
   indexed: 'indexed',
   capturing: 'capturing...',
   capturedChunks: (n) => `captured (indexing ${n} chunks...)`,

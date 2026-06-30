@@ -2,7 +2,7 @@ import { EN } from '../../src/ui/sidepanel/strings'
 
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
-  'captureButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
+  'captureButton', 'updateButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'modelReady', 'modelError', 'pauseLabel',
   'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
@@ -33,6 +33,9 @@ test('EN exposes all dynamic keys as functions', () => {
 // the canary if a wording change ever sneaks into strings.ts.
 test('byte-identical e2e strings are preserved', () => {
   expect(EN.captureButton).toBe('Capture this page')
+  expect(EN.updateButton).toBe('Update this page')
+  expect(EN.savedBadge).toBe('saved')
+  expect(EN.notSavedBadge).toBe('not saved yet')
   expect(EN.indexed).toBe('indexed')
   expect(EN.capturedChunks(3)).toBe('captured (indexing 3 chunks...)')
   expect(EN.indexingProgress(5)).toBe('indexing... 5 done')

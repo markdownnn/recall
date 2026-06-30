@@ -159,6 +159,14 @@ body {
   transition: background 0.15s;
 }
 .capture:hover { background: var(--accent-hover); }
+/* Already-saved page: the button means "Update", so fade it back from the prominent
+   accent fill to a quiet, lighter style. */
+.capture.saved {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-strong);
+}
+.capture.saved:hover { background: #e3e8ff; }
 
 /* Secondary / tertiary controls (SITE-scoped). */
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
