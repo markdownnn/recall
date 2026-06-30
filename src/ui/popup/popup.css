@@ -1,0 +1,18 @@
+/* Compact overrides for the 360px extension popup. Pico defaults target full pages, so
+   tighten typography/spacing. Dark mode is free via prefers-color-scheme. */
+:root {
+  font-size: 87.5%;
+  --pico-spacing: 0.6rem;
+  --pico-block-spacing-vertical: 0.6rem;
+  --pico-form-element-spacing-vertical: 0.45rem;
+  --pico-border-radius: 0.5rem;
+  --pico-font-family: system-ui, -apple-system, sans-serif;
+}
+body { width: 360px; }
+main.container { padding: 0.75rem; }
+.row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.row > button { flex: 1 1 auto; width: auto; margin: 0; }
+article { margin: 0.5rem 0; padding: 0.6rem 0.75rem; }
+article > a { text-decoration: none; font-weight: 600; }
+article > p { margin: 0.3rem 0 0; font-size: 0.92em; color: var(--pico-color); }
+article > footer { margin-top: 0.35rem; padding: 0; background: none; border: none; }
