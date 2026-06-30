@@ -1,5 +1,6 @@
-/* Recall side panel (SPIKE) - same clean light look as the popup, but FLUID width
-   (the panel is wider than the 360px popup and the user can resize it). */
+/* Recall side panel - clean light look carried from the popup, but FULL-WIDTH: the panel
+   is wider than the 360px popup and the user can resize it, so content STRETCHES to fill
+   the panel width (no max-width centered column) and reflows on resize. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -18,18 +19,17 @@
 
 * { box-sizing: border-box; }
 
+/* FULL-WIDTH: fill the panel, side padding only - NOT a centered max-width column. */
 body {
-  min-width: 320px;
-  max-width: 520px;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
   background: var(--bg);
   color: var(--text);
   font: 13px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-.app { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.app { width: 100%; padding: 12px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
 
 /* Header */
 .head { display: flex; align-items: center; justify-content: space-between; }
@@ -39,14 +39,56 @@ body {
 .status.loading::before { background: #f59e0b; }
 .status.error::before { background: var(--danger); }
 
-/* "this page" line - reacts to the active content tab */
-.thispage { font-size: 12px; color: var(--muted); }
-.thispage strong { color: var(--text); }
+/* "this page" bar - reacts to the active content tab. */
+.thispage { display: flex; flex-direction: column; gap: 10px; }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.page-id { min-width: 0; }
+.page-title {
+  font-weight: 600; font-size: 13px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.page-host { margin-top: 1px; font-size: 11.5px; color: var(--muted); }
+
+/* SAVED pill (PAGE-scoped). */
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 550;
+  color: var(--muted);
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.badge.saved { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+
+.page-actions { display: flex; }
+.site-actions { display: flex; flex-direction: column; gap: 10px; }
+
+/* Tab bar - renders even with a single tab. */
+.tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Search */
+.searchtab { display: flex; flex-direction: column; gap: 10px; }
 .searchbar { display: flex; gap: 8px; align-items: stretch; }
 .searchbar input {
   flex: 1;
+  min-width: 0;
   padding: 9px 12px;
   font-size: 13px;
   color: var(--text);
@@ -61,7 +103,7 @@ body {
 .searchbar input::placeholder { color: var(--faint); }
 .searchbtn {
   flex: none;
-  padding: 9px 14px;
+  padding: 9px 16px;
   font-size: 13px;
   font-weight: 550;
   color: #fff;
@@ -73,9 +115,10 @@ body {
 }
 .searchbtn:hover { background: var(--accent-hover); }
 
-/* Results */
+/* Results - full-width cards filling straight down the body. */
 .results { display: flex; flex-direction: column; gap: 8px; }
 .card {
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 12px;
@@ -89,15 +132,20 @@ body {
   color: #374151;
   font-size: 12.5px;
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .card .meta { margin-top: 6px; font-size: 10.5px; color: var(--faint); }
 
 .hint { font-size: 11.5px; color: var(--muted); }
 .note { font-size: 11.5px; color: var(--muted); }
+.note.paused { color: var(--danger); }
 
-.rule { height: 1px; background: var(--border); margin: 2px 0; border: 0; }
+.rule { width: 100%; height: 1px; background: var(--border); margin: 2px 0; border: 0; }
 
-/* Primary capture button */
+/* Primary capture button (PAGE-scoped) - full width. */
 .capture {
   width: 100%;
   padding: 9px 12px;
@@ -111,3 +159,43 @@ body {
   transition: background 0.15s;
 }
 .capture:hover { background: var(--accent-hover); }
+
+/* Secondary / tertiary controls (SITE-scoped). */
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.linkbtn {
+  background: none;
+  border: 0;
+  padding: 3px 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.linkbtn:hover { color: var(--text); text-decoration: underline; }
+.linkbtn.danger:hover { color: var(--danger); }
+
+/* Pause toggle. The checkbox overlays the track at full size (transparent) rather than
+   0x0, so it keeps a real bounding box and stays clickable for tests/accessibility. */
+.toggle { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none; }
+.switch { position: relative; width: 34px; height: 20px; flex: none; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.track { position: absolute; inset: 0; border-radius: 999px; background: #d6d8de; transition: background 0.15s; }
+.track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(14px); }
+
+/* No-remember list (shown inline only when non-empty). */
+.denylist { font-size: 11.5px; display: flex; flex-direction: column; gap: 1px; }
+.denylist-head { color: var(--muted); padding: 2px 0 3px; }
+.denyrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.denyrow span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
