@@ -113,8 +113,8 @@ function broadcastModelStatus(status: ModelStatus): void {
   chrome.runtime.sendMessage({ type: 'model-progress', status }).catch(() => {})
 }
 
-function broadcastIndexingProgress(pending: number, embedded: number): void {
-  chrome.runtime.sendMessage({ type: 'indexing-progress', pending, embedded }).catch(() => {})
+function broadcastIndexingProgress(pending: number, embedded: number, total?: number): void {
+  chrome.runtime.sendMessage({ type: 'indexing-progress', pending, embedded, total }).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +129,9 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
     modelStatus = reduceModelProgress(modelStatus, e)
     broadcastModelStatus(modelStatus)
   } else if (msg?.kind === 'indexing-progress') {
-    // pending=1 means "still going"; embedded is the running total.
-    broadcastIndexingProgress(1, (msg.embedded as number) ?? 0)
+    // pending=1 means "still going"; embedded is the running total. `total` (page count) is
+    // present only during the model-swap re-index, letting the panel show a real "N of M" bar.
+    broadcastIndexingProgress(1, (msg.embedded as number) ?? 0, msg.total as number | undefined)
   } else if (msg?.kind === 'indexing-complete') {
     // pending=0 signals "done" to the popup UI.
     const total = (msg.totalEmbedded as number) ?? 0
@@ -144,6 +145,14 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
     // can clear the stuck "indexing..." state instead of hanging forever.
     chrome.runtime
       .sendMessage({ type: 'indexing-error', error: String(msg.error ?? 'unknown') })
+      .catch(() => {})
+  } else if (msg?.kind === 'embedder-degraded') {
+    // The embedder loaded on WASM (state:'wasm', running slow) OR could not load at all
+    // (state:'unavailable', no on-device search on this hardware). Relay to the panel so it
+    // can show the matching notice. UI consume is a follow-up; this just makes the signal
+    // reachable instead of a buried offscreen warn.
+    chrome.runtime
+      .sendMessage({ type: 'embedder-degraded', state: msg.state })
       .catch(() => {})
   }
 
