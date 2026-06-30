@@ -23,6 +23,8 @@ export interface UIStrings {
   indexingAria: string          // aria-label for the indeterminate indexing indicator (NEW; additive)
   indexingFailed: (err: string) => string
   captureFailed: (err: string) => string
+  cannotCapturePage: string     // friendly line for restricted pages (chrome://, etc.)
+  reloadToCapture: string       // friendly line when a capturable tab has no content script yet
   searchFailed: (err: string) => string
   // SAVED badge (new; PAGE-scoped)
   savedBadge: string
@@ -75,6 +77,8 @@ export const EN: UIStrings = {
   indexingAria: 'Indexing in progress',
   indexingFailed: (err) => `indexing failed: ${err}`,
   captureFailed: (err) => `capture failed: ${err}`,
+  cannotCapturePage: "This page can't be saved",
+  reloadToCapture: "Reload this page, then save it",
   searchFailed: (err) => `search failed: ${err}`,
   savedBadge: 'saved',
   notSavedBadge: 'not saved yet',

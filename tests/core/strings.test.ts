@@ -5,6 +5,7 @@ const STATIC_KEYS = [
   'historyTabLabel', 'historyEmpty', 'loadMore',
   'captureButton', 'updateButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
+  'cannotCapturePage', 'reloadToCapture',
   'modelReady', 'modelError', 'pauseLabel',
   'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
   'noRememberSitesHeader', 'removeLabel',
@@ -55,4 +56,9 @@ test('byte-identical e2e strings are preserved', () => {
   // Coverage: integration (real EN object).
   expect(EN.historyTabLabel).toBe('History')
   expect(EN.loadMore).toBe('Load more')
+  // Scenario: the two capture-guard lines are user-facing copy; pin them so a wording
+  // drift is caught. ASCII apostrophes only.
+  // Coverage: integration (real EN object).
+  expect(EN.cannotCapturePage).toBe("This page can't be saved")
+  expect(EN.reloadToCapture).toBe('Reload this page, then save it')
 })

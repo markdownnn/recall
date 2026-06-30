@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { MsgResult } from '../../messaging'
 import { siteHost } from '../../core/site-host'
+import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
 
 // The active tab the bar is reflecting. Title is shown as the primary line; host is the
@@ -10,18 +11,6 @@ interface ActiveTab { url: string; host: string; title: string }
 function hostOf(url: string | undefined): string {
   if (!url) return ''
   try { return new URL(url).hostname } catch { return '' }
-}
-
-// The SAVED badge only round-trips for pages capture can actually store: http(s) and
-// local file:// pages (the content script matches <all_urls>, so a file:// article is
-// captured and SHOULD read SAVED). chrome://, extension, and blank/restricted tabs are
-// never captured, so skip the round-trip for them.
-function isCapturable(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const p = new URL(url).protocol
-    return p === 'http:' || p === 'https:' || p === 'file:'
-  } catch { return false }
 }
 
 // Active-tab-reactive "this page" bar. Shows TITLE + host + a PAGE-scoped SAVED badge and
@@ -49,7 +38,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
 
     // Badge READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
     // the id can never drift from what capture stored. Skip non-http(s) tabs.
-    if (!isCapturable(url)) { setSaved(false); return }
+    if (!isCapturableUrl(url)) { setSaved(false); return }
     try {
       const res: MsgResult = await chrome.runtime.sendMessage({ type: 'has-page', url })
       // Out-of-order guard: the active url changed while we were waiting; drop this answer.

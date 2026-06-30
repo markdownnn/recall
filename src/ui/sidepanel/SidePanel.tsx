@@ -2,6 +2,7 @@ import { useState, useEffect } from 'preact/hooks'
 import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg } from '../../messaging'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
+import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
 import { ThisPageBar } from './ThisPageBar'
 import { IndexingIndicator } from './IndexingIndicator'
@@ -9,11 +10,6 @@ import { SearchTab } from './SearchTab'
 import { HistoryTab } from './HistoryTab'
 import { TabBar } from './Tabs'
 import type { TabKey } from './Tabs'
-
-async function activeTabId(): Promise<number> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  return tab.id!
-}
 
 // Root of the side panel. Owns: model status, the active tab key, AND the ONE combined
 // capture/index `status` line - written by BOTH `capture()` and the indexing broadcast
@@ -72,9 +68,17 @@ export function SidePanel() {
   const capture = async () => {
     // A fresh capture leaves any prior indexing phase so the "capturing..." line shows.
     setIndexing(false)
+    // Read the active tab FIRST. Restricted pages (chrome://, extension, new-tab, PDFs,
+    // view-source) can never host a content script, so messaging them rejects with
+    // "Receiving end does not exist". Guard here and show a friendly line instead.
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
+    if (!isCapturableUrl(activeTab?.url ?? '')) {
+      setStatus(t.cannotCapturePage)
+      return
+    }
     setStatus(t.capturing)
     try {
-      const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
+      const res: MsgResult = await chrome.tabs.sendMessage(activeTab!.id!, { type: 'extract-and-capture' })
       if (res?.type === 'captured') {
         if (res.captured && res.chunkCount > 0) setStatus(t.capturedChunks(res.chunkCount))
         else if (!res.captured && res.reason === 'paused') setStatus(t.pausedNote)
@@ -86,8 +90,11 @@ export function SidePanel() {
       } else {
         setStatus(t.captureFailed(res && 'error' in res ? res.error : 'unknown'))
       }
-    } catch (e) {
-      setStatus(t.captureFailed(String(e)))
+    } catch {
+      // The URL was capturable but the send still failed: the content script is missing
+      // because this tab was opened BEFORE the extension was installed/reloaded (the
+      // <all_urls> script only injects on page load). A refresh injects it.
+      setStatus(t.reloadToCapture)
     }
   }
 
