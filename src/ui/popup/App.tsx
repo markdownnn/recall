@@ -10,6 +10,10 @@ async function activeTabId(): Promise<number> {
   return tab.id!
 }
 
+function hostOf(url: string): string {
+  try { return new URL(url).hostname } catch { return '' }
+}
+
 export function App() {
   const [status, setStatus] = useState('')
   const [q, setQ] = useState('')
@@ -156,83 +160,75 @@ export function App() {
   function renderModelStatus() {
     if (modelStatus.state === 'loading') {
       return (
-        <div style="font-size:11px; color:#666; margin-bottom:6px;">
+        <small>
           Loading model... {modelStatus.percent}%
-          <div style="height:3px; background:#eee; border-radius:2px; margin-top:2px;">
-            <div style={`height:3px; width:${modelStatus.percent}%; background:#4a90d9; border-radius:2px; transition:width 0.3s;`} />
-          </div>
-        </div>
+          <progress value={modelStatus.percent} max={100} />
+        </small>
       )
     }
     if (modelStatus.state === 'error') {
-      return <div style="font-size:11px; color:#c00; margin-bottom:6px;">Model failed to load</div>
+      return <small>Model failed to load</small>
     }
     if (modelStatus.state === 'ready') {
-      return <div style="font-size:11px; color:#4a9; margin-bottom:6px;">Model ready</div>
+      return <small>Model ready</small>
     }
     return null
   }
 
   return (
-    <div style="padding: 12px;">
+    <main class="container">
       {renderModelStatus()}
-      <div style="margin-bottom:8px;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
-          <input type="checkbox" checked={paused} onChange={togglePause} />
-          Pause capturing
-        </label>
-        {paused && (
-          <div style="font-size:11px; color:#c66; margin-top:3px;">Paused - nothing is being saved</div>
-        )}
-      </div>
-      <div style="margin-bottom:8px;">
-        <button onClick={denyHost} style="font-size:12px;">
+
+      <label>
+        <input type="checkbox" role="switch" checked={paused} onChange={togglePause} />
+        Pause capturing
+      </label>
+      {paused && <small>Paused - nothing is being saved</small>}
+
+      <div class="row">
+        <button class="secondary" onClick={denyHost}>
           {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? 'Already on no-remember list' : "Don't remember this site"}
         </button>
-        <button onClick={forgetHost} style="font-size:12px; margin-left:6px;">
+        <button class="secondary" onClick={forgetHost}>
           Forget this site's history
         </button>
-        {denyStatus && (
-          <span style="margin-left:8px; font-size:11px; color:#888;">{denyStatus}</span>
-        )}
       </div>
+      {denyStatus && <small>{denyStatus}</small>}
+
       {userDenyHosts.length > 0 && (
-        <div style="font-size:11px; margin-bottom:8px;">
-          <div style="color:#888;">No-remember sites:</div>
+        <details>
+          <summary>No-remember sites</summary>
           {userDenyHosts.map((h) => (
-            <div key={h} style="display:flex; justify-content:space-between; align-items:center;">
+            <div key={h} class="row">
               <span>{h}</span>
-              <button onClick={() => removeDeny(h)} style="font-size:10px;">remove</button>
+              <button class="secondary outline" onClick={() => removeDeny(h)}>remove</button>
             </div>
           ))}
-        </div>
+        </details>
       )}
+
       <button onClick={capture}>Capture this page</button>
-      <span style="margin-left:8px;">{status}</span>
+      {status && <small>{status}</small>}
+
       <hr />
+
       <input
+        type="search"
         value={q}
         onInput={(e) => setQ((e.target as HTMLInputElement).value)}
         onKeyDown={(e) => e.key === 'Enter' && search()}
         placeholder="recall..."
-        style="width: 100%; box-sizing: border-box; padding: 6px;"
       />
-      {searching && (
-        <div style="font-size:12px; color:#4a90d9; margin-top:6px;">searching...</div>
-      )}
-      {!searching && hasSearched && results.length === 0 && (
-        <div style="font-size:12px; color:#888; margin-top:6px;">no results</div>
-      )}
-      <ul style="list-style:none; padding:0;">
-        {results.map((r) => (
-          <li key={r.chunk.id} style="margin:8px 0; padding:8px; border:1px solid #eee;">
-            <div style="font-size:13px;">{r.chunk.text}</div>
-            <a href={r.page.url} target="_blank" rel="noopener noreferrer" style="font-size:11px; color:#888;">
-              {r.page.title} ({r.score.toFixed(3)})
-            </a>
-          </li>
-        ))}
-      </ul>
-    </div>
+      {searching && <small>searching...</small>}
+      {!searching && hasSearched && results.length === 0 && <small>no results</small>}
+
+      {results.map((r) => (
+        <article key={r.chunk.id}>
+          <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
+          <p>{r.chunk.text}</p>
+          <footer><small>{hostOf(r.page.url)} &middot; {r.score.toFixed(2)}</small></footer>
+        </article>
+      ))}
+    </main>
   )
 }
