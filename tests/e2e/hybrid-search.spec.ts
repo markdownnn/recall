@@ -77,7 +77,12 @@ test('hybrid search: lexical win (isolated), vector win, Korean sub-word lexical
   const pages = []
   for (const [url, body] of docs) {
     const p = await ctx.newPage()
-    await p.route(url, (route) => route.fulfill({ contentType: 'text/html', body }))
+    // charset=utf-8 is REQUIRED: the KO fixture is UTF-8 Korean. Without an explicit charset
+    // Chrome decodes the response as Latin-1, so the captured/stored text is mojibake
+    // ("ê´..." instead of the Hangul) - the trigram lexical lane and the
+    // embedding then both miss the proper Korean query and the KO page never ranks. (ASCII docs
+    // are unaffected; UTF-8 is a superset.)
+    await p.route(url, (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body }))
     await p.goto(url)
     pages.push(p)
   }
