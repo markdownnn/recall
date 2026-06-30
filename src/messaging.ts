@@ -13,7 +13,6 @@ export type Msg =
   | { type: 'has-page'; url: string }
   | { type: 'page-pending'; url: string }
   | { type: 'recent-pages'; limit: number; beforeTs?: number }
-  | { type: 'indexing-status' }
 
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
@@ -24,7 +23,6 @@ export type MsgResult =
   | { type: 'page-status'; exists: boolean }
   | { type: 'page-pending-status'; pending: boolean }
   | { type: 'pages'; pages: CapturedPage[] }
-  | { type: 'indexing-status'; pending: number; embedded: number }
   | { type: 'ok' }
 
 // Push message sent from background to popup (not a request/response pair).

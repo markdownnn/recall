@@ -11,8 +11,6 @@ export class WorkerVectorStore implements VectorSearchPort {
   recentPages = (limit: number, beforeTs?: number) =>
     this.c.request<CapturedPage[]>('recentPages', { limit, beforeTs })
   pendingChunks = (limit: number) => this.c.request<Chunk[]>('pendingChunks', { limit })
-  // Declarative embed-queue snapshot for the side panel's mount-time indexing indicator.
-  chunkCounts = () => this.c.request<{ pending: number; embedded: number }>('chunkCounts', undefined)
   setVector = (id: string, vector: Float32Array) => this.c.request<void>('setVector', { id, vector })
   clearVectorsForPage = (pageId: string) => this.c.request<void>('clearVectorsForPage', pageId)
   pagesWithVectors = () => this.c.request<string[]>('pagesWithVectors', undefined)

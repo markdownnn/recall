@@ -38,8 +38,7 @@ function emitModelProgress(e: { status: string; progress?: number }): void {
 embedder.setProgressSink(emitModelProgress)
 
 // Surface a WASM fallback (granite runs but slow) to the SW -> side panel as a "running slow"
-// notice. Consuming this in the IndexingIndicator is a one-line UI follow-up (parallel task);
-// the event is emitted here regardless.
+// notice. The side panel renders it as the persistent degraded-embedder banner.
 embedder.setDegradedSink((info) => {
   chrome.runtime
     .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'wasm', device: info.device })
@@ -285,6 +284,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     return { pages: await store.recentPages(limit, beforeTs) }
   }
 
+
   // --- recall: embed query, cosine search ---
   if (op === 'recall') {
     const text = p.text as string
@@ -321,13 +321,6 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     // when the model is known-unavailable (every embed would fail; don't re-pay the model load).
     if (!embedderUnavailable) runDrainWithProgress()
     return { ok: true }
-  }
-
-  // --- indexing-status: declarative snapshot of the embed queue for the side panel's MOUNT
-  //     effect. Lets a panel opened mid-drain (the auto-capture case) seed its indexing
-  //     indicator from STATE instead of waiting for a future indexing-progress event. ---
-  if (op === 'indexing-status') {
-    return await store.chunkCounts()
   }
 })
 

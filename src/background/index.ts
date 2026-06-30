@@ -200,8 +200,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'forget-host' &&
     msg.type !== 'has-page' &&
     msg.type !== 'page-pending' &&
-    msg.type !== 'recent-pages' &&
-    msg.type !== 'indexing-status'
+    msg.type !== 'recent-pages'
   ) return false
 
   ;(async () => {
@@ -265,9 +264,6 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
           { op: 'recent-pages', limit: msg.limit, beforeTs: msg.beforeTs },
         )
         sendResponse({ type: 'pages', pages: r.pages } satisfies MsgResult)
-      } else if (msg.type === 'indexing-status') {
-        const r = await callOffscreen<{ pending: number; embedded: number }>({ op: 'indexing-status' })
-        sendResponse({ type: 'indexing-status', pending: r.pending, embedded: r.embedded } satisfies MsgResult)
       }
     } catch (err) {
       console.error('[recall/bg]', msg.type, 'FAILED:', err)
