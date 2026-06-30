@@ -80,6 +80,24 @@ test('kind prefix: query/passage prefixes reach the model', async () => {
   expect(flat).toContain('passage: bar')
 })
 
+// Scenario: a background indexing batch is mid-flight when the user hits Enter on a
+// search. The interactive query must NOT wait behind queued passage batches (the ~10s
+// "search hangs" bug); it jumps ahead of any passage work not yet started.
+// Coverage: integration (fake records execution order through the real queue).
+test('priority: a query embed jumps ahead of queued passage embeds', async () => {
+  const fake = makeFake()
+  const embedder = new WebGpuEmbedder(fake.factory)
+  await embedder.ensureLoaded()
+  fake.calls.length = 0 // drop the warmup call
+
+  const p1 = embedder.embed(['p1'], 'passage') // commits first, holds the single slot
+  const p2 = embedder.embed(['p2'], 'passage') // queues behind p1
+  const q = embedder.embed(['q1'], 'query') // arrives while p1 in flight -> overtakes p2
+  await Promise.all([p1, p2, q])
+
+  expect(fake.calls.flat()).toEqual(['passage: p1', 'query: q1', 'passage: p2'])
+})
+
 // Scenario: a large capture (20 chunks) must be embedded in small GPU-gentle batches
 // of 8 and return one vector per input, not drop or merge any.
 // Coverage: integration (fake records each batch size; asserts 8 + 8 + 4).

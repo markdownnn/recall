@@ -10,6 +10,13 @@ import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/tran
 
 type ProgressCb = (e: { status: string; progress?: number }) => void
 
+interface EmbedTask {
+  texts: string[]
+  kind: 'query' | 'passage'
+  resolve: (vecs: number[][]) => void
+  reject: (err: unknown) => void
+}
+
 // The transformers pipeline() factory, narrowed to what this class uses.
 // Injectable via the constructor so unit tests can supply a FAKE factory and
 // exercise the load/retry/batching logic without downloading a real model.
@@ -53,8 +60,13 @@ export class WebGpuEmbedder {
   // Created once per instance; concurrent ensureLoaded/embed share this promise.
   private pipeP: Promise<FeatureExtractionPipeline> | null = null
   private _device: 'webgpu' | 'wasm' | null = null
-  // Single-flight queue so ONNX never receives two overlapping inputs.
-  private queue: Promise<unknown> = Promise.resolve()
+  // Single-flight, two-lane scheduler: ONNX never gets two overlapping inputs, AND an
+  // interactive query never waits behind background passage work. queries -> highQ,
+  // passages -> lowQ; the pump always drains highQ first. The in-flight runEmbed is never
+  // interrupted (ONNX can't be), so passage batches are kept small (IndexingService).
+  private highQ: EmbedTask[] = []
+  private lowQ: EmbedTask[] = []
+  private pumping = false
   // Default progress sink. Used by the LAZY load path (a capture/recall that
   // triggers getPipe() without an explicit onProgress) so the popup still sees
   // model-load progress instead of a silent wait.
@@ -129,16 +141,28 @@ export class WebGpuEmbedder {
     return pipe
   }
 
-  // Prefix each text with `${kind}: `, run in batches of 32, return number[][].
-  // Serialized through the queue so concurrent embeds never overlap.
+  // Enqueue an embed onto its lane (query -> highQ, passage -> lowQ) and kick the pump.
+  // Serialized + reordered so concurrent embeds never overlap and a query never waits
+  // behind queued passage work.
   embed(texts: string[], kind: 'query' | 'passage'): Promise<number[][]> {
-    const run = () => this.runEmbed(texts, kind)
-    const result = this.queue.then(run, run)
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    return result
+    return new Promise<number[][]>((resolve, reject) => {
+      ;(kind === 'query' ? this.highQ : this.lowQ).push({ texts, kind, resolve, reject })
+      this.pump()
+    })
+  }
+
+  // Single-flight: one runEmbed at a time. Always prefer a waiting query over passages.
+  // Checks `pumping` BEFORE shifting (never drops a task) and always re-pumps in .finally
+  // (a failed batch never stalls the lane).
+  private pump(): void {
+    if (this.pumping) return
+    const next = this.highQ.shift() ?? this.lowQ.shift()
+    if (!next) return
+    this.pumping = true
+    this.runEmbed(next.texts, next.kind).then(next.resolve, next.reject).finally(() => {
+      this.pumping = false
+      this.pump()
+    })
   }
 
   private async runEmbed(texts: string[], kind: 'query' | 'passage'): Promise<number[][]> {
