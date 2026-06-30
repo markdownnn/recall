@@ -122,7 +122,7 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
                 <article class="card" key={r.chunk.id}>
                   <a href={linkFor(r.page.url)} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
                   <p>{r.chunk.text}</p>
-                  <div class="meta">{hostOf(r.page.url)}</div>
+                  <div class="meta">{hostOf(linkFor(r.page.url))}</div>
                 </article>
               ))}
             </div>
