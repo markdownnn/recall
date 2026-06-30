@@ -6,6 +6,11 @@ export default defineManifest({
   version: '0.0.1',
   description: 'Local-first research recall (walking skeleton)',
   action: { default_popup: 'src/ui/popup/index.html' },
+  // Side-panel SPIKE (additive): the popup above is kept intact so existing e2e still
+  // work. With both default_popup AND setPanelBehavior({openPanelOnActionClick:true})
+  // set (see src/background/index.ts), Chrome opens the PANEL on toolbar click - that is
+  // what this spike validates. The popup page still exists for the goto-based e2e.
+  side_panel: { default_path: 'src/ui/sidepanel/index.html' },
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   content_scripts: [
     { matches: ['<all_urls>'], js: ['src/content/capture.ts'], run_at: 'document_idle' },
@@ -21,7 +26,7 @@ export default defineManifest({
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
   },
-  permissions: ['unlimitedStorage', 'activeTab', 'offscreen'],
+  permissions: ['unlimitedStorage', 'activeTab', 'offscreen', 'sidePanel'],
   host_permissions: ['<all_urls>'],
   // Keyboard shortcuts. _execute_action opens the popup (handled by Chrome);
   // capture-page is handled by the service worker. Users can rebind at

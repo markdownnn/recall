@@ -242,11 +242,21 @@ async function prewarm(trigger: string): Promise<void> {
   }
 }
 
+// Side-panel SPIKE (additive): make the toolbar icon open the side panel. The SW is not
+// durable, so set the behavior on BOTH install and startup. The ?. + catch keep an old
+// Chrome (no sidePanel API) from throwing. The popup still exists, but with this set
+// Chrome opens the PANEL on icon click - the mechanic this spike validates.
+function enableSidePanelOnActionClick(): void {
+  chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
+}
+
 chrome.runtime.onInstalled.addListener(() => {
+  enableSidePanelOnActionClick()
   void prewarm('onInstalled')
 })
 
 chrome.runtime.onStartup.addListener(() => {
+  enableSidePanelOnActionClick()
   void prewarm('onStartup')
 })
 
