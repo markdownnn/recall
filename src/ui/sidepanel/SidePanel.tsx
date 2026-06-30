@@ -63,6 +63,27 @@ export function SidePanel() {
     }
   }, [])
 
+  // Toggle support for Cmd/Ctrl+Shift+K: announce THIS panel's windowId to the SW over a named
+  // port so the SW knows the panel is open in this window. When the same shortcut fires again,
+  // the SW posts {type:'close-panel'} back over the port and we close ourselves. The SW removes
+  // us from its open-set on port disconnect (panel closed by any means).
+  useEffect(() => {
+    let port: chrome.runtime.Port | null = null
+    let cancelled = false
+    chrome.windows.getCurrent().then((win) => {
+      if (cancelled || win?.id == null) return
+      port = chrome.runtime.connect({ name: 'recall-panel' })
+      port.postMessage({ windowId: win.id })
+      port.onMessage.addListener((m: { type?: string }) => {
+        if (m?.type === 'close-panel') window.close()
+      })
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+      try { port?.disconnect() } catch { /* already gone */ }
+    }
+  }, [])
+
   // Capture round-trip: ask the active content tab to extract-and-capture. Reads the active
   // tab itself, so it needs nothing from ThisPageBar.
   const capture = async () => {

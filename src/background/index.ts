@@ -65,24 +65,42 @@ function resetOffscreen(): void {
 installSwRpcListener()
 registerOffscreenEnsurer(ensureOffscreen, resetOffscreen)
 
-// Keyboard shortcuts.
-// - open-panel (Ctrl/Cmd+Shift+K): opens the side panel. chrome.sidePanel.open() MUST be
-//   called SYNCHRONOUSLY in the gesture handler - hopping through an async chrome.tabs.query
-//   callback loses the user gesture and Chrome throws. Use the `tab` arg the listener
-//   already passes (onCommand fires with (command, tab)) for the windowId.
-// - capture-page (Ctrl/Cmd+Shift+U): mirrors the "Capture this page" button by asking the
-//   active tab's content script to extract and send a manual capture (no UI).
-chrome.commands?.onCommand.addListener((command, tab) => {
-  if (command === 'open-panel') {
-    if (tab?.windowId != null) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {})
-    return
-  }
-  if (command !== 'capture-page') return
-  chrome.tabs.query({ active: true, currentWindow: true }, ([active]) => {
-    if (active?.id) {
-      chrome.tabs.sendMessage(active.id, { type: 'extract-and-capture' }, () => void chrome.runtime.lastError)
+// Open-panel ports: each side panel page connects on mount (name 'recall-panel') and posts
+// its {windowId}. We keep a windowId -> port map so the open-panel command can tell whether a
+// panel is already open in the active window and, if so, post a close signal back to it. The
+// port disconnects when the panel closes (by any means), so the map self-cleans.
+const panelPorts = new Map<number, chrome.runtime.Port>()
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'recall-panel') return
+  let windowId: number | null = null
+  port.onMessage.addListener((m: { windowId?: number }) => {
+    if (typeof m?.windowId === 'number') {
+      windowId = m.windowId
+      panelPorts.set(windowId, port)
     }
   })
+  port.onDisconnect.addListener(() => {
+    if (windowId != null) panelPorts.delete(windowId)
+  })
+})
+
+// Keyboard shortcut open-panel (Ctrl/Cmd+Shift+K): TOGGLE the side panel.
+// - If a panel is already open in the active window (its port is in panelPorts), post
+//   {type:'close-panel'} so the panel page calls window.close() on itself.
+// - Otherwise open it. chrome.sidePanel.open() MUST be called SYNCHRONOUSLY in the gesture
+//   handler - hopping through an async callback loses the user gesture and Chrome throws. The
+//   panelPorts check is synchronous, so the gesture is preserved on the open path. We use the
+//   `tab` arg the listener already passes (onCommand fires with (command, tab)) for windowId.
+chrome.commands?.onCommand.addListener((command, tab) => {
+  if (command !== 'open-panel') return
+  const windowId = tab?.windowId
+  if (windowId == null) return
+  const port = panelPorts.get(windowId)
+  if (port) {
+    port.postMessage({ type: 'close-panel' })
+  } else {
+    chrome.sidePanel.open({ windowId }).catch(() => {})
+  }
 })
 
 // ---------------------------------------------------------------------------

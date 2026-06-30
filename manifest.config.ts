@@ -43,17 +43,13 @@ export default defineManifest({
   },
   permissions: ['unlimitedStorage', 'activeTab', 'offscreen', 'sidePanel'],
   host_permissions: ['<all_urls>'],
-  // Keyboard shortcuts. open-panel opens the side panel (the SW calls sidePanel.open in
-  // the command handler - a command is a user gesture); capture-page is handled by the
-  // service worker. Users can rebind at chrome://extensions/shortcuts.
+  // Keyboard shortcuts. open-panel TOGGLES the side panel (the SW calls sidePanel.open in the
+  // command handler - a command is a user gesture - or posts a close signal to an already-open
+  // panel). Users can rebind at chrome://extensions/shortcuts.
   commands: {
     'open-panel': {
       suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
-      description: 'Open the Recall side panel',
-    },
-    'capture-page': {
-      suggested_key: { default: 'Ctrl+Shift+U', mac: 'Command+Shift+U' },
-      description: 'Capture the current page',
+      description: 'Toggle the Recall side panel',
     },
   },
 })

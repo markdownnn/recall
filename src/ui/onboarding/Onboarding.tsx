@@ -86,10 +86,6 @@ function OpenRecallSection() {
           <span class="keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd></span>
           <span>Open Recall</span>
         </div>
-        <div class="shortcut">
-          <span class="keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>U</kbd></span>
-          <span>Save the current page</span>
-        </div>
         <p class="tip">On Mac, use &#8984; Cmd instead of Ctrl.</p>
       </div>
 
