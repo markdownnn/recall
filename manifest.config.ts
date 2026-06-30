@@ -5,11 +5,10 @@ export default defineManifest({
   name: 'Recall',
   version: '0.0.1',
   description: 'Local-first research recall (walking skeleton)',
-  action: { default_popup: 'src/ui/popup/index.html' },
-  // Side-panel SPIKE (additive): the popup above is kept intact so existing e2e still
-  // work. With both default_popup AND setPanelBehavior({openPanelOnActionClick:true})
-  // set (see src/background/index.ts), Chrome opens the PANEL on toolbar click - that is
-  // what this spike validates. The popup page still exists for the goto-based e2e.
+  // Bare action (no popup): the toolbar icon is clickable and, via
+  // setPanelBehavior({openPanelOnActionClick:true}) in src/background/index.ts, opens the
+  // side panel. The popup is gone; the side panel is the only UI surface.
+  action: {},
   side_panel: { default_path: 'src/ui/sidepanel/index.html' },
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   content_scripts: [
@@ -31,7 +30,6 @@ export default defineManifest({
   // Keyboard shortcuts. open-panel opens the side panel (the SW calls sidePanel.open in
   // the command handler - a command is a user gesture); capture-page is handled by the
   // service worker. Users can rebind at chrome://extensions/shortcuts.
-  // (default_popup above is kept for now; a later bundle removes the popup.)
   commands: {
     'open-panel': {
       suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
