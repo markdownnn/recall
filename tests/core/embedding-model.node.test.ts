@@ -1,20 +1,32 @@
-// Scenario: local e5-small must place a Korean/English query closer to the matching English passage
-// than to an unrelated one; if this fails the product's core cross-lingual search breaks.
-// Coverage: integration (real model inference, no mock).
-// Worker wrapper is browser-only so node tests the embedding logic directly.
+// Scenario: the bundled model (granite) must place a Korean/English query closer to the
+// matching English passage than to an unrelated one - with NO e5-style prefix. If this fails,
+// cross-lingual search is broken on the model we actually ship.
+// Coverage: integration (real granite inference from the bundled artifact, no mock).
+// Worker wrapper is browser-only so node tests the embedding logic directly. Granite is loaded
+// OFFLINE from public/models/granite (the same committed artifact the extension ships), dtype
+// q8, raw text (no prefix), mirroring the eval + production embedder.
 
-import { pipeline } from '@huggingface/transformers'
+import { pipeline, env } from '@huggingface/transformers'
+import { resolve } from 'node:path'
 import { cosineSimilarity } from '../../src/core/cosine'
 
-test('cross-lingual english: english query is closest to matching english passage', async () => {
-  const extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
-  const embed = async (t: string) => {
+env.allowLocalModels = true
+env.allowRemoteModels = false
+env.localModelPath = resolve('public/models') // load the bundled 'granite' dir offline
+
+async function loadEmbed() {
+  const extractor = await pipeline('feature-extraction', 'granite', { dtype: 'q8' })
+  return async (t: string) => {
     const out = await extractor([t], { pooling: 'mean', normalize: true })
     return new Float32Array((out.tolist() as number[][])[0])
   }
-  const query = await embed('query: what hormone wrecks my sleep')
-  const right = await embed('passage: cortisol disrupts REM sleep')
-  const wrong = await embed('passage: basics of tax accounting')
+}
+
+test('cross-lingual english: english query is closest to matching english passage', async () => {
+  const embed = await loadEmbed()
+  const query = await embed('what hormone wrecks my sleep')
+  const right = await embed('cortisol disrupts REM sleep')
+  const wrong = await embed('basics of tax accounting')
 
   const simRight = cosineSimilarity(query, right)
   const simWrong = cosineSimilarity(query, wrong)
@@ -25,15 +37,11 @@ test('cross-lingual english: english query is closest to matching english passag
 
 // Non-ASCII allowed here: verifying cross-lingual retrieval with a Korean query.
 test('cross-lingual korean query: korean query is closest to matching english passage', async () => {
-  const extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
-  const embed = async (t: string) => {
-    const out = await extractor([t], { pooling: 'mean', normalize: true })
-    return new Float32Array((out.tolist() as number[][])[0])
-  }
+  const embed = await loadEmbed()
   // Korean: "hormone that ruins sleep"
-  const query = await embed('query: 잠을 망치는 호르몬')
-  const right = await embed('passage: cortisol disrupts REM sleep')
-  const wrong = await embed('passage: basics of tax accounting')
+  const query = await embed('잠을 망치는 호르몬')
+  const right = await embed('cortisol disrupts REM sleep')
+  const wrong = await embed('basics of tax accounting')
 
   const simRight = cosineSimilarity(query, right)
   const simWrong = cosineSimilarity(query, wrong)
@@ -43,7 +51,7 @@ test('cross-lingual korean query: korean query is closest to matching english pa
 }, 120_000)
 
 test('produces 384-dim vectors', async () => {
-  const extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small')
-  const out = await extractor(['passage: hello'], { pooling: 'mean', normalize: true })
-  expect((out.tolist() as number[][])[0].length).toBe(384)
+  const embed = await loadEmbed()
+  const v = await embed('hello')
+  expect(v.length).toBe(384)
 }, 120_000)
