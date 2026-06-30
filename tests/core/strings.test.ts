@@ -10,6 +10,8 @@ const STATIC_KEYS = [
   'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
   'noRememberSitesHeader', 'removeLabel',
   'couldNotAdd', 'couldNotRemove', 'couldNotForget', 'restrictedTabAdd', 'restrictedTabForget',
+  'obSeedButton', 'obSeeding', 'obSeeded',
+  'obSearchPlaceholder', 'obRemoveDemo', 'obDemoRemoved',
 ] as const
 const FUNCTION_KEYS = [
   'capturedChunks', 'indexingProgress', 'indexingFailed', 'captureFailed', 'searchFailed',
@@ -61,4 +63,11 @@ test('byte-identical e2e strings are preserved', () => {
   // Coverage: integration (real EN object).
   expect(EN.cannotCapturePage).toBe("This page can't be saved")
   expect(EN.reloadToCapture).toBe('Reload this page, then save it')
+  // Scenario: the onboarding try-it card's seed button + status lines are asserted verbatim
+  // by the interactive e2e; a wording change here must fail loudly.
+  // Coverage: integration (real EN object).
+  expect(EN.obSeedButton).toBe('Add 3 sample pages')
+  expect(EN.obSeeded).toBe('Sample pages added')
+  expect(EN.obRemoveDemo).toBe('Remove demo data')
+  expect(EN.obDemoRemoved).toBe('Demo data removed')
 })

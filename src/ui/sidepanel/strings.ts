@@ -52,6 +52,14 @@ export interface UIStrings {
   couldNotForget: string
   restrictedTabAdd: string
   restrictedTabForget: string
+  // Onboarding try-it card chrome (section prose lives inline in its renderer; these are the
+  // live-card action + status labels)
+  obSeedButton: string
+  obSeeding: string
+  obSeeded: string
+  obSearchPlaceholder: string
+  obRemoveDemo: string
+  obDemoRemoved: string
 }
 
 export const EN: UIStrings = {
@@ -100,6 +108,12 @@ export const EN: UIStrings = {
   couldNotForget: 'Could not forget - please try again',
   restrictedTabAdd: 'Cannot add this page (restricted tab)',
   restrictedTabForget: 'Cannot forget this page (restricted tab)',
+  obSeedButton: 'Add 3 sample pages',
+  obSeeding: 'adding sample pages...',
+  obSeeded: 'Sample pages added',
+  obSearchPlaceholder: 'Search what you just added...',
+  obRemoveDemo: 'Remove demo data',
+  obDemoRemoved: 'Demo data removed',
 }
 
 // English ships. Korean later = add a KO object + a two-line locale switch; no API now.
