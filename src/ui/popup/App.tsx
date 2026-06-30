@@ -158,77 +158,80 @@ export function App() {
   }
 
   function renderModelStatus() {
-    if (modelStatus.state === 'loading') {
-      return (
-        <small>
-          Loading model... {modelStatus.percent}%
-          <progress value={modelStatus.percent} max={100} />
-        </small>
-      )
-    }
-    if (modelStatus.state === 'error') {
-      return <small>Model failed to load</small>
-    }
-    if (modelStatus.state === 'ready') {
-      return <small>Model ready</small>
-    }
+    if (modelStatus.state === 'loading') return <span class="status loading">Loading {modelStatus.percent}%</span>
+    if (modelStatus.state === 'error') return <span class="status error">Model error</span>
+    if (modelStatus.state === 'ready') return <span class="status">Ready</span>
     return null
   }
 
   return (
-    <main class="container">
-      {renderModelStatus()}
-
-      <label>
-        <input type="checkbox" role="switch" checked={paused} onChange={togglePause} />
-        Pause capturing
-      </label>
-      {paused && <small>Paused - nothing is being saved</small>}
-
-      <div class="row">
-        <button class="secondary" onClick={denyHost}>
-          {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? 'Already on no-remember list' : "Don't remember this site"}
-        </button>
-        <button class="secondary" onClick={forgetHost}>
-          Forget this site's history
-        </button>
+    <div class="app">
+      <div class="head">
+        <span class="brand">Recall</span>
+        {renderModelStatus()}
       </div>
-      {denyStatus && <small>{denyStatus}</small>}
 
-      {userDenyHosts.length > 0 && (
-        <details>
-          <summary>No-remember sites</summary>
-          {userDenyHosts.map((h) => (
-            <div key={h} class="row">
-              <span>{h}</span>
-              <button class="secondary outline" onClick={() => removeDeny(h)}>remove</button>
-            </div>
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.2-3.2" />
+        </svg>
+        <input
+          type="search"
+          value={q}
+          onInput={(e) => setQ((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Enter' && search()}
+          placeholder="recall..."
+        />
+      </div>
+      {searching && <div class="hint">searching...</div>}
+      {!searching && hasSearched && results.length === 0 && <div class="hint">no results</div>}
+
+      {results.length > 0 && (
+        <div class="results">
+          {results.map((r) => (
+            <article class="card" key={r.chunk.id}>
+              <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
+              <p>{r.chunk.text}</p>
+              <div class="meta">{hostOf(r.page.url)} &middot; {r.score.toFixed(2)}</div>
+            </article>
           ))}
-        </details>
+        </div>
       )}
 
-      <button onClick={capture}>Capture this page</button>
-      {status && <small>{status}</small>}
+      <hr class="rule" />
 
-      <hr />
+      <button class="capture" onClick={capture}>Capture this page</button>
+      {status && <div class="note">{status}</div>}
 
-      <input
-        type="search"
-        value={q}
-        onInput={(e) => setQ((e.target as HTMLInputElement).value)}
-        onKeyDown={(e) => e.key === 'Enter' && search()}
-        placeholder="recall..."
-      />
-      {searching && <small>searching...</small>}
-      {!searching && hasSearched && results.length === 0 && <small>no results</small>}
+      <label class="toggle">
+        <span class="switch">
+          <input type="checkbox" checked={paused} onChange={togglePause} />
+          <span class="track" />
+        </span>
+        Pause capturing
+      </label>
+      {paused && <div class="note paused">Paused - nothing is being saved</div>}
 
-      {results.map((r) => (
-        <article key={r.chunk.id}>
-          <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
-          <p>{r.chunk.text}</p>
-          <footer><small>{hostOf(r.page.url)} &middot; {r.score.toFixed(2)}</small></footer>
-        </article>
-      ))}
-    </main>
+      <div class="toolbar">
+        <button class="linkbtn" onClick={denyHost}>
+          {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? 'Already on no-remember list' : "Don't remember this site"}
+        </button>
+        <button class="linkbtn danger" onClick={forgetHost}>Forget this site's history</button>
+      </div>
+      {denyStatus && <div class="note">{denyStatus}</div>}
+
+      {userDenyHosts.length > 0 && (
+        <div class="denylist">
+          <div class="denylist-head">No-remember sites</div>
+          {userDenyHosts.map((h) => (
+            <div class="denyrow" key={h}>
+              <span>{h}</span>
+              <button class="linkbtn" onClick={() => removeDeny(h)}>remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
