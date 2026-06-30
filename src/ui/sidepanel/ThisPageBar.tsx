@@ -49,6 +49,14 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   const latestUrlRef = useRef('')
 
   const refreshActiveTab = async () => {
+    // Re-read the no-remember list on EVERY refresh (mount + each tab switch/reload), not just at
+    // mount. Otherwise, after the user REMOVES a host in the Settings tab, this cache stays stale:
+    // the bar keeps showing "already on list" and denyHost() early-returns, so the site can't be
+    // re-denied from the bar until a full panel remount (a whole session, since the panel persists).
+    chrome.runtime.sendMessage({ type: 'get-settings' }).then((res: MsgResult) => {
+      if (res?.type === 'settings') setUserDenyHosts(res.userDenyHosts)
+    }).catch(() => {})
+
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
     const url = active?.url ?? ''
     const urlChanged = url !== latestUrlRef.current
@@ -85,13 +93,11 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   useEffect(() => { pendingRef.current = pending }, [pending])
 
   useEffect(() => {
-    // Seed the no-remember list so the "Don't remember this site" button can show whether the
-    // CURRENT host is already blocked. The global Pause toggle and the full editable list now
-    // live in the Settings tab; this bar keeps only the per-page/per-site actions.
-    chrome.runtime.sendMessage({ type: 'get-settings' }).then((res: MsgResult) => {
-      if (res?.type === 'settings') setUserDenyHosts(res.userDenyHosts)
-    }).catch(() => {})
-
+    // The no-remember list seed + every later refresh now happen inside refreshActiveTab (called
+    // on mount and on each tab switch/reload), so the deny cache tracks the DB instead of being
+    // frozen at mount. The global Pause toggle and the full editable list live in Settings; this
+    // bar keeps only the per-page/per-site actions.
+    //
     // Active-tab reactivity: refresh on mount and whenever the user switches or reloads
     // tabs (the panel persists, unlike the popup).
     void refreshActiveTab()
