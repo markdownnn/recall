@@ -4,6 +4,7 @@ import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
 import { t } from './strings'
 import { ThisPageBar } from './ThisPageBar'
+import { IndexingIndicator } from './IndexingIndicator'
 import { SearchTab } from './SearchTab'
 import { TabBar } from './Tabs'
 import type { TabKey } from './Tabs'
@@ -21,6 +22,12 @@ async function activeTabId(): Promise<number> {
 export function SidePanel() {
   const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
   const [status, setStatus] = useState('')
+  // Explicit indexing phase, derived from the EVENTS (not by sniffing the status string).
+  // `indexing` is the on/off phase; `indexedCount` is the running `done` total shown in
+  // the indicator. While `indexing` is true we render the animated indicator instead of
+  // the plain status line.
+  const [indexing, setIndexing] = useState(false)
+  const [indexedCount, setIndexedCount] = useState(0)
   const [tab, setTab] = useState<TabKey>('search')
   // Bumped after a successful capture so ThisPageBar re-queries `has-page` and the SAVED
   // badge flips false->true without the user switching tabs.
@@ -37,10 +44,21 @@ export function SidePanel() {
     const listener = (msg: ModelProgressMsg | IndexingProgressMsg | IndexingErrorMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
       if (msg?.type === 'indexing-progress') {
-        if (msg.pending === 0) setStatus(t.indexed)
-        else setStatus(t.indexingProgress(msg.embedded))
+        if (msg.pending === 0) {
+          // pending=0 is the "drain finished" signal: leave the indexing phase and show
+          // the plain `indexed` status line (the e2e waits for getByText('indexed')).
+          setIndexing(false)
+          setStatus(t.indexed)
+        } else {
+          // Still draining: enter/stay in the indexing phase, update the live done count.
+          setIndexing(true)
+          setIndexedCount(msg.embedded)
+        }
       }
-      if (msg?.type === 'indexing-error') setStatus(t.indexingFailed(msg.error))
+      if (msg?.type === 'indexing-error') {
+        setIndexing(false)
+        setStatus(t.indexingFailed(msg.error))
+      }
     }
     chrome.runtime.onMessage.addListener(listener)
     return () => {
@@ -51,6 +69,8 @@ export function SidePanel() {
   // Capture round-trip: ask the active content tab to extract-and-capture. Reads the active
   // tab itself, so it needs nothing from ThisPageBar.
   const capture = async () => {
+    // A fresh capture leaves any prior indexing phase so the "capturing..." line shows.
+    setIndexing(false)
     setStatus(t.capturing)
     try {
       const res: MsgResult = await chrome.tabs.sendMessage(await activeTabId(), { type: 'extract-and-capture' })
@@ -85,7 +105,9 @@ export function SidePanel() {
       </div>
 
       <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} />
-      {status && <div class="note">{status}</div>}
+      {indexing
+        ? <IndexingIndicator done={indexedCount} />
+        : status && <div class="note">{status}</div>}
 
       <hr class="rule" />
 
