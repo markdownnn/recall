@@ -9,10 +9,10 @@
 **Tech Stack:** SQLite FTS5 (trigram tokenizer, built into sqlite-wasm) · Reciprocal Rank Fusion · existing offscreen/worker/WebGPU stack · Vitest + Playwright.
 
 **Decisions (confirmed):**
-- **Tokenizer = trigram** — language-agnostic, handles Korean sub-word matching (수면 matches 수면을) and English. Cost: larger index; queries shorter than 3 chars can't lexical-match (vector still covers them).
-- **Fusion = RRF** (k=60) — rank-based, no score normalization between cosine (0..1) and BM25 (unbounded).
-- **Hybrid replaces vector-only search** (strictly better; the FTS index also serves as the future scale prefilter).
-- Each side retrieves top-N=50 candidates; fuse; return top-k.
+- **Tokenizer = trigram** — language-agnostic, handles 3+ char sub-word matching for both English and Korean (광합성 matches 광합성은) plus English. Cost: larger index; **a trigram needs >= 3 characters, so 2-syllable Korean queries (수면, 운동, 날씨) get NO lexical boost** — vector still covers them, but the exact-term win applies only to 3+ char terms. Acceptable for v1; stated honestly so expectations are set.
+- **Fusion = RRF** (k=60) — rank-based, no score normalization between cosine (0..1) and BM25 (unbounded). Tie-break is insertion order: lists are `[vectorIds, lexicalIds]`, so equal fused scores favor the vector order (deterministic).
+- **Hybrid replaces vector-only search.** It improves LEXICAL recall (exact terms/names a user remembers); latency is equal-or-slightly-higher because the vector cosine scan is STILL a full scan — the FTS index does NOT prefilter the vector side here (it is a building block for a future ANN prefilter, not a prefilter today). NOT "strictly better": a noisy trigram lexical side can demote the true vector-best below k, so the search **falls back to vector-only** when the lexical side is unavailable (`ftsAvailable=false`) or yields no usable query (`toFtsQuery` returns null).
+- Each side retrieves top-N=50 candidates; fuse with RRF; return top-k.
 
 ---
 
@@ -24,14 +24,18 @@ src/core/fts-query.ts           # NEW: pure free-text -> FTS5 trigram MATCH expr
 src/core/ports.ts               # MODIFY: VectorSearchPort.search adds queryText
 src/adapters/memory-vector-store.ts   # MODIFY: hybrid (vector + naive lexical + RRF) for unit tests
 src/core/recall-service.ts      # MODIFY: pass query text to store.search
-src/offscreen/sqlite-worker.ts  # MODIFY: FTS5 table + triggers + migration; search op -> hybrid
+src/offscreen/sqlite-worker.ts  # MODIFY: FTS5 table + triggers + migration (own try/catch); hybrid search + vector-only fallback
 src/offscreen/worker-vector-store.ts  # MODIFY: search passes queryText
-src/offscreen/offscreen.ts      # MODIFY: recall op passes query text into search
 tests/core/rrf.test.ts          # NEW
 tests/core/fts-query.test.ts    # NEW
 tests/core/recall-service.test.ts     # MODIFY: hybrid store.search signature
-tests/e2e/hybrid-search.spec.ts # NEW: golden set (KO + EN; lexical-only + semantic-only)
+tests/core/memory-vector-store.test.ts # MODIFY: search() now 3-arg (port ripple)
+tests/core/indexing-service.test.ts    # MODIFY: search() now 3-arg (port ripple)
+tests/core/capture-service.test.ts     # MODIFY: search() now 3-arg (port ripple)
+tests/e2e/fixtures/ko-photosynthesis.html  # NEW: Korean corpus as a fixture (keeps Hangul out of test SOURCE)
+tests/e2e/hybrid-search.spec.ts # NEW: golden set - lexical win (isolated via decoy), vector win, KO sub-word lexical
 ```
+NOTE on `src/offscreen/offscreen.ts`: it is NOT modified. Its recall op calls `RecallService.recall({text,k})`, and `RecallService` (Task 3) does the embed + `store.search(vector, text, k)`. The recall RPC already carries `text`, so SW relay/messaging/popup are unchanged too.
 
 ---
 
@@ -113,6 +117,9 @@ git commit -m "feat(core): pure RRF fusion"
 **Scenario:** A user's query must become a SAFE FTS5 trigram MATCH expression: quotes neutralized (no syntax injection / no error), terms shorter than a trigram dropped, and a no-usable-term query returns null so the caller skips lexical and uses vector only.
 **Coverage:** ✅ integration (pure function)
 
+Test code is ASCII-only (repo rule), so Korean syllables are written with `\u` escapes
+(ASCII bytes in source, real multibyte at runtime).
+
 ```ts
 import { toFtsQuery } from '../../src/core/fts-query'
 
@@ -125,11 +132,16 @@ test('drops terms shorter than 3 chars (trigram needs 3)', () => {
 })
 
 test('neutralizes embedded quotes (no FTS syntax injection)', () => {
-  expect(toFtsQuery('say "hi" please')).toBe('"say" OR "hi""" OR "please"'.replace('hi"""', 'hi"" ').trim() ) // see impl note
+  // term `"hi"` is 4 chars (quote chars count toward the length filter), kept; its
+  // internal quotes are doubled and the whole term re-wrapped -> """hi""".
+  expect(toFtsQuery('say "hi"')).toBe('"say" OR """hi"""')
 })
 
-test('korean terms kept (>= 3 chars)', () => {
-  expect(toFtsQuery('호르몬 수면')).toBe('"호르몬"') // 수면 is 2 chars -> dropped
+test('length filter counts code points (3+ kept, 2 dropped)', () => {
+  // The filter is code-point based, so it behaves the same for CJK (a 3-syllable
+  // Korean term is kept, a 2-syllable one dropped). Tested here with ASCII to keep
+  // the test source ASCII-only; real Korean trigram matching is covered by the e2e.
+  expect(toFtsQuery('abc xy')).toBe('"abc"')
 })
 
 test('no usable term -> null', () => {
@@ -137,7 +149,6 @@ test('no usable term -> null', () => {
   expect(toFtsQuery('   ')).toBeNull()
 })
 ```
-(Implementation note: keep the quote-escaping test simple — assert that the output contains no UNescaped lone quote. Prefer asserting `toFtsQuery('a "b').includes('""') || ...`. Adjust the exact expected string to match the impl below; the REAL requirement is: every term wrapped in double quotes with internal `"` doubled, joined by ` OR `, terms <3 chars dropped, null when none.)
 
 - [ ] **Step 2: Run, watch fail.**
 
@@ -176,7 +187,7 @@ git commit -m "feat(core): safe free-text -> FTS5 trigram MATCH"
 
 ## Task 3: Port + MemoryVectorStore + RecallService (TDD)
 
-**Files:** Modify `src/core/ports.ts`, `src/adapters/memory-vector-store.ts`, `src/core/recall-service.ts`, `tests/core/recall-service.test.ts`
+**Files:** Modify `src/core/ports.ts`, `src/adapters/memory-vector-store.ts`, `src/core/recall-service.ts`, `tests/core/recall-service.test.ts`, AND the three other test files that already call `store.search(...)` with the OLD 2-arg signature (they break `tsc --noEmit` otherwise): `tests/core/memory-vector-store.test.ts` (6 calls), `tests/core/indexing-service.test.ts` (3 calls), `tests/core/capture-service.test.ts` (1 call).
 
 - [ ] **Step 1: Change the port signature**
 
@@ -237,7 +248,12 @@ if (ftsCount === 0 && chunkCount > 0) {
   db.exec(`INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')`)
 }
 ```
-(putChunks already does DELETE then INSERT on `chunks`, and deletePagesByHost deletes `chunks` rows — both fire the triggers, so the FTS stays consistent through every path. setVector updates only `vector`, so no trigger/text reindex is needed. If `CREATE VIRTUAL TABLE ... USING fts5` throws because the build lacks FTS5/trigram, fail init loudly — the official sqlite-wasm build includes both.)
+**Blast-radius isolation (REQUIRED):** wrap the ENTIRE FTS block (CREATE VIRTUAL TABLE + triggers + the rebuild backfill) in its OWN `try/catch` and set a module-level `let ftsAvailable = false` -> `true` only on success. Core capture/recall must survive a broken FTS, so a failure here logs and leaves `ftsAvailable=false` instead of rejecting the shared `initPromise` (which every op awaits — a reject would stop CAPTURE too, not just search). `opSearch` checks `ftsAvailable` and falls back to vector-only when off.
+
+Notes:
+- putChunks does DELETE then INSERT on `chunks`, and deletePagesByHost deletes `chunks` rows — both fire the triggers, so the FTS stays consistent through every path. setVector updates only `vector`, so no trigger/text reindex is needed.
+- The triggers write to a virtual table, which requires `trusted_schema=ON` (the sqlite-wasm build's default). Do not set `trusted_schema=0` or capture would throw "unsafe use of virtual table".
+- **Rebuild cost / hang risk:** `rebuild` tokenizes every chunk into trigrams synchronously. On a heavy upgraded profile (thousands of pages) this can block the worker for seconds, stalling the first capture/recall after upgrade. Run it AFTER `initPromise` resolves (kick it off without awaiting in init) so the first op is not blocked, and log start/end. The rebuild gate (`ftsCount===0 && chunkCount>0`) only self-heals a fully-empty FTS, not a partially-built one — acceptable for v1; note it.
 
 - [ ] **Step 2: Rewrite the search handler as hybrid**
 
@@ -245,28 +261,30 @@ Replace `opSearch` so it takes `{ queryVector, queryText, k }`:
 ```ts
 import { rrfFuse } from '../core/rrf'
 import { toFtsQuery } from '../core/fts-query'
+import { cosineSimilarity } from '../core/cosine'
 
 function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[]; queryText: string; k: number }): RankedResult[] {
   const N = 50
+  const q = Float32Array.from(queryVector)
   // 1. Vector candidates: cosine over embedded chunks, top N ids (ordered best-first).
-  //    (Reuse the existing cosine logic but collect {id, cos}, sort desc, slice N.)
+  //    Reuse the existing cosineSimilarity (NOT a hand-rolled dot product - that would
+  //    silently assume normalize:true and diverge from the core/memory-store ranking).
   const vec: { id: string; cos: number }[] = []
   db.exec({
     sql: `SELECT c.id AS id, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
     rowMode: 'object',
     callback: (r: any) => {
       const v = new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4)
-      let dot = 0
-      for (let i = 0; i < v.length; i++) dot += v[i] * queryVector[i] // both already normalized
-      vec.push({ id: r.id, cos: dot })
+      vec.push({ id: r.id, cos: cosineSimilarity(q, v) })
     },
   })
   vec.sort((a, b) => b.cos - a.cos)
   const vectorIds = vec.slice(0, N).map((x) => x.id)
 
-  // 2. Lexical candidates: FTS5 trigram BM25, top N ids.
+  // 2. Lexical candidates: FTS5 trigram BM25, top N ids. Skipped entirely when the FTS
+  //    failed to initialize (ftsAvailable=false) -> graceful vector-only fallback.
   const lexicalIds: string[] = []
-  const match = toFtsQuery(queryText)
+  const match = ftsAvailable ? toFtsQuery(queryText) : null
   if (match) {
     try {
       db.exec({
@@ -298,9 +316,9 @@ search = (queryVector: Float32Array, queryText: string, k: number) =>
 ```
 (Float32Array does not survive RPC -> send as number[]; the worker reads `queryVector` as number[]. Confirm the existing code already converts — match it.)
 
-- [ ] **Step 4: offscreen recall op passes the text (offscreen.ts)**
+- [ ] **Step 4: Verify offscreen needs NO change**
 
-The recall op embeds the query text to a vector; pass BOTH the vector and the original text into `store.search(vector, text, k)`.
+The offscreen recall op calls `RecallService.recall({text,k})`, and `RecallService` (Task 3) does the embed + `store.search(vector, text, k)`. So offscreen.ts is NOT modified. Confirm `rg "store.search|\.search\(" src/offscreen/offscreen.ts` finds nothing — the recall path goes through RecallService.
 
 - [ ] **Step 5: Typecheck + build + verify no regression**
 
@@ -321,20 +339,27 @@ git commit -m "feat(offscreen): FTS5 trigram index + hybrid (vector+lexical RRF)
 
 - [ ] **Step 1: Write the golden-set e2e**
 
-**Scenario:** Two real wins from hybrid: (a) a query with a RARE EXACT TERM that vector alone tends to miss must surface the page containing that term (lexical win); (b) a purely SEMANTIC query with no shared words must still surface the right page (vector win). Korean + English both covered.
+**Scenario:** Prove hybrid actually adds the lexical signal, not just that vector works. (a) LEXICAL win, ISOLATED: a rare exact term must surface its page EVEN WHEN a decoy page is the closer semantic neighbor — vector-only would rank the decoy first. (b) VECTOR win: a purely semantic query (no shared words) still surfaces the right page. (c) KOREAN sub-word LEXICAL: a 3-char Korean term matches a doc that contains it as a sub-word (the actual trigram feature).
 **Coverage:** ✅ integration (real extension, real FTS5 trigram + real embeddings + RRF).
 
-Build a tiny corpus by manual-capturing 3-4 short distinct pages served via `page.route` (use thin <100-word bodies so only deterministic manual captures exist — same technique as forget-history). Suggested docs:
-- EN doc containing a rare token, e.g. a made-up product name `Zylophin` in an otherwise unrelated paragraph.
-- EN doc about sleep/cortisol (semantic target for "why can't I fall asleep").
-- KO doc containing `광합성` / `엽록소` (semantic + term target for a Korean query).
+Build a tiny corpus by manual-capturing short distinct pages served via `page.route` (thin <100-word bodies so only deterministic manual captures exist — same technique as forget-history). Korean corpus lives in `tests/e2e/fixtures/ko-photosynthesis.html` (HTML fixtures are DATA, not test source, so Hangul is allowed there). Test-source strings stay ASCII: write any Korean QUERY string with `\u` escapes (ASCII bytes), justified by the existing `embedding-model.node.test.ts` precedent (real multilingual path).
 
-Assertions:
-- Query `Zylophin` -> the rare-term page ranks first (lexical win; vector alone would rank it low).
-- Query `why can't I fall asleep at night` (no shared words with the cortisol doc) -> the cortisol page appears (vector win).
-- Korean query `식물이 빛으로 양분 만드는 법` -> the 광합성 page appears (multilingual hybrid).
+Corpus:
+- **term doc**: contains a unique made-up token `Zylophin` inside a paragraph about, say, gardening tools — semantically FAR from the query topic.
+- **decoy doc**: about pharmaceuticals/medicine (the closer semantic neighbor to a "what drug is Zylophin" style query) but WITHOUT the token.
+- **cortisol doc**: sleep/cortisol (vector target).
+- **ko doc** (fixture): a Korean paragraph that contains a 3-syllable term as a sub-word (e.g. the term followed by a particle), distinct enough to be the only KO doc.
+
+Assertions (each proves a specific path):
+- Query `Zylophin` -> the TERM doc ranks above the DECOY doc. (Lexical win: the decoy is the vector-closer doc, so vector-only would invert this. To make the isolation explicit, ALSO assert the decoy is first when lexical is disabled — e.g. query a 2-char stub that `toFtsQuery` drops to null, forcing vector-only — or document why that A/B is impractical and rely on the decoy ordering.)
+- Query `why can't I fall asleep at night` (no shared words) -> the cortisol doc appears. (Vector win.)
+- Korean 3-char term query (\u-escaped) -> the ko doc appears via the trigram lexical path (sub-word match). (Korean lexical win — the actual advertised feature, NOT a cross-lingual vector check.)
 
 Use the `toPass` indexing-wait + popup search pattern from the existing specs.
+
+- [ ] **Step 1b: FTS stays in sync on forget (extend coverage)**
+
+Add (here or in forget-history.spec) an assertion that after "Forget this site's history", a LEXICAL query for a term unique to that site returns nothing — proving the DELETE triggers cleaned `chunks_fts`, not just `chunks`. (The triggers are the only thing keeping FTS consistent through delete; the prose claim must have a test.)
 
 - [ ] **Step 2: Build + run**
 
