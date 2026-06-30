@@ -9,15 +9,7 @@ import { PinIllustration } from './PinIllustration'
 import { SECTIONS } from './sections'
 import type { OnboardingSection } from './sections'
 import { TryItCard } from './TryItCard'
-
-// Example "search by meaning" queries shown as illustrative pills (NOT clickable here - this
-// is the explainer card; the live search lives in the try-it card below it).
-const EXAMPLE_QUERIES = [
-  'that article about sleep and cortisol',
-  'the pricing page I saw',
-  'react useEffect cleanup',
-  'how photosynthesis works',
-]
+import { t } from '../sidepanel/strings'
 
 // Open the Recall side panel for the current window. A button click is a user gesture, so
 // chrome.sidePanel.open is allowed here. We resolve the windowId via chrome.windows.getCurrent
@@ -38,9 +30,9 @@ async function openRecall(): Promise<void> {
 function HeroSection() {
   return (
     <header class="hero">
-      <div class="brand">Recall</div>
-      <h1 class="tagline">That page you read last week? Find it again in seconds.</h1>
-      <p class="calm">100% on your device. Nothing ever leaves it.</p>
+      <div class="brand">{t.brand}</div>
+      <h1 class="tagline">{t.obHeroTagline}</h1>
+      <p class="calm">{t.obHeroCalm}</p>
     </header>
   )
 }
@@ -48,11 +40,11 @@ function HeroSection() {
 function HowItWorksSection() {
   return (
     <section class="card section">
-      <h2>How it works</h2>
+      <h2>{t.obHowTitle}</h2>
       <ul class="features">
-        <li><strong>Automatic.</strong> On-device AI quietly remembers the pages you actually read.</li>
-        <li><strong>Manual.</strong> Or save any page yourself - one click.</li>
-        <li><strong>Private.</strong> Banking, email, logins? Skipped. Pause anytime.</li>
+        <li><strong>{t.obHowAutomaticLabel}</strong> {t.obHowAutomaticText}</li>
+        <li><strong>{t.obHowManualLabel}</strong> {t.obHowManualText}</li>
+        <li><strong>{t.obHowPrivateLabel}</strong> {t.obHowPrivateText}</li>
       </ul>
     </section>
   )
@@ -61,10 +53,10 @@ function HowItWorksSection() {
 function SearchByMeaningSection() {
   return (
     <section class="card section">
-      <h2>Search by meaning</h2>
-      <p>Forgot the exact words? Just describe it.</p>
+      <h2>{t.obMeaningTitle}</h2>
+      <p>{t.obMeaningText}</p>
       <div class="chips">
-        {EXAMPLE_QUERIES.map((q) => (
+        {t.obExampleQueries.map((q) => (
           <span class="chip" key={q}>{q}</span>
         ))}
       </div>
@@ -75,21 +67,21 @@ function SearchByMeaningSection() {
 function OpenRecallSection() {
   return (
     <section class="card section">
-      <h2>Open Recall</h2>
-      <p>Click the Recall icon in your toolbar to open the side panel.</p>
+      <h2>{t.obOpenRecall}</h2>
+      <p>{t.obOpenText}</p>
       <PinIllustration />
-      <p class="tip">Tip: pin it for one-click access - click the puzzle-piece icon, then the pin next to Recall.</p>
+      <p class="tip">{t.obOpenTip}</p>
 
       <div class="shortcuts">
-        <h3 class="shortcuts-title">Keyboard shortcuts</h3>
+        <h3 class="shortcuts-title">{t.obShortcutsTitle}</h3>
         <div class="shortcut">
           <span class="keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd></span>
-          <span>Open Recall</span>
+          <span>{t.obOpenRecall}</span>
         </div>
-        <p class="tip">On Mac, use &#8984; Cmd instead of Ctrl.</p>
+        <p class="tip">{t.obMacTip}</p>
       </div>
 
-      <button class="primary" onClick={() => void openRecall()}>Open Recall</button>
+      <button class="primary" onClick={() => void openRecall()}>{t.obOpenRecall}</button>
     </section>
   )
 }

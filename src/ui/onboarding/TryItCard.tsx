@@ -77,8 +77,8 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
 
   return (
     <section class="card section">
-      <h2>Try it yourself</h2>
-      <p>Add 3 sample pages, then search them by meaning - just like your own.</p>
+      <h2>{t.obTryTitle}</h2>
+      <p>{t.obTryText}</p>
 
       <ul class="sample-list">
         {section.samples.map((s) => <li key={s.url}>{s.title}</li>)}

@@ -161,8 +161,8 @@ export function SidePanel() {
           <button
             class="help"
             type="button"
-            aria-label="How to use Recall"
-            title="How to use Recall"
+            aria-label={t.helpTitle}
+            title={t.helpTitle}
             onClick={openOnboarding}
           >
             {'?'}
@@ -176,7 +176,7 @@ export function SidePanel() {
           <button
             class="banner-dismiss"
             type="button"
-            aria-label="Dismiss"
+            aria-label={t.dismissAria}
             onClick={() => setDegradedDismissed(true)}
           >
             {'×'}
