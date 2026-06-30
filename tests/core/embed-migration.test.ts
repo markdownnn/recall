@@ -136,6 +136,59 @@ test('concurrent keep-alive drain during migration stays gradual (peak 1) and st
   expect(versionSeenPerPage).toEqual(['e5-small-q8-v1', 'e5-small-q8-v1'])
 })
 
+// Scenario: a page is captured DURING the offscreen init migration (the panel was just
+// opened). Its chunks are still NULL (pending, never embedded yet). The migration must NOT
+// adopt that page: only pages that ALREADY hold OLD-model vectors get cleared + re-embedded.
+// The freshly-captured NULL page is left for the normal drain, whose indexing-complete
+// terminal drives the panel's "indexed". If the migration adopted it (re-embedding it as
+// reindex-progress work), the panel would never see "indexed" and every capture would feel
+// slow - the confirmed regression.
+// Coverage: integration (real MemoryVectorStore + real IndexingService + spy embedder).
+test('freshly-captured NULL page is NOT adopted by the migration (only embedded pages convert)', async () => {
+  const store = new MemoryVectorStore()
+  // (a) an existing page, already embedded with the OLD model.
+  await store.upsertPage({ id: 'old', url: 'http://old', title: 'O', capturedAt: 1 })
+  await store.putChunks('old', [{ id: 'old#0', pageId: 'old', index: 0, text: 'alpha' }])
+  await store.setVector('old#0', new Float32Array([1, 0])) // old-model vector
+  // (b) a page captured DURING init: chunks stored but still pending (NULL), never embedded.
+  await store.upsertPage({ id: 'fresh', url: 'http://fresh', title: 'F', capturedAt: 2 })
+  await store.putChunks('fresh', [{ id: 'fresh#0', pageId: 'fresh', index: 0, text: 'beta' }])
+
+  const versions = fakeVersions('e5-small-q8-v1')
+  const spy = spyEmbedder()
+  const indexing = new IndexingService(store, spy.port)
+
+  // Record which pages the migration CLEARS (re-queues for re-embed).
+  const cleared: string[] = []
+  const realClear = store.clearVectorsForPage.bind(store)
+  store.clearVectorsForPage = async (id: string) => {
+    cleared.push(id)
+    return realClear(id)
+  }
+
+  let reembedCalls = 0
+  const reindexed = await migrateEmbeddingModel(
+    store,
+    versions,
+    'granite-107m-r1-q8-v1',
+    async () => {
+      reembedCalls++
+      spy.setPeek((await store.pendingChunks(100)).length)
+      await indexing.drainForMigration()
+    },
+  )
+
+  expect(reindexed).toBe(true)
+  // THE FIX: only the page that already had OLD-model vectors is cleared + re-embedded.
+  expect(cleared).toEqual(['old'])
+  expect(reembedCalls).toBe(1)
+  // The fresh page was NOT cleared by the migration: its chunk text is untouched and it was
+  // never a migration target. (The normal post-migration drain embeds it and fires the
+  // indexing-complete terminal.)
+  expect(cleared).not.toContain('fresh')
+  expect(await versions.getEmbedVersion()).toBe('granite-107m-r1-q8-v1')
+})
+
 // Scenario: a profile already on granite reopens the extension. The migration must be a no-op:
 // it must NOT clear durable vectors and force a needless re-embed every launch.
 // Coverage: integration (real MemoryVectorStore + fake version store).

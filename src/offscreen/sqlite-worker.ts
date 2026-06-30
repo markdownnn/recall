@@ -268,6 +268,19 @@ function opClearVectorsForPage(db: any, pageId: string): void {
   db.exec({ sql: `UPDATE chunks SET vector = NULL WHERE pageId = ?`, bind: [pageId] })
 }
 
+// Distinct page ids that have at least one EMBEDDED (non-NULL vector) chunk. The model-swap
+// migration converts ONLY these - a page captured mid-init whose chunks are all still NULL is
+// excluded (the normal drain handles it and fires the indexing-complete terminal).
+function opPagesWithVectors(db: any): string[] {
+  const ids: string[] = []
+  db.exec({
+    sql: `SELECT DISTINCT pageId FROM chunks WHERE vector IS NOT NULL`,
+    rowMode: 'array',
+    callback: (r: any) => ids.push(r[0]),
+  })
+  return ids
+}
+
 function opGetEmbedVersion(db: any): string | null {
   let version: string | null = null
   db.exec({
@@ -304,6 +317,7 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   removeDenyHost: (db, args) => { opRemoveDenyHost(db, args as string) },
   deletePagesByHost: (db, args) => { opDeletePagesByHost(db, args as string) },
   clearVectorsForPage: (db, args) => { opClearVectorsForPage(db, args as string) },
+  pagesWithVectors: (db) => opPagesWithVectors(db),
   getEmbedVersion: (db) => opGetEmbedVersion(db),
   setEmbedVersion: (db, args) => { opSetEmbedVersion(db, args as string) },
 }

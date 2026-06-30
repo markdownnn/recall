@@ -72,6 +72,28 @@ test('pendingChunks returns un-vectored chunks', async () => {
   expect(pending2[0].id).toBe('p1#1')
 })
 
+// Scenario: the model-swap migration must convert ONLY pages that already have OLD-model
+// vectors, skipping a page captured mid-init whose chunks are still NULL. pagesWithVectors
+// is that snapshot: a page id appears iff at least one of its chunks is embedded.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort contract).
+test('pagesWithVectors lists only pages with at least one embedded chunk', async () => {
+  const store = new MemoryVectorStore()
+  // page 'embedded': one chunk, vector set.
+  await store.upsertPage({ id: 'embedded', url: 'http://e', title: 'E', capturedAt: 1 })
+  await store.putChunks('embedded', [{ id: 'embedded#0', pageId: 'embedded', index: 0, text: 'a' }])
+  await store.setVector('embedded#0', new Float32Array([1, 0]))
+  // page 'pending': two chunks, both still NULL (freshly captured, not embedded).
+  await store.upsertPage({ id: 'pending', url: 'http://p', title: 'P', capturedAt: 2 })
+  await store.putChunks('pending', [
+    { id: 'pending#0', pageId: 'pending', index: 0, text: 'b' },
+    { id: 'pending#1', pageId: 'pending', index: 1, text: 'c' },
+  ])
+  expect(await store.pagesWithVectors()).toEqual(['embedded'])
+  // A page is listed if it has ANY embedded chunk, even when others are still pending.
+  await store.setVector('pending#0', new Float32Array([0, 1]))
+  expect((await store.pagesWithVectors()).sort()).toEqual(['embedded', 'pending'])
+})
+
 // Scenario: document-level results - the nearest page ranks first, represented by its
 // best chunk; two pages -> two results.
 // Coverage: integration (real MemoryVectorStore + topPagesBySnippet, hybrid path).

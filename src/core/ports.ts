@@ -29,6 +29,11 @@ export interface VectorSearchPort {
   // chunks and the drain re-embeds them with the loaded model. Every OTHER page keeps its
   // vectors and stays searchable. Page and chunk text are untouched.
   clearVectorsForPage(pageId: string): Promise<void>
+  // Page ids that have at least one EMBEDDED (non-NULL) chunk. The model-swap migration uses
+  // this to convert ONLY pages that already hold old-model vectors - a page captured mid-init
+  // whose chunks are all still NULL is excluded, so the normal drain (which fires the
+  // indexing-complete terminal) handles it instead of the migration's reindex-progress path.
+  pagesWithVectors(): Promise<string[]>
   // True if this page id is already stored (drives the panel's SAVED badge).
   hasPage(pageId: string): Promise<boolean>
   // Reverse-chronological browse for the History tab. `beforeTs` is a keyset cursor:
