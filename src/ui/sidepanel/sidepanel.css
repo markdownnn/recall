@@ -139,6 +139,10 @@ body {
 }
 .card .meta { margin-top: 6px; font-size: 10.5px; color: var(--faint); }
 
+/* History tab - reuses .results/.card/.meta; only spacing for the load-more button. */
+.historytab { display: flex; flex-direction: column; gap: 10px; }
+.loadmore { align-self: flex-start; }
+
 .hint { font-size: 11.5px; color: var(--muted); }
 .note { font-size: 11.5px; color: var(--muted); }
 .note.paused { color: var(--danger); }
