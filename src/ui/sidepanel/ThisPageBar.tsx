@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
-import type { MsgResult, IndexingProgressMsg } from '../../messaging'
+import type { MsgResult, IndexingProgressMsg, IndexingErrorMsg } from '../../messaging'
 import { siteHost } from '../../core/site-host'
 import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
@@ -30,6 +30,17 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // "Saving..." button/badge state. Per-page: a background drain of OTHER pages re-queries
   // THIS tab, finds it not pending, and leaves the bar unchanged.
   const [pending, setPending] = useState(false)
+  // True after a background drain FAILED while this page still had un-embedded chunks. Capture
+  // stores NULL-vector chunks, so a genuine embed failure mid-drain leaves the page "pending"
+  // FOREVER - the button would read "Saving..." with no feedback. The offscreen emits an
+  // {indexing-error}; we react to it here, overriding "Saving..." with a recoverable note so the
+  // user knows it stalled (and will retry). Cleared on tab switch, on the next drain-progress
+  // tick (a retry is now running), or when the page finishes saving.
+  const [saveError, setSaveError] = useState(false)
+  // The listener below is registered once (empty deps), so it can't read the live `pending`
+  // state. This ref mirrors it so the indexing-error handler only surfaces the note when THIS
+  // page was actually mid-save (a failed drain of OTHER pages must not flag this one).
+  const pendingRef = useRef(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
   const [denyStatus, setDenyStatus] = useState('')
   // Tracks the url of the MOST RECENT refresh. On a rapid tab switch an older has-page
@@ -48,7 +59,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     // On a real tab SWITCH, drop the previous tab's save-state IMMEDIATELY so the bar never
     // flashes another page's "saved"/"Saving..." while this tab's has-page/page-pending queries
     // are still in flight. Each tab thus shows only its OWN state, with zero carryover.
-    if (urlChanged) { setSaved(false); setPending(false) }
+    if (urlChanged) { setSaved(false); setPending(false); setSaveError(false) }
 
     // Save-state READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
     // the id can never drift from what capture stored. Skip non-http(s) tabs.
@@ -70,6 +81,9 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     }
   }
 
+  // Keep pendingRef in sync so the once-registered indexing-error listener can read live state.
+  useEffect(() => { pendingRef.current = pending }, [pending])
+
   useEffect(() => {
     // Seed the no-remember list so the "Don't remember this site" button can show whether the
     // CURRENT host is already blocked. The global Pause toggle and the full editable list now
@@ -88,8 +102,17 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     // As the background drain makes progress, re-check THIS tab's pending state so the button
     // settles "Saving..." -> "saved"/"Update this page" the moment its last chunk embeds. A
     // drain of OTHER pages re-queries this tab, finds it not pending, and leaves the bar as-is.
-    const onMessage = (msg: IndexingProgressMsg | { type?: string }) => {
-      if (msg?.type === 'indexing-progress') void refreshActiveTab()
+    const onMessage = (msg: IndexingProgressMsg | IndexingErrorMsg | { type?: string }) => {
+      if (msg?.type === 'indexing-progress') {
+        // A drain is actively making progress again: any prior failure note is now stale, so
+        // clear it and let the button resume its real "Saving..." -> settled flow.
+        setSaveError(false)
+        void refreshActiveTab()
+      }
+      // A fire-and-forget drain THREW mid-save. If THIS page was the one still saving, surface a
+      // recoverable note instead of an eternal "Saving...". The transient case self-heals on the
+      // next ping/alarm re-drain (which posts indexing-progress and clears this above).
+      if (msg?.type === 'indexing-error' && pendingRef.current) setSaveError(true)
     }
     chrome.tabs.onActivated.addListener(onActivated)
     chrome.tabs.onUpdated.addListener(onUpdated)
@@ -171,17 +194,21 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   const hostDenied = tab.host !== '' && userDenyHosts.includes(siteHost(tab.host))
 
   // PAGE-scoped save state for THIS exact tab. `pending` (un-embedded chunks) WINS so the bar
-  // reads "Saving..." while a just-captured page indexes, then settles to saved/not-saved.
-  const badgeClass = pending ? 'badge saving' : saved ? 'badge saved' : 'badge'
-  const badgeLabel = pending ? t.saving : saved ? t.savedBadge : t.notSavedBadge
+  // reads "Saving..." while a just-captured page indexes, then settles to saved/not-saved. But a
+  // FAILED drain leaves the page pending forever; `saveError` suppresses the "Saving..." display
+  // (the page row exists, so it falls through to the saved/"Update" state) and shows the retry
+  // note below instead, so the button is never stuck on an eternal "Saving...".
+  const showSaving = pending && !saveError
+  const badgeClass = showSaving ? 'badge saving' : saved ? 'badge saved' : 'badge'
+  const badgeLabel = showSaving ? t.saving : saved ? t.savedBadge : t.notSavedBadge
   const buttonClass = !resolved ? 'capture'
     : !capturable ? 'capture disabled'
-    : pending ? 'capture saving'
+    : showSaving ? 'capture saving'
     : saved ? 'capture saved'
     : 'capture'
   const buttonLabel = !resolved ? t.captureButton
     : !capturable ? t.cannotCaptureButton
-    : pending ? t.saving
+    : showSaving ? t.saving
     : saved ? t.updateButton
     : t.captureButton
 
@@ -200,13 +227,14 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
       <div class="page-actions">
         <button
           class={buttonClass}
-          disabled={!resolved || !capturable || pending}
+          disabled={!resolved || !capturable || showSaving}
           onClick={onCapture}
         >
           {buttonLabel}
         </button>
       </div>
-      {pending && <div class="note">{t.savingHint}</div>}
+      {showSaving && <div class="note">{t.savingHint}</div>}
+      {saveError && <div class="note">{t.saveRetry}</div>}
 
       {/* SITE-scoped: acts on the HOST. Per-page/per-site only - the global Pause toggle and
           the editable no-remember list live in the Settings tab. */}

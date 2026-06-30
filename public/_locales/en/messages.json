@@ -20,6 +20,7 @@
   "cannotCaptureButton": { "message": "Can't save this page" },
   "saving": { "message": "Saving..." },
   "savingHint": { "message": "Saving can take a moment." },
+  "saveRetry": { "message": "Couldn't finish saving - it'll retry shortly." },
   "nothingSubstantial": { "message": "nothing substantial to capture" },
   "nothingToCapture": { "message": "nothing to capture" },
   "pausedNote": { "message": "Paused - nothing is being saved" },

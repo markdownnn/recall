@@ -58,6 +58,7 @@ export interface UIStrings {
   cannotCaptureButton: string
   saving: string
   savingHint: string
+  saveRetry: string
   nothingSubstantial: string
   nothingToCapture: string
   pausedNote: string
@@ -149,6 +150,7 @@ export const t: UIStrings = {
   cannotCaptureButton: msg('cannotCaptureButton'),
   saving: msg('saving'),
   savingHint: msg('savingHint'),
+  saveRetry: msg('saveRetry'),
   nothingSubstantial: msg('nothingSubstantial'),
   nothingToCapture: msg('nothingToCapture'),
   pausedNote: msg('pausedNote'),

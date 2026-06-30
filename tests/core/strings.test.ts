@@ -7,7 +7,7 @@ import { t } from '../../src/ui/sidepanel/strings'
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
   'historyTabLabel', 'settingsTabLabel', 'historyEmpty', 'loadMore',
-  'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'nothingSubstantial', 'nothingToCapture',
+  'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'saveRetry', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'cannotCapturePage', 'reloadToCapture',
   'modelReady', 'modelError', 'embedderUnavailable', 'embedderSlow', 'pauseLabel',
@@ -61,6 +61,7 @@ test('byte-identical e2e strings are preserved', () => {
   expect(t.cannotCaptureButton).toBe("Can't save this page")
   expect(t.saving).toBe('Saving...')
   expect(t.savingHint).toBe('Saving can take a moment.')
+  expect(t.saveRetry).toBe("Couldn't finish saving - it'll retry shortly.")
   expect(t.savedBadge).toBe('saved')
   expect(t.notSavedBadge).toBe('not saved yet')
   expect(t.pausedNote).toBe('Paused - nothing is being saved')
