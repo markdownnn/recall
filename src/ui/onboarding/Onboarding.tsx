@@ -37,24 +37,24 @@ export function Onboarding() {
       {/* Hero */}
       <header class="hero">
         <div class="brand">Recall</div>
-        <h1 class="tagline">Remember everything you read - find it later in plain language.</h1>
-        <p class="calm">The model and search run entirely on your device. Nothing leaves it.</p>
+        <h1 class="tagline">Remember everything you read. Find it later in plain words.</h1>
+        <p class="calm">Everything runs on your device. Nothing ever leaves it.</p>
       </header>
 
       {/* How it works */}
       <section class="card section">
         <h2>How it works</h2>
-        <p>
-          Pages you actually read are saved automatically - on-device machine learning
-          decides what's worth keeping. You can also save any page yourself. Sensitive
-          sites (banking, email, etc.) are skipped automatically, and you can pause anytime.
-        </p>
+        <ul class="features">
+          <li><strong>Automatic.</strong> On-device AI saves the pages you actually read.</li>
+          <li><strong>Manual.</strong> Save any page yourself in one click.</li>
+          <li><strong>Private.</strong> Banking, email, and other sensitive sites are skipped - and you can pause anytime.</li>
+        </ul>
       </section>
 
       {/* Search by meaning */}
       <section class="card section">
         <h2>Search by meaning</h2>
-        <p>Don't remember the exact words? Search by meaning.</p>
+        <p>Forgot the exact words? Search by what it was about.</p>
         <div class="chips">
           {EXAMPLE_QUERIES.map((q) => (
             <span class="chip" key={q}>{q}</span>
@@ -72,17 +72,30 @@ export function Onboarding() {
             light-dependent reactions happen in the thylakoid membranes, where chlorophyll
             captures photons and the energy is stored before the sugar-building steps begin.
           </p>
-          <div class="meta">wikipedia.org &middot; 0.84</div>
+          <div class="meta">wikipedia.org</div>
         </div>
-        <p class="caption">One result per page - its best-matching paragraph.</p>
       </section>
 
       {/* How to open Recall */}
       <section class="card section">
-        <h2>How to open Recall</h2>
+        <h2>Open Recall</h2>
         <p>Click the Recall icon in your toolbar to open the side panel.</p>
         <PinIllustration />
         <p class="tip">Tip: pin it for one-click access - click the puzzle-piece icon, then the pin next to Recall.</p>
+
+        <div class="shortcuts">
+          <h3 class="shortcuts-title">Keyboard shortcuts</h3>
+          <div class="shortcut">
+            <span class="keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd></span>
+            <span>Open Recall</span>
+          </div>
+          <div class="shortcut">
+            <span class="keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>U</kbd></span>
+            <span>Save the current page</span>
+          </div>
+          <p class="tip">On Mac, use &#8984; Cmd instead of Ctrl.</p>
+        </div>
+
         <button class="primary" onClick={() => void openRecall()}>Open Recall</button>
       </section>
     </main>
