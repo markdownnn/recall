@@ -26,13 +26,13 @@ test('drain embeds all pending chunks and makes them searchable', async () => {
   await capture.capture({ url: 'http://x/a', title: 'A', text: 'cortisol disrupts sleep\n\ntax accounting basics' })
 
   // Before drain: not searchable.
-  expect((await store.search(new Float32Array([1, 0]), 10)).length).toBe(0)
+  expect((await store.search(new Float32Array([1, 0]), '', 10)).length).toBe(0)
   expect((await store.pendingChunks(100)).length).toBeGreaterThan(0)
 
   await indexing.drain()
 
   // After drain: searchable; nothing pending.
-  expect((await store.search(new Float32Array([1, 0]), 10)).length).toBeGreaterThan(0)
+  expect((await store.search(new Float32Array([1, 0]), '', 10)).length).toBeGreaterThan(0)
   expect((await store.pendingChunks(100)).length).toBe(0)
 })
 
@@ -81,7 +81,7 @@ test('drain rejects on embed failure; first batch persisted, rest stay pending',
   await expect(indexing.drain()).rejects.toThrow('embed boom')
 
   // First batch persisted: exactly one chunk is now searchable.
-  expect((await store.search(new Float32Array([1, 0]), 100)).length).toBe(1)
+  expect((await store.search(new Float32Array([1, 0]), '', 100)).length).toBe(1)
   // The rest stay pending so a later capture/load retries them.
   expect((await store.pendingChunks(100)).length).toBe(total - 1)
 })

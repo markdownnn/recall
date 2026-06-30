@@ -17,7 +17,7 @@ export interface VectorSearchPort {
   // Attach a vector to a chunk, marking it embedded/searchable.
   setVector(chunkId: string, vector: Float32Array): Promise<void>
   // Search ONLY over embedded chunks (those with a vector).
-  search(queryVector: Float32Array, k: number): Promise<RankedResult[]>
+  search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]>
   // Delete all pages (and their chunks) whose host equals or is a subdomain of the given host.
   deletePagesByHost(host: string): Promise<void>
 }

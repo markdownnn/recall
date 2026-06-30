@@ -9,6 +9,6 @@ export class RecallService {
 
   async recall(query: RecallQuery): Promise<RankedResult[]> {
     const [vector] = await this.embedder.embed([query.text], 'query')
-    return this.store.search(vector, query.k)
+    return this.store.search(vector, query.text, query.k)
   }
 }

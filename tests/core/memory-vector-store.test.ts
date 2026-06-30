@@ -10,7 +10,7 @@ test('chunk is not searchable until setVector is called', async () => {
   await store.upsertPage(page)
   await store.putChunks('p1', [chunkA, chunkB])
   // No vectors yet: search must return nothing.
-  const results = await store.search(new Float32Array([1, 0]), 10)
+  const results = await store.search(new Float32Array([1, 0]), '', 10)
   expect(results.length).toBe(0)
 })
 
@@ -35,7 +35,7 @@ test('ranks the nearest chunk first after setVector', async () => {
   await store.setVector('p1#0', new Float32Array([1, 0]))
   await store.setVector('p1#1', new Float32Array([0, 1]))
 
-  const results = await store.search(new Float32Array([0.9, 0.1]), 2)
+  const results = await store.search(new Float32Array([0.9, 0.1]), '', 2)
   expect(results[0].chunk.id).toBe('p1#0')
   expect(results[0].page.id).toBe('p1')
   expect(results[0].score).toBeGreaterThan(results[1].score)
@@ -47,7 +47,7 @@ test('respects k', async () => {
   await store.putChunks('p1', [chunkA, chunkB])
   await store.setVector('p1#0', new Float32Array([1, 0]))
   await store.setVector('p1#1', new Float32Array([0, 1]))
-  expect((await store.search(new Float32Array([1, 0]), 1)).length).toBe(1)
+  expect((await store.search(new Float32Array([1, 0]), '', 1)).length).toBe(1)
 })
 
 test('excludes a chunk whose page is missing', async () => {
@@ -55,7 +55,7 @@ test('excludes a chunk whose page is missing', async () => {
   // putChunks + setVector without upsertPage.
   await store.putChunks('p1', [chunkA])
   await store.setVector('p1#0', new Float32Array([1, 0]))
-  expect((await store.search(new Float32Array([1, 0]), 5)).length).toBe(0)
+  expect((await store.search(new Float32Array([1, 0]), '', 5)).length).toBe(0)
 })
 
 test('putChunks replaces page chunks - re-capture with fewer chunks leaves no stale', async () => {
@@ -69,7 +69,7 @@ test('putChunks replaces page chunks - re-capture with fewer chunks leaves no st
   await store.putChunks('p1', [chunkA])
   await store.setVector('p1#0', new Float32Array([1, 0]))
 
-  const results = await store.search(new Float32Array([1, 0]), 10)
+  const results = await store.search(new Float32Array([1, 0]), '', 10)
   expect(results.length).toBe(1)
   expect(results[0].chunk.id).toBe('p1#0')
 })
@@ -81,7 +81,7 @@ test('search excludes pending chunks (vector not yet set)', async () => {
   // Only embed one chunk.
   await store.setVector('p1#0', new Float32Array([1, 0]))
 
-  const results = await store.search(new Float32Array([1, 0]), 10)
+  const results = await store.search(new Float32Array([1, 0]), '', 10)
   expect(results.length).toBe(1)
   expect(results[0].chunk.id).toBe('p1#0')
 })

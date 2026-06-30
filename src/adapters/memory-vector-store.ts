@@ -1,6 +1,7 @@
 import type { VectorSearchPort } from '../core/ports'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import { cosineSimilarity } from '../core/cosine'
+import { rrfFuse } from '../core/rrf'
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
@@ -37,16 +38,51 @@ export class MemoryVectorStore implements VectorSearchPort {
     if (entry) entry.vector = vector
   }
 
-  async search(queryVector: Float32Array, k: number): Promise<RankedResult[]> {
-    const scored: RankedResult[] = []
+  async search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]> {
+    // 1. Vector ranking: cosine similarity over all embedded chunks, best-first.
+    const cosineRanked: { chunk: Chunk; page: CapturedPage; cos: number }[] = []
     for (const { chunk, vector } of this.chunks.values()) {
       if (vector === null) continue // pending chunks are not searchable
       const page = this.pages.get(chunk.pageId)
       if (!page) continue
-      scored.push({ chunk, page, score: cosineSimilarity(queryVector, vector) })
+      cosineRanked.push({ chunk, page, cos: cosineSimilarity(queryVector, vector) })
     }
-    scored.sort((a, b) => b.score - a.score)
-    return scored.slice(0, k)
+    cosineRanked.sort((a, b) => b.cos - a.cos)
+    const vectorIds = cosineRanked.map((x) => x.chunk.id)
+
+    // 2. Naive lexical ranking: chunks whose lowercased text contains any query term
+    //    of length >= 3, ordered by number of distinct terms matched (desc).
+    const queryTerms = queryText
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => [...t].length >= 3)
+    const lexicalIds: string[] = []
+    if (queryTerms.length > 0) {
+      const matched: { id: string; count: number }[] = []
+      for (const { chunk, vector } of this.chunks.values()) {
+        if (vector === null) continue
+        const lower = chunk.text.toLowerCase()
+        const count = queryTerms.reduce((n, term) => n + (lower.includes(term.toLowerCase()) ? 1 : 0), 0)
+        if (count > 0) matched.push({ id: chunk.id, count })
+      }
+      matched.sort((a, b) => b.count - a.count)
+      for (const m of matched) lexicalIds.push(m.id)
+    }
+
+    // 3. Fuse both rankings with RRF and map top-k to RankedResult.
+    const fused = rrfFuse([vectorIds, lexicalIds]).slice(0, k)
+    const chunkById = new Map(
+      [...this.chunks.values()].map(({ chunk, vector }) => [chunk.id, { chunk, vector }]),
+    )
+    const results: RankedResult[] = []
+    for (const hit of fused) {
+      const entry = chunkById.get(hit.id)
+      if (!entry) continue
+      const page = this.pages.get(entry.chunk.pageId)
+      if (!page) continue
+      results.push({ chunk: entry.chunk, page, score: hit.score })
+    }
+    return results
   }
 
   async deletePagesByHost(host: string): Promise<void> {

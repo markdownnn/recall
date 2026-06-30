@@ -12,7 +12,7 @@ test('capture stores chunks as pending and returns chunkCount', async () => {
 
   expect(result.chunkCount).toBeGreaterThan(0)
   // Chunks must be pending (no vector yet), so search returns nothing.
-  const results = await store.search(new Float32Array([1, 0]), 10)
+  const results = await store.search(new Float32Array([1, 0]), '', 10)
   expect(results.length).toBe(0)
   // But pendingChunks shows them.
   const pending = await store.pendingChunks(100)
