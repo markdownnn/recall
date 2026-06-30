@@ -34,10 +34,10 @@ export default defineManifest({
   // @huggingface/transformers ONNX runtime (embedder worker).  Without it Chrome's
   // default CSP blocks WebAssembly compilation and the background hangs forever.
   // connect-src is 'self' only: the ONNX WASM runtime is bundled under public/onnx-hf/,
-  // and the embedding model (Xenova/multilingual-e5-small, int8 quantized) is bundled
-  // under public/models/ (fetched at build time by scripts/fetch-model.mjs, pinned to
-  // commit SHA 761b726dd34fb83930e26aab4e9ac3899aa1fa78).  Nothing is fetched from a
-  // remote host at runtime — literally nothing leaves the device.
+  // and the embedding model (granite-107m-multilingual R1, int8 quantized) is COMMITTED
+  // under public/models/granite/ and VERIFIED at build by scripts/fetch-model.mjs (SHA-256,
+  // no remote fetch).  Nothing is fetched from a remote host at build OR runtime — literally
+  // nothing leaves the device.
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
   },
