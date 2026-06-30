@@ -1,5 +1,8 @@
 # i18n Readiness: Ship English, Strings Extracted, Korean-Ready
 
+> **SUPERSEDED / FOLDED IN (2026-06-30):** This plan is redundant. Its work now lives inside `docs/superpowers/plans/2026-06-30-side-panel-migration.md` (`src/ui/sidepanel/strings.ts` is a required module; shape test at `tests/core/strings.test.ts`). Do not execute this plan; kept for history only.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Dependency: Execute AFTER the "side-panel migration" lands.** This plan extracts strings from the SIDE PANEL (`src/ui/sidepanel/App.tsx`) — not the popup (`src/ui/popup/App.tsx`) which that migration will delete. Do not start until the side-panel branch is merged into `recall-walking-skeleton`.
