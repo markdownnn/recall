@@ -208,7 +208,7 @@ kbd {
 
 /* Bundled-sample bullet list - even rhythm: tighter leading + a small, consistent gap
    between titles instead of the loose body line-height. */
-.sample-list { margin: var(--space-3) 0 0; padding-left: var(--space-5); color: #374151; line-height: 1.45; }
+.sample-list { margin: var(--space-3) 0 var(--space-2); padding-left: var(--space-5); color: #374151; line-height: 1.45; }
 .sample-list li + li { margin-top: var(--space-1); }
-.demo-status { display: block; margin-top: var(--space-3); color: var(--accent); font-weight: 550; }
+.demo-status { display: block; margin-top: var(--space-5); color: var(--accent); font-weight: 550; }
 .linkbtn { display: inline-block; margin-top: var(--space-4); background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
