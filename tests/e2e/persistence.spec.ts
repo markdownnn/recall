@@ -83,9 +83,11 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(items1).toHaveCount(1, { timeout: 30_000 })
     await expect(items1.first()).toContainText('Cortisol', { timeout: 10_000 })
 
-    // Set Paused = on in session 1 so we can assert it survives the restart. Retry until
-    // the checked state STICKS (the popup's async settings mount can reset it right after
-    // a click). The checkbox triggers set-paused -> offscreen -> SQLite setPaused.
+    // Set Paused = on in session 1 so we can assert it survives the restart. Pause now lives
+    // in the Settings tab (a global setting with one home), so open it first. Retry until the
+    // checked state STICKS (the tab's async settings mount can reset it right after a click).
+    // The checkbox triggers set-paused -> offscreen -> SQLite setPaused.
+    await popup1.getByRole('tab', { name: 'Settings' }).click()
     await expect(async () => {
       await popup1.getByLabel(/pause/i).check()
       await expect(popup1.getByLabel(/pause/i)).toBeChecked({ timeout: 1_000 })
@@ -121,9 +123,10 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(items2).toHaveCount(1, { timeout: 30_000 })
     await expect(items2.first()).toContainText('Cortisol', { timeout: 10_000 })
 
-    // Assert that the Pause setting also survived the restart.
-    // The popup reads settings via get-settings -> offscreen -> SQLite on mount,
-    // so if the checkbox is checked the SQLite value persisted across the restart.
+    // Assert that the Pause setting also survived the restart. Pause lives in the Settings tab;
+    // its mount reads settings via get-settings -> offscreen -> SQLite, so if the checkbox is
+    // checked the SQLite value persisted across the restart.
+    await popup2.getByRole('tab', { name: 'Settings' }).click()
     await expect(popup2.getByLabel(/pause/i)).toBeChecked({ timeout: 10_000 })
 
     console.log('[persistence] session 2 OK  -  Cortisol ranked first WITHOUT re-capturing, pause setting persisted. OPFS persistence confirmed.')
