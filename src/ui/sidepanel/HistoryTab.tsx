@@ -4,7 +4,10 @@ import type { CapturedPage } from '../../core/model'
 import { t } from './strings'
 import { relativeTime } from './relative-time'
 
-const PAGE_SIZE = 20
+// Bounded fetch: load ~150 most-recent pages up front, then "Load more" pulls the next 150
+// via the capturedAt keyset cursor (below). Never loads thousands at once, and never shifts
+// rows when a new capture lands mid-browse (keyset, not OFFSET).
+const PAGE_SIZE = 150
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }

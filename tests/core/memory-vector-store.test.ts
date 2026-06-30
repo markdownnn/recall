@@ -71,6 +71,35 @@ test('recentPages pages by the beforeTs cursor', async () => {
   expect(page2.map((p) => p.id)).toEqual(['3', '2'])
 })
 
+// Scenario: the History tab pages a large corpus in bounded windows (Load more). Walking the
+// keyset cursor across MULTIPLE windows must reconstruct the full newest-first list EXACTLY -
+// no row repeated (overlap) and no row skipped (gap), order preserved.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort recentPages contract).
+test('recentPages walks windows with no overlap or gap across pages', async () => {
+  const store = new MemoryVectorStore()
+  const total = 7
+  for (let i = 1; i <= total; i++) {
+    await store.upsertPage({ id: String(i), url: 'http://x/' + i, title: 'P' + i, capturedAt: i * 10 })
+  }
+  // Newest-first ground truth: 7,6,5,4,3,2,1.
+  const expected = ['7', '6', '5', '4', '3', '2', '1']
+
+  // Page through in windows of 3 using the last row's capturedAt as the cursor.
+  const collected: string[] = []
+  let cursor: number | undefined = undefined
+  for (let guard = 0; guard < 10; guard++) {
+    const win = await store.recentPages(3, cursor)
+    if (win.length === 0) break
+    collected.push(...win.map((p) => p.id))
+    cursor = win[win.length - 1].capturedAt
+    if (win.length < 3) break
+  }
+
+  // Exact reconstruction (order preserved), and no duplicates (overlap) anywhere.
+  expect(collected).toEqual(expected)
+  expect(new Set(collected).size).toBe(total)
+})
+
 test('chunk is not searchable until setVector is called', async () => {
   const store = new MemoryVectorStore()
   await store.upsertPage(page)
