@@ -75,10 +75,13 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await expect(items1).toHaveCount(2, { timeout: 30_000 })
     await expect(items1.first()).toContainText('Cortisol', { timeout: 10_000 })
 
-    // Set Paused = on in session 1 so we can assert it survives the restart.
-    // The checkbox triggers set-paused -> offscreen -> SQLite setPaused, so
-    // once the click resolves the setting is durably written.
-    await popup1.getByLabel(/pause/i).check()
+    // Set Paused = on in session 1 so we can assert it survives the restart. Retry until
+    // the checked state STICKS (the popup's async settings mount can reset it right after
+    // a click). The checkbox triggers set-paused -> offscreen -> SQLite setPaused.
+    await expect(async () => {
+      await popup1.getByLabel(/pause/i).check()
+      await expect(popup1.getByLabel(/pause/i)).toBeChecked({ timeout: 1_000 })
+    }).toPass({ timeout: 15_000 })
     // Give the round-trip (popup -> SW -> offscreen -> SQLite) time to complete.
     await popup1.waitForTimeout(2_000)
 

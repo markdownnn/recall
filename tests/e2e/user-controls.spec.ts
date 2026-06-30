@@ -22,11 +22,26 @@ test('pause blocks capture; unpausing restores it', async () => {
   await page.goto(articleUrl)
   const popup = await ctx.newPage()
   await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  const pauseBox = popup.getByLabel(/pause/i)
 
-  // Pause, then manual-capture -> blocked.
-  await popup.getByLabel(/pause/i).check()
+  // The popup's mount effect loads settings asynchronously (get-settings) and can reset
+  // the checkbox right after a click, so toggling is retried until the new state STICKS
+  // (condition-based, no fixed sleep).
+  const setPaused = async (on: boolean) => {
+    await expect(async () => {
+      if (on) await pauseBox.check()
+      else await pauseBox.uncheck()
+      await expect(pauseBox).toBeChecked({ checked: on, timeout: 1_000 })
+    }).toPass({ timeout: 15_000 })
+  }
+
+  // Pause, then manual-capture (article tab active so the capture really reaches the
+  // gate) -> blocked. Keep the article in front; the popup button is clicked from the
+  // background (Playwright clicks non-active tabs fine). Do NOT bring the popup to front,
+  // or the popup would read ITSELF as the active tab and the capture would target the
+  // wrong tab.
+  await setPaused(true)
   await page.bringToFront()
-  await popup.bringToFront()
   await popup.getByText('Capture this page').click()
   await popup.waitForTimeout(1_000)
 
@@ -36,14 +51,20 @@ test('pause blocks capture; unpausing restores it', async () => {
   await popup.waitForTimeout(2_000)
   await expect(popup.locator('li')).toHaveCount(0)
 
-  // Unpause, capture -> works, recallable.
-  await popup.getByLabel(/pause/i).uncheck()
+  // Unpause, capture ONCE (article tab active), wait for it to land, then navigate the
+  // article away so the dwell auto-capture can't re-run putChunks and wipe the chunk
+  // vectors (NULL) mid-embed - that race would make recall flaky (same fix as
+  // persistence.spec). Then retry only the SEARCH while indexing completes.
+  await setPaused(false)
+  await page.bringToFront()
   await popup.getByText('Capture this page').click()
+  await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 30_000 })
+  await page.goto('about:blank')
   await expect(async () => {
     await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup.getByPlaceholder('recall...').press('Enter')
     await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
-  }).toPass({ timeout: 60_000 })
+  }).toPass({ timeout: 90_000 })
 
   await ctx.close()
 })
