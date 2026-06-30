@@ -4,9 +4,16 @@
 
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { cosineSimilarity } from '../core/cosine'
+import { rrfFuse } from '../core/rrf'
+import { toFtsQuery } from '../core/fts-query'
 
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import type { AppSettings } from '../core/ports'
+
+// Set true only after the FTS5 table + triggers are successfully created (see init).
+// A broken FTS must NOT disable capture/recall, so opSearch falls back to vector-only
+// when this stays false.
+let ftsAvailable = false
 
 // ---------------------------------------------------------------------------
 // Schema — applied in order on startup
@@ -63,34 +70,75 @@ function opSetVector(db: any, { id, vector }: { id: string; vector: Float32Array
   })
 }
 
-function opSearch(db: any, { query, k }: { query: Float32Array; k: number }): RankedResult[] {
-  // Load all pages into a Map for O(1) lookup during chunk iteration.
-  const pages = new Map<string, CapturedPage>()
+// Hydrate a fused id into a RankedResult: load the chunk + its page, attach the score.
+// Returns null when the chunk or its page no longer exists (skipped by the caller).
+function hydrate(db: any, chunkId: string, score: number): RankedResult | null {
+  let chunk: Chunk | null = null
+  let pageId = ''
   db.exec({
-    sql: `SELECT id, url, title, capturedAt FROM pages`,
-    rowMode: 'object',
-    callback: (r: any) => pages.set(r.id, { id: r.id, url: r.url, title: r.title, capturedAt: r.capturedAt }),
-  })
-
-  const scored: RankedResult[] = []
-  db.exec({
-    sql: `SELECT id, pageId, idx, text, vector FROM chunks WHERE vector IS NOT NULL`,
+    sql: `SELECT id, pageId, idx, text FROM chunks WHERE id = ?`,
+    bind: [chunkId],
     rowMode: 'object',
     callback: (r: any) => {
-      const page = pages.get(r.pageId)
-      if (!page) return
-      // Safe blob -> Float32Array reconstruction (same pattern as SqliteVectorStore).
-      const bytes = r.vector as Uint8Array
-      const f32view = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
-      // Copy to a standalone array so it outlives the callback frame.
-      const vector = new Float32Array(f32view)
-      const chunk: Chunk = { id: r.id, pageId: r.pageId, index: r.idx, text: r.text }
-      scored.push({ chunk, page, score: cosineSimilarity(query, vector) })
+      chunk = { id: r.id, pageId: r.pageId, index: r.idx, text: r.text }
+      pageId = r.pageId
     },
   })
+  if (!chunk) return null
+  let page: CapturedPage | null = null
+  db.exec({
+    sql: `SELECT id, url, title, capturedAt FROM pages WHERE id = ?`,
+    bind: [pageId],
+    rowMode: 'object',
+    callback: (r: any) => { page = { id: r.id, url: r.url, title: r.title, capturedAt: r.capturedAt } },
+  })
+  if (!page) return null
+  return { chunk, page, score }
+}
 
-  scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, k)
+function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[]; queryText: string; k: number }): RankedResult[] {
+  const N = 50
+  const q = Float32Array.from(queryVector)
+
+  // 1. Vector candidates: cosine over embedded chunks, top N ids (best-first).
+  //    Reuse the shared cosineSimilarity (NOT a hand-rolled dot product, which would
+  //    silently assume normalize:true and diverge from the core/memory-store ranking).
+  const vec: { id: string; cos: number }[] = []
+  db.exec({
+    sql: `SELECT c.id AS id, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
+    rowMode: 'object',
+    callback: (r: any) => {
+      const bytes = r.vector as Uint8Array
+      const v = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
+      vec.push({ id: r.id, cos: cosineSimilarity(q, v) })
+    },
+  })
+  vec.sort((a, b) => b.cos - a.cos)
+  const vectorIds = vec.slice(0, N).map((x) => x.id)
+
+  // 2. Lexical candidates: FTS5 trigram BM25, top N ids. Skipped entirely when the FTS
+  //    failed to initialize (ftsAvailable=false) -> graceful vector-only fallback.
+  //    MATCH/bm25 must name the real table `chunks_fts`, NOT the alias `f` (verified).
+  const lexicalIds: string[] = []
+  const match = ftsAvailable ? toFtsQuery(queryText) : null
+  if (match) {
+    try {
+      db.exec({
+        sql: `SELECT c.id AS id FROM chunks_fts f JOIN chunks c ON c.rowid = f.rowid
+              WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?`,
+        bind: [match, N],
+        rowMode: 'object',
+        callback: (r: any) => lexicalIds.push(r.id),
+      })
+    } catch (e) {
+      // Malformed match (defensive) -> vector-only this query.
+      console.warn('[recall-worker] FTS MATCH failed, vector-only this query:', String(e))
+    }
+  }
+
+  // 3. Fuse and take top k, then hydrate to RankedResult.
+  const fused = rrfFuse([vectorIds, lexicalIds]).slice(0, k)
+  return fused.map((hit) => hydrate(db, hit.id, hit.score)).filter(Boolean) as RankedResult[]
 }
 
 function opGetSettings(db: any): AppSettings {
@@ -181,12 +229,59 @@ const initPromise: Promise<void> = (async () => {
       db.exec({ sql: `UPDATE pages SET host = ? WHERE id = ?`, bind: [host, r.id] })
     }
     if (toFix.length > 0) console.log(`[recall-worker] backfilled host for ${toFix.length} rows`)
+
+    // FTS5 trigram index for the lexical side of hybrid search. Kept in sync with
+    // `chunks` via triggers (text is immutable after insert, so only insert/delete
+    // triggers are needed). ISOLATED in its own try/catch: a broken FTS must NOT reject
+    // initPromise (every op awaits it — a reject would stop CAPTURE too, not just
+    // search). On failure we log and leave ftsAvailable=false; opSearch then falls back
+    // to vector-only. Do NOT set trusted_schema=0: triggers writing to a virtual table
+    // need the build default trusted_schema=ON.
+    try {
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+        text, content='chunks', content_rowid='rowid', tokenize='trigram'
+      )`)
+      db.exec(`CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
+        INSERT INTO chunks_fts(rowid, text) VALUES (new.rowid, new.text);
+      END`)
+      db.exec(`CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
+        INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES('delete', old.rowid, old.text);
+      END`)
+      ftsAvailable = true
+      console.log('[recall-worker] FTS5 trigram index ready')
+    } catch (e) {
+      console.error('[recall-worker] FTS5 init FAILED, lexical search disabled (capture/recall unaffected):', String(e))
+    }
+
     console.log('[recall-worker] sqlite OPFS SAH pool ready, schema created')
   } catch (e) {
     console.error('[recall-worker] init FAILED:', String(e))
     throw new Error(String(e))
   }
 })()
+
+// Deferred one-time FTS backfill for upgraded profiles. The `rebuild` tokenizes every
+// chunk synchronously and can block the worker for seconds on a heavy profile, so it
+// runs AFTER initPromise resolves (never awaited inside init) — the first capture/recall
+// is not blocked. New captures index via the triggers regardless of this backfill. The
+// gate (ftsCount===0 && chunkCount>0) only self-heals a fully-empty FTS, not a partial.
+initPromise
+  .then(() => {
+    if (!ftsAvailable || !db) return
+    try {
+      let ftsCount = 0, chunkCount = 0
+      db.exec({ sql: `SELECT count(*) FROM chunks_fts`, rowMode: 'array', callback: (r: any) => { ftsCount = r[0] } })
+      db.exec({ sql: `SELECT count(*) FROM chunks`, rowMode: 'array', callback: (r: any) => { chunkCount = r[0] } })
+      if (ftsCount === 0 && chunkCount > 0) {
+        console.log(`[recall-worker] FTS backfill: rebuilding index for ${chunkCount} chunks...`)
+        db.exec(`INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')`)
+        console.log('[recall-worker] FTS backfill: rebuild complete')
+      }
+    } catch (e) {
+      console.error('[recall-worker] FTS backfill failed (lexical may be incomplete):', String(e))
+    }
+  })
+  .catch(() => { /* init rejection already logged; nothing to backfill */ })
 
 // ---------------------------------------------------------------------------
 // Message handler (declarative dispatch)
