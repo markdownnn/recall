@@ -153,6 +153,12 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // PRIMARY line falls back to host, then url, so the bar is never blank.
   const primary = tab.title || tab.host || tab.url
 
+  // Can this exact tab host a content script? Non-http(s)/file schemes (chrome://, extension
+  // pages, new-tab) can't, so the Capture button is DISABLED + grayed and never fires - this
+  // proactively prevents the "Receiving end does not exist" error. Internal/intranet http
+  // hosts ARE capturable-by-manual, so they stay active "Capture this page".
+  const capturable = isCapturableUrl(tab.url)
+
   // Is THIS host already on the no-remember list? Compare the registrable form (the same
   // siteHost(...) the deny/forget logic derives) against state - never sniff English
   // status strings, so the label stays correct under i18n.
@@ -168,11 +174,15 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
         <span class={saved ? 'badge saved' : 'badge'}>{saved ? t.savedBadge : t.notSavedBadge}</span>
       </div>
 
-      {/* PAGE-scoped: acts on THIS exact URL. Already-saved -> "Update" + faded style; the
-          default/loading (not-yet-resolved) state stays the prominent "Capture this page". */}
+      {/* PAGE-scoped: acts on THIS exact URL. Non-capturable scheme -> DISABLED + gray; else
+          already-saved -> "Update" + faded style; else the prominent "Capture this page". */}
       <div class="page-actions">
-        <button class={saved ? 'capture saved' : 'capture'} onClick={onCapture}>
-          {saved ? t.updateButton : t.captureButton}
+        <button
+          class={!capturable ? 'capture disabled' : saved ? 'capture saved' : 'capture'}
+          disabled={!capturable}
+          onClick={onCapture}
+        >
+          {!capturable ? t.cannotCaptureButton : saved ? t.updateButton : t.captureButton}
         </button>
       </div>
 

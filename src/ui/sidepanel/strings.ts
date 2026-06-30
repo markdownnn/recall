@@ -12,6 +12,7 @@ export interface UIStrings {
   // Capture + status
   captureButton: string
   updateButton: string          // label when the active page is already saved
+  cannotCaptureButton: string   // disabled-button label for non-capturable schemes (chrome://, etc.)
   indexed: string
   capturing: string
   capturedChunks: (n: number) => string
@@ -74,6 +75,7 @@ export const EN: UIStrings = {
   loadMore: 'Load more',
   captureButton: 'Capture this page',
   updateButton: 'Update this page',
+  cannotCaptureButton: "Can't save this page",
   indexed: 'indexed',
   capturing: 'capturing...',
   capturedChunks: (n) => `captured (indexing ${n} chunks...)`,

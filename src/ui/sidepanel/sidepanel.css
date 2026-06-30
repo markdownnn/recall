@@ -234,6 +234,17 @@ body {
   border: 1px solid var(--border-strong);
 }
 .capture.saved:hover { background: #e3e8ff; }
+/* Non-capturable page (chrome://, extension pages, etc.): the button is disabled, so fade
+   it to a flat gray with a not-allowed cursor and kill the hover lift. */
+.capture:disabled,
+.capture.disabled {
+  color: var(--faint);
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  cursor: not-allowed;
+}
+.capture:disabled:hover,
+.capture.disabled:hover { background: #f3f4f6; }
 
 /* Secondary / tertiary controls (SITE-scoped). The deny/forget links sit in ONE
    left-aligned group with a consistent gap (not pushed to opposite edges) so they read
