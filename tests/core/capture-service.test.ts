@@ -131,3 +131,40 @@ test('auto (force=false) on a NOT-saved page captures normally', async () => {
   expect(result.chunkCount).toBeGreaterThan(0)
   expect(await store.hasPage('http://x/a')).toBe(true)
 })
+
+// Scenario: a Wikipedia-style page yields a clean prose chunk and a citation-list chunk;
+// a minProseScore must drop the citation chunk at index time so it never pollutes search.
+// Coverage: integration (real CaptureService + real ParagraphChunker + MemoryVectorStore).
+// Exactly 8 words each so ParagraphChunker(8) - which treats the whole text as ONE word
+// stream (newlines are just whitespace, never a flush) - emits one pure-prose chunk and one
+// pure-citation chunk with no word mixing across the boundary.
+const PROSE8 = 'bacteria are ubiquitous mostly free living single organisms'
+// A real-shaped, digit-dense citation token run (page/volume numbers, DOIs) - proseScore
+// drives the drop mostly off digit density, so a marker-only line is NOT enough.
+const CITE8 = '10.1093 jxb eri197 56 417 1761 doi 12498710'
+
+test('minProseScore drops citation-shaped chunks but keeps prose chunks', async () => {
+  const store = new MemoryVectorStore()
+  const capture = new CaptureService(new ParagraphChunker(8), store, 0.35)
+  const res = await capture.capture({ url: 'http://x/a', title: 'A', text: `${PROSE8} ${CITE8}` })
+  expect(res.chunkCount).toBe(1) // citation chunk dropped, prose chunk kept
+})
+
+// Scenario: a genuinely table/formula-heavy page where EVERY chunk is low-prose must stay
+// findable - the filter is bypassed rather than storing zero chunks.
+// Coverage: integration (real CaptureService + real ParagraphChunker + MemoryVectorStore).
+test('minProseScore is bypassed when ALL chunks are below threshold (page stays findable)', async () => {
+  const store = new MemoryVectorStore()
+  const capture = new CaptureService(new ParagraphChunker(8), store, 0.35)
+  const res = await capture.capture({ url: 'http://x/b', title: 'B', text: CITE8 })
+  expect(res.chunkCount).toBeGreaterThan(0) // guard: do not store ZERO chunks
+})
+
+// Scenario: existing callers that pass no threshold must keep every chunk (no behavior change).
+// Coverage: integration (real CaptureService + real ParagraphChunker + MemoryVectorStore).
+test('default (no minProseScore) keeps every chunk (backward compatible)', async () => {
+  const store = new MemoryVectorStore()
+  const capture = new CaptureService(new ParagraphChunker(8), store) // no threshold arg
+  const res = await capture.capture({ url: 'http://x/c', title: 'C', text: CITE8 })
+  expect(res.chunkCount).toBeGreaterThan(0)
+})

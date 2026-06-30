@@ -50,7 +50,10 @@ const client = new SqliteWorkerClient(worker as any)
 const store = new WorkerVectorStore(client)      // VectorSearchPort
 const settings = new WorkerSettingsStore(client)  // SettingsPort
 const chunker = new ParagraphChunker(220)
-const capture = new CaptureService(chunker, store)
+// Fix 2: drop low-prose (citation/boilerplate) chunks at index time. 0.35 matches the eval
+// harness threshold; the all-dropped guard inside CaptureService keeps table-heavy pages
+// findable.
+const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
 const gate = new CaptureGate()
