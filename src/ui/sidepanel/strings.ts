@@ -22,7 +22,10 @@ function renderFallback(key: string, subs?: string[]): string {
   if (entry.placeholders) {
     for (const [name, def] of Object.entries(entry.placeholders)) {
       const idx = Number(def.content.replace('$', '')) - 1
-      out = out.replace(new RegExp('\\$' + name + '\\$', 'gi'), subs?.[idx] ?? '')
+      const value = subs?.[idx] ?? ''
+      // Function replacer so `$`-sequences in the value ($&, $$, $1) are inserted LITERALLY,
+      // matching real chrome.i18n.getMessage. A string replacement would special-case them.
+      out = out.replace(new RegExp('\\$' + name + '\\$', 'gi'), () => value)
     }
   }
   return out

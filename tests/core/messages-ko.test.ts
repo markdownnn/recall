@@ -66,7 +66,10 @@ test('ko placeholder substitution lands the argument', () => {
     let out = entry.message
     for (const [name, def] of Object.entries(entry.placeholders ?? {})) {
       const idx = Number(def.content.replace('$', '')) - 1
-      out = out.replace(new RegExp('\\$' + name + '\\$', 'gi'), subs[idx] ?? '')
+      const value = subs[idx] ?? ''
+      // Function replacer: insert the value LITERALLY (chrome.i18n semantics), so a value
+      // containing $ sequences is not reinterpreted by String.replace.
+      out = out.replace(new RegExp('\\$' + name + '\\$', 'gi'), () => value)
     }
     return out
   }
