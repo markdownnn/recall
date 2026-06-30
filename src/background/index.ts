@@ -161,6 +161,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
 
   if (
     msg.type !== 'capture' &&
+    msg.type !== 'capture-text' &&
     msg.type !== 'recall' &&
     msg.type !== 'get-settings' &&
     msg.type !== 'set-paused' &&
@@ -188,6 +189,14 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
           manual: msg.manual,
         })
         sendResponse({ type: 'captured', captured: r.captured, chunkCount: r.chunkCount, reason: r.reason } satisfies MsgResult)
+      } else if (msg.type === 'capture-text') {
+        const r = await callOffscreen<{ captured: boolean; chunkCount: number }>({
+          op: 'capture-text',
+          url: msg.url,
+          title: msg.title,
+          text: msg.text,
+        })
+        sendResponse({ type: 'captured', captured: r.captured, chunkCount: r.chunkCount } satisfies MsgResult)
       } else if (msg.type === 'recall') {
         const r = await callOffscreen<{ results: RankedResult[] }>({
           op: 'recall',

@@ -133,6 +133,20 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     return { captured: true, chunkCount }
   }
 
+  // --- capture-text: seed PROVIDED text (onboarding try-it card, no active tab). Unlike
+  //     `capture` this skips the gate on purpose: a seeded demo doc is always stored (the
+  //     user clicked "Add 3 sample pages"). Reuses the SAME CaptureService.capture() + drain
+  //     as a real capture. ---
+  if (op === 'capture-text') {
+    const url = p.url as string
+    const title = p.title as string
+    const text = p.text as string
+    const { chunkCount } = await capture.capture({ url, title, text, force: true })
+    console.log(`[recall] capture-text seeded ${chunkCount} chunks`)
+    runDrainWithProgress()
+    return { captured: true, chunkCount }
+  }
+
   // --- settings RPC ops: relay to WorkerSettingsStore ---
   if (op === 'get-settings') {
     return await settings.get()

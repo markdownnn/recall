@@ -168,3 +168,22 @@ test('default (no minProseScore) keeps every chunk (backward compatible)', async
   const res = await capture.capture({ url: 'http://x/c', title: 'C', text: CITE8 })
   expect(res.chunkCount).toBeGreaterThan(0)
 })
+
+// Scenario: the try-it card seeds a bundled demo doc by PROVIDED text (no tab). The same
+// capture service must store its chunks as pending, hosted on the demo url, exactly like a
+// real page.
+// Coverage: integration (real chunker + real MemoryVectorStore via the exported CaptureService).
+test('capture of provided demo text stores chunks as pending', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), store)
+
+  const result = await svc.capture({
+    url: 'https://recall-demo.example/photosynthesis',
+    title: 'How photosynthesis works',
+    text: 'A green plant makes food from sunlight using chlorophyll in its leaves.',
+  })
+
+  expect(result.chunkCount).toBeGreaterThan(0)
+  const pending = await store.pendingChunks(100)
+  expect(pending.length).toBe(result.chunkCount)
+})

@@ -2,6 +2,7 @@ import type { CapturedPage, RankedResult } from './core/model'
 
 export type Msg =
   | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
+  | { type: 'capture-text'; url: string; title: string; text: string }
   | { type: 'recall'; text: string; k: number }
   | { type: 'model-status' }
   | { type: 'get-settings' }
