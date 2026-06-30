@@ -75,7 +75,9 @@ test('internal host is skipped by auto-capture but savable manually', async () =
   // MANUAL leg (Option A): an explicit save of the same internal page DOES work.
   await articlePage.bringToFront()
   await popup.getByText('Capture this page').click()
-  await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 30_000 })
+  // Capture registered: the button leaves "Capture this page" for "Saving..." (or "Update this
+  // page" if it embedded fast). Replaces the old "captured|indexing" status text.
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
   await articlePage.goto('about:blank')
   await expect(async () => {
     await popup.getByRole('searchbox').fill('hormone that ruins sleep')

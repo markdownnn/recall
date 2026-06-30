@@ -13,6 +13,8 @@ export interface UIStrings {
   captureButton: string
   updateButton: string          // label when the active page is already saved
   cannotCaptureButton: string   // disabled-button label for non-capturable schemes (chrome://, etc.)
+  saving: string                // button + badge label while THIS page still has un-embedded chunks
+  savingHint: string            // low-key note shown only while saving (first save can take a moment)
   indexed: string
   capturing: string
   capturedChunks: (n: number) => string
@@ -80,6 +82,8 @@ export const EN: UIStrings = {
   captureButton: 'Capture this page',
   updateButton: 'Update this page',
   cannotCaptureButton: "Can't save this page",
+  saving: 'Saving...',
+  savingHint: 'Saving can take a moment.',
   indexed: 'indexed',
   capturing: 'capturing...',
   capturedChunks: (n) => `captured (indexing ${n} chunks...)`,

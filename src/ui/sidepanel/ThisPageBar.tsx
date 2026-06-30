@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
-import type { MsgResult } from '../../messaging'
+import type { MsgResult, IndexingProgressMsg } from '../../messaging'
 import { siteHost } from '../../core/site-host'
 import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
@@ -26,6 +26,10 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // disabled "Capture this page" instead of the wrong error.
   const [resolved, setResolved] = useState(false)
   const [saved, setSaved] = useState(false)
+  // True while THIS exact page still has un-embedded chunks (page-pending). Drives the
+  // "Saving..." button/badge state. Per-page: a background drain of OTHER pages re-queries
+  // THIS tab, finds it not pending, and leaves the bar unchanged.
+  const [pending, setPending] = useState(false)
   const [paused, setPaused] = useState(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
   const [denyStatus, setDenyStatus] = useState('')
@@ -37,22 +41,33 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   const refreshActiveTab = async () => {
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
     const url = active?.url ?? ''
+    const urlChanged = url !== latestUrlRef.current
     latestUrlRef.current = url
     const next: ActiveTab = { url, host: hostOf(url), title: active?.title ?? '' }
     setTab(next)
     setResolved(true) // the real tab is known now; the button can leave its neutral loading state
+    // On a real tab SWITCH, drop the previous tab's save-state IMMEDIATELY so the bar never
+    // flashes another page's "saved"/"Saving..." while this tab's has-page/page-pending queries
+    // are still in flight. Each tab thus shows only its OWN state, with zero carryover.
+    if (urlChanged) { setSaved(false); setPending(false) }
 
-    // Badge READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
+    // Save-state READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
     // the id can never drift from what capture stored. Skip non-http(s) tabs.
-    if (!isCapturableUrl(url)) { setSaved(false); return }
+    if (!isCapturableUrl(url)) { setSaved(false); setPending(false); return }
     try {
-      const res: MsgResult = await chrome.runtime.sendMessage({ type: 'has-page', url })
-      // Out-of-order guard: the active url changed while we were waiting; drop this answer.
+      const [hp, pp]: MsgResult[] = await Promise.all([
+        chrome.runtime.sendMessage({ type: 'has-page', url }),
+        chrome.runtime.sendMessage({ type: 'page-pending', url }),
+      ])
+      // Out-of-order guard: the active url changed while we were waiting; drop this answer so a
+      // slow response for a PREVIOUS tab can never overwrite the CURRENT tab's state.
       if (latestUrlRef.current !== url) return
-      setSaved(res?.type === 'page-status' ? res.exists : false)
+      setSaved(hp?.type === 'page-status' ? hp.exists : false)
+      setPending(pp?.type === 'page-pending-status' ? pp.pending : false)
     } catch {
       if (latestUrlRef.current !== url) return
       setSaved(false)
+      setPending(false)
     }
   }
 
@@ -72,11 +87,19 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     const onUpdated = (_id: number, info: chrome.tabs.OnUpdatedInfo, tabArg: chrome.tabs.Tab) => {
       if (tabArg.active && (info.status === 'complete' || info.url)) void refreshActiveTab()
     }
+    // As the background drain makes progress, re-check THIS tab's pending state so the button
+    // settles "Saving..." -> "saved"/"Update this page" the moment its last chunk embeds. A
+    // drain of OTHER pages re-queries this tab, finds it not pending, and leaves the bar as-is.
+    const onMessage = (msg: IndexingProgressMsg | { type?: string }) => {
+      if (msg?.type === 'indexing-progress') void refreshActiveTab()
+    }
     chrome.tabs.onActivated.addListener(onActivated)
     chrome.tabs.onUpdated.addListener(onUpdated)
+    chrome.runtime.onMessage.addListener(onMessage)
     return () => {
       chrome.tabs.onActivated.removeListener(onActivated)
       chrome.tabs.onUpdated.removeListener(onUpdated)
+      chrome.runtime.onMessage.removeListener(onMessage)
     }
   }, [])
 
@@ -170,6 +193,21 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // status strings, so the label stays correct under i18n.
   const hostDenied = tab.host !== '' && userDenyHosts.includes(siteHost(tab.host))
 
+  // PAGE-scoped save state for THIS exact tab. `pending` (un-embedded chunks) WINS so the bar
+  // reads "Saving..." while a just-captured page indexes, then settles to saved/not-saved.
+  const badgeClass = pending ? 'badge saving' : saved ? 'badge saved' : 'badge'
+  const badgeLabel = pending ? t.saving : saved ? t.savedBadge : t.notSavedBadge
+  const buttonClass = !resolved ? 'capture'
+    : !capturable ? 'capture disabled'
+    : pending ? 'capture saving'
+    : saved ? 'capture saved'
+    : 'capture'
+  const buttonLabel = !resolved ? t.captureButton
+    : !capturable ? t.cannotCaptureButton
+    : pending ? t.saving
+    : saved ? t.updateButton
+    : t.captureButton
+
   return (
     <div class="thispage">
       <div class="page-head">
@@ -177,20 +215,21 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
           <div class="page-title">{primary}</div>
           {tab.host && <div class="page-host">{tab.host}</div>}
         </div>
-        <span class={saved ? 'badge saved' : 'badge'}>{saved ? t.savedBadge : t.notSavedBadge}</span>
+        <span class={badgeClass}>{badgeLabel}</span>
       </div>
 
-      {/* PAGE-scoped: acts on THIS exact URL. Non-capturable scheme -> DISABLED + gray; else
-          already-saved -> "Update" + faded style; else the prominent "Capture this page". */}
+      {/* PAGE-scoped: acts on THIS exact URL. Non-capturable scheme -> DISABLED + gray; while it
+          indexes -> "Saving..." (disabled); already-saved -> "Update" + faded; else "Capture". */}
       <div class="page-actions">
         <button
-          class={!resolved ? 'capture' : !capturable ? 'capture disabled' : saved ? 'capture saved' : 'capture'}
-          disabled={!resolved || !capturable}
+          class={buttonClass}
+          disabled={!resolved || !capturable || pending}
           onClick={onCapture}
         >
-          {!resolved ? t.captureButton : !capturable ? t.cannotCaptureButton : saved ? t.updateButton : t.captureButton}
+          {buttonLabel}
         </button>
       </div>
+      {pending && <div class="note">{t.savingHint}</div>}
 
       {/* SITE-scoped: acts on the HOST. */}
       <div class="site-actions">

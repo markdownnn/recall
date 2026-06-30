@@ -54,9 +54,10 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     // Keep the article page in front for the capture.
     await articlePage.bringToFront()
 
-    // Capture.
+    // Capture. The button leaves "Capture this page" for "Saving..." (page stored, chunks
+    // pending) - or straight to "Update this page" if embedding already finished.
     await popup1.getByText('Capture this page').click()
-    await expect(popup1.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
+    await expect(popup1.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
 
     // The manual capture is now committed. Navigate the source tab away so the dwell
     // auto-capture can't fire and re-run putChunks (which DELETEs + re-inserts the chunks
@@ -65,8 +66,15 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     // auto-capture.) Honest stop: the page genuinely leaves; no sleep, no sensitivity trick.
     await articlePage.goto('about:blank')
 
-    // Wait for indexing (model download + embed).
-    await expect(popup1.getByText('indexed')).toBeVisible({ timeout: 240_000 })
+    // Wait for indexing (model download + embed). The button settles on "Update this page"
+    // once every pending chunk for THIS tab is embedded (replaces the old "indexed" line).
+    // NOTE: the source tab was navigated to about:blank above, so re-query via the search path
+    // below rather than the button (the active tab is no longer the article).
+    await expect(async () => {
+      await popup1.getByRole('searchbox').fill('hormone that ruins sleep')
+      await popup1.getByRole('searchbox').press('Enter')
+      await expect(popup1.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
+    }).toPass({ timeout: 240_000 })
 
     // Quick sanity: Cortisol ranks first in session 1.
     await popup1.getByRole('searchbox').fill('hormone that ruins sleep')

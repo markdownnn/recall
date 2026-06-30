@@ -77,7 +77,9 @@ test('SERP is skipped by auto-capture but savable manually', async () => {
   // --- Manual leg (positive): explicit save bypasses the SERP soft gate. ---
   await page.bringToFront()
   await popup.getByText('Capture this page').click()
-  await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 30_000 })
+  // Capture registered: the button leaves "Capture this page" for "Saving..." (or "Update this
+  // page" if it embedded fast). Replaces the old "captured|indexing" status text.
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
   await page.goto('about:blank') // stop the dwell from re-running putChunks mid-embed
 
   await expect(async () => {

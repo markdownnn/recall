@@ -55,22 +55,17 @@ test('capture an article then recall the matching chunk', async () => {
   //    without focusing the popup tab, so activeTab query returns the article.
   await popup.getByText('Capture this page').click()
 
-  // 5. Wait for capture to complete.  Capture now stores chunks immediately without
-  //    embedding, so this responds within seconds even on first run.
-  //    Status will be "captured (indexing N chunks...)" when chunkCount > 0.
-  await expect(popup.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
+  // 5. Capture registered. The page is stored with pending chunks, so the PAGE-scoped capture
+  //    button leaves "Capture this page" for "Saving..." (or jumps straight to "Update this
+  //    page" if embedding already finished). This replaces the old "captured (indexing...)"
+  //    status text - the save-state now lives entirely on the button/badge.
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
 
-  // Scenario: after capturing the active article, the panel's PAGE-scoped SAVED badge must
-  // flip to "saved" for that exact tab - the visible payoff of the has-page round-trip.
-  // Coverage: integration (built extension; real capture + offscreen has-page + panel render).
-  // exact:true so it cannot false-match the pre-capture "not saved yet" badge.
+  // 6. Indexing complete. Once every pending chunk is embedded, pagePending flips false and the
+  //    button settles on "Update this page" with the SAVED badge for THIS exact tab (replaces
+  //    the old "indexed" line). The drain may download the model first; give up to 240s.
+  await expect(popup.locator('button.capture')).toHaveText('Update this page', { timeout: 240_000 })
   await expect(popup.getByText('saved', { exact: true })).toBeVisible({ timeout: 10_000 })
-
-  // 6. Wait for indexing to complete.
-  //    The background drain embeds all pending chunks (may need to download the model
-  //    first on a fresh browser context).  The popup shows "indexed" once the background
-  //    broadcasts pending=0.  Give up to 240s  -  same budget as the old synchronous capture.
-  await expect(popup.getByText('indexed')).toBeVisible({ timeout: 240_000 })
 
   // --- Search 1: hormone query ---
   // Scenario: query about sleep hormones must surface the cortisol chunk first,

@@ -44,7 +44,9 @@ async function capture(popup: any, page: any) {
   // the user action (re-click) is robust and honest - same pageId, so it just dedupes.
   await expect(async () => {
     await popup.getByText('Capture this page').click()
-    await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 15_000 })
+    // Capture registered: the button leaves "Capture this page" for "Saving..." (or "Update
+    // this page" if it embedded fast). Replaces the old "captured|indexing" status text.
+    await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 15_000 })
   }).toPass({ timeout: 90_000 })
 }
 

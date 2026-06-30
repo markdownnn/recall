@@ -3,7 +3,7 @@ import { EN } from '../../src/ui/sidepanel/strings'
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
   'historyTabLabel', 'historyEmpty', 'loadMore',
-  'captureButton', 'updateButton', 'cannotCaptureButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
+  'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'cannotCapturePage', 'reloadToCapture',
   'modelReady', 'modelError', 'embedderUnavailable', 'embedderSlow', 'pauseLabel',
@@ -39,6 +39,11 @@ test('byte-identical e2e strings are preserved', () => {
   expect(EN.captureButton).toBe('Capture this page')
   expect(EN.updateButton).toBe('Update this page')
   expect(EN.cannotCaptureButton).toBe("Can't save this page")
+  // Scenario: the per-page "Saving..." button/badge label + its hint are asserted by the e2e
+  // (per-page-state, recall-flow); a wording change here must fail loudly. ASCII only.
+  // Coverage: integration (real EN object).
+  expect(EN.saving).toBe('Saving...')
+  expect(EN.savingHint).toBe('Saving can take a moment.')
   expect(EN.savedBadge).toBe('saved')
   expect(EN.notSavedBadge).toBe('not saved yet')
   expect(EN.indexed).toBe('indexed')

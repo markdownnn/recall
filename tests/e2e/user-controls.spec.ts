@@ -58,7 +58,9 @@ test('pause blocks capture; unpausing restores it', async () => {
   await setPaused(false)
   await page.bringToFront()
   await popup.getByText('Capture this page').click()
-  await expect(popup.getByText(/captured|indexing/i)).toBeVisible({ timeout: 30_000 })
+  // Capture registered (unpaused): the button leaves "Capture this page" for "Saving..." (or
+  // "Update this page" if it embedded fast). Replaces the old "captured|indexing" status text.
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
   await page.goto('about:blank')
   await expect(async () => {
     await popup.getByRole('searchbox').fill('hormone that ruins sleep')
@@ -121,8 +123,9 @@ test('deny-host blocks capture via real SQL path', async () => {
     popup.getByText('not saved: this site is on the no-remember list'),
   ).toBeVisible({ timeout: 10_000 })
 
-  // Verify the denied page was NOT captured (no "captured" text).
-  await expect(popup.getByText(/captured/i)).not.toBeVisible()
+  // Verify the denied page was NOT saved: its PAGE-scoped badge stays "not saved yet" (the
+  // gate blocked it, so has-page is false). The denylisted note above is the positive proof.
+  await expect(popup.getByText('not saved yet')).toBeVisible({ timeout: 10_000 })
 
   // Cross-check: capture the file:// article (host='') on a different page to
   // confirm the denylist is host-specific and normal capture still works.
@@ -130,9 +133,9 @@ test('deny-host blocks capture via real SQL path', async () => {
   await fileArticlePage.goto(articleUrl)
   await fileArticlePage.bringToFront()
   await popup.getByText('Capture this page').click()
-  // file:// pages have host='' which is NOT deny-test.example, so capture
-  // should proceed and produce chunks (the gate only checks thin/paused/denied).
-  await expect(popup.getByText(/captured/i)).toBeVisible({ timeout: 10_000 })
+  // file:// pages have host='' which is NOT deny-test.example, so capture should proceed and
+  // store the page -> the button leaves "Capture this page" for "Saving..."/"Update this page".
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 10_000 })
 
   await ctx.close()
 })
@@ -171,9 +174,9 @@ test('removing a no-remember site re-enables capture (real SQL path)', async () 
   // exactly one host is denied) -> the user_denylist row must be deleted.
   await popup.getByRole('button', { name: 'remove' }).click()
 
-  // Capture now succeeds -> proves the row was really deleted, not just hidden.
-  await popup.getByText('Capture this page').click()
-  await expect(popup.getByText(/captured/i)).toBeVisible({ timeout: 10_000 })
+  // Capture now succeeds -> proves the row was really deleted, not just hidden. The button
+  // leaves "Capture this page" for "Saving..."/"Update this page" (replaces "captured" text).
+  await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 10_000 })
 
   await ctx.close()
 })

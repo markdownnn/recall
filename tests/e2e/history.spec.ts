@@ -47,14 +47,16 @@ test('History tab lists captured pages newest-first with working links', async (
   const panel = await ctx.newPage()
   await panel.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
 
-  // Capture cortisol first (older), then plants (newer), so plants sorts to the top.
+  // Capture cortisol first (older), then plants (newer), so plants sorts to the top. After each
+  // capture the page is stored, so the PAGE-scoped button leaves "Capture this page" for
+  // "Saving..." (or "Update this page" if it embedded fast) - replaces the old "captured" text.
   await cortisol.bringToFront()
   await panel.getByText('Capture this page').click()
-  await expect(panel.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
+  await expect(panel.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
 
   await plants.bringToFront()
   await panel.getByText('Capture this page').click()
-  await expect(panel.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
+  await expect(panel.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
 
   // Open the History tab (the second tab the scaffold now renders).
   await panel.getByRole('tab', { name: 'History' }).click()
