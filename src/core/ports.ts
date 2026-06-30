@@ -1,5 +1,13 @@
 import type { Chunk, RankedResult } from './model'
 
+// Wraps "turn a page into clean, block-joined prose + a title" behind one seam so the
+// extractor (today: Readability 0.6 + DOM pre-clean) can be swapped or A/B'd (e.g. Defuddle)
+// without touching the content script or the chunker. Takes a live document (or a clone) and
+// returns the chunker's input, or null when the page has no extractable prose.
+export interface ExtractionPort {
+  extract(doc: Document): { title: string; text: string } | null
+}
+
 export interface ContentChunkerPort {
   chunk(input: { pageId: string; text: string }): Chunk[]
 }
