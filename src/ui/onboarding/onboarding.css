@@ -178,3 +178,28 @@ kbd {
   transition: background 0.15s;
 }
 .primary:hover { background: var(--accent-hover); }
+
+/* Try-it live card -------------------------------------------------------- */
+/* Chips inside the try-it card are clickable buttons (the explainer chips above stay spans). */
+.section .chips button.chip { cursor: pointer; font-family: inherit; }
+
+.searchbar { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.searchbar input {
+  flex: 1; padding: 10px 12px; font: inherit; color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: #fff;
+}
+.searchbtn {
+  padding: 10px 16px; font: inherit; font-weight: 550; color: #fff;
+  background: var(--accent); border: 0; border-radius: var(--radius); cursor: pointer;
+}
+.results { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.results .card { padding: var(--space-4); }
+.results .card > a { display: block; color: var(--accent); font-weight: 600; text-decoration: none; }
+.results .card > a:hover { text-decoration: underline; }
+.results .card > p { margin: var(--space-2) 0 0; color: #374151; font-size: 14px; line-height: 1.5; }
+.results .meta { margin-top: var(--space-2); font-size: 12px; color: var(--faint); }
+.hint { margin-top: var(--space-3); color: var(--muted); font-size: 13px; }
+
+.sample-list { margin: var(--space-3) 0 0; padding-left: var(--space-5); color: #374151; }
+.demo-status { display: block; margin-top: var(--space-3); color: var(--accent); font-weight: 550; }
+.linkbtn { display: inline-block; margin-top: var(--space-4); background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
