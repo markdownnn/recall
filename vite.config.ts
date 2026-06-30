@@ -33,6 +33,10 @@ export default defineConfig(({ command }) => ({
       // emits it to dist-ext/ at the same path (src/offscreen/offscreen.html).
       input: {
         offscreen: 'src/offscreen/offscreen.html',
+        // onboarding.html is opened via chrome.tabs.create on install and is not
+        // referenced by the manifest, so CRXJS won't auto-emit it. Add it here so
+        // Vite/Rollup builds it to dist-ext/src/ui/onboarding/index.html.
+        onboarding: 'src/ui/onboarding/index.html',
       },
     },
   },

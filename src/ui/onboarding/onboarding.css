@@ -1,0 +1,132 @@
+/* Recall onboarding - a full browser tab, so a centered ~640px column IS right
+   here (unlike the full-width side panel). Same light palette + indigo accent. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --border: #ececf0;
+  --border-strong: #d8dae0;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef2ff;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Centered scrollable content column. */
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 24px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Hero */
+.hero { text-align: center; margin-bottom: 12px; }
+.hero .brand {
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.hero .tagline {
+  margin: 16px 0 0;
+  font-size: 30px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.hero .calm {
+  margin: 14px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* Section cards */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+.section { padding: 22px 24px; }
+.section h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.section p {
+  margin: 0;
+  color: #374151;
+}
+.section p + p { margin-top: 10px; }
+
+/* Example query chips - small rounded pills. */
+.chips {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid #dfe3fb;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Sample result card mock - styled like the real .card in the side panel. */
+.result-mock { padding: 14px 16px; margin-top: 14px; }
+.result-mock > a {
+  display: block;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+}
+.result-mock > a:hover { text-decoration: underline; }
+.result-mock > p {
+  margin: 6px 0 0;
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.result-mock .meta { margin-top: 8px; font-size: 12px; color: var(--faint); }
+
+.caption { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.tip { color: var(--muted); }
+
+/* Primary button */
+.primary {
+  margin-top: 16px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 550;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.primary:hover { background: var(--accent-hover); }
