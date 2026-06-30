@@ -3,6 +3,8 @@
     "message": "읽은 모든 것을 기억하고, 나중에 평범한 말로 찾으세요. 기기 안에서만 도는 비공개 검색."
   },
 
+  "appName": { "message": "Recall - 나만의 비공개 두 번째 뇌" },
+
   "brand": { "message": "Recall" },
 
   "searching": { "message": "검색 중..." },

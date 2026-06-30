@@ -2,8 +2,8 @@ import { defineManifest } from '@crxjs/vite-plugin'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Recall',
-  version: '0.0.1',
+  name: '__MSG_appName__',
+  version: '1.0.0',
   // Localized description. The strings live in public/_locales/{en,ko}/messages.json;
   // Chrome resolves __MSG_appDesc__ at load from the user's UI language, falling back to
   // default_locale ('en').

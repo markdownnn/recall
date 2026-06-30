@@ -3,6 +3,8 @@
     "message": "Remember everything you read - find it later in plain words. Private, on-device search."
   },
 
+  "appName": { "message": "Recall - Your private second brain" },
+
   "brand": { "message": "Recall" },
 
   "searching": { "message": "searching..." },
