@@ -123,6 +123,14 @@ body {
 .caption { margin-top: var(--space-3); font-size: 13px; color: var(--muted); }
 .tip { margin-top: var(--space-3); color: var(--muted); }
 
+/* Pin flow illustration - schematic SVG, full column width and responsive. */
+.pin-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
 /* Primary button */
 .primary {
   margin-top: var(--space-4);

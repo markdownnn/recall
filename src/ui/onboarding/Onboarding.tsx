@@ -5,6 +5,8 @@
 // in src/ui/sidepanel/strings.ts. It can be folded into a shared i18n layer
 // later if the product is localized; for now inline keeps it readable in one place.
 
+import { PinIllustration } from './PinIllustration'
+
 // Example "search by meaning" queries shown as pills.
 const EXAMPLE_QUERIES = [
   'that article about sleep and cortisol',
@@ -79,7 +81,8 @@ export function Onboarding() {
       <section class="card section">
         <h2>How to open Recall</h2>
         <p>Click the Recall icon in your toolbar to open the side panel.</p>
-        <p class="tip">Tip: pin it for one-click access.</p>
+        <PinIllustration />
+        <p class="tip">Tip: pin it for one-click access - click the puzzle-piece icon, then the pin next to Recall.</p>
         <button class="primary" onClick={() => void openRecall()}>Open Recall</button>
       </section>
     </main>
