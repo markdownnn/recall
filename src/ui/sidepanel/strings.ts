@@ -1,21 +1,60 @@
+// UI strings facade. Source of truth: public/_locales/{en,ko}/messages.json (standard MV3
+// chrome.i18n). Chrome resolves the right locale from the browser's UI language at load
+// (Korean Chrome -> ko, everything else -> en via default_locale). Call sites stay clean:
+// `t.captureButton`, `t.capturedChunks(3)` - they never touch chrome.i18n directly.
+//
+// In a real extension page (side panel, onboarding) chrome.i18n.getMessage is synchronous and
+// always available. In a plain Node context (vitest) there is no `chrome`, so we fall back to
+// the bundled EN messages and substitute placeholders ourselves - the canary test thus reads the
+// SAME en/messages.json the extension ships.
+
+import enMessages from '../../../public/_locales/en/messages.json'
+
+type MessageEntry = { message: string; placeholders?: Record<string, { content: string }> }
+const EN_MESSAGES = enMessages as Record<string, MessageEntry>
+
+// Fallback renderer for non-extension contexts. Mirrors chrome.i18n: replace each `$name$`
+// placeholder with the substitution its `content` ("$1", "$2", ...) points at.
+function renderFallback(key: string, subs?: string[]): string {
+  const entry = EN_MESSAGES[key]
+  if (!entry) return ''
+  let out = entry.message
+  if (entry.placeholders) {
+    for (const [name, def] of Object.entries(entry.placeholders)) {
+      const idx = Number(def.content.replace('$', '')) - 1
+      out = out.replace(new RegExp('\\$' + name + '\\$', 'gi'), subs?.[idx] ?? '')
+    }
+  }
+  return out
+}
+
+// One accessor used to build every entry below. Prefers chrome.i18n (the locale-aware path);
+// falls back to the bundled EN messages when `chrome` is absent.
+function msg(key: string, subs?: string[]): string {
+  if (typeof chrome !== 'undefined' && chrome.i18n?.getMessage) {
+    return chrome.i18n.getMessage(key, subs)
+  }
+  return renderFallback(key, subs)
+}
+
 export interface UIStrings {
   brand: string
   // Search
   searching: string
   noResults: string
-  searchTabLabel: string       // the 'Search' tab label
-  searchButtonLabel: string    // the accent Search button label
-  searchButtonAria: string     // its aria-label
-  historyTabLabel: string      // the 'History' tab label
-  settingsTabLabel: string     // the 'Settings' tab label
-  historyEmpty: string         // empty-state line when nothing is captured yet
-  loadMore: string             // the load-more button
+  searchTabLabel: string
+  searchButtonLabel: string
+  searchButtonAria: string
+  historyTabLabel: string
+  settingsTabLabel: string
+  historyEmpty: string
+  loadMore: string
   // Capture + status
   captureButton: string
-  updateButton: string          // label when the active page is already saved
-  cannotCaptureButton: string   // disabled-button label for non-capturable schemes (chrome://, etc.)
-  saving: string                // button + badge label while THIS page still has un-embedded chunks
-  savingHint: string            // low-key note shown only while saving (first save can take a moment)
+  updateButton: string
+  cannotCaptureButton: string
+  saving: string
+  savingHint: string
   indexed: string
   capturing: string
   capturedChunks: (n: number) => string
@@ -24,30 +63,28 @@ export interface UIStrings {
   pausedNote: string
   notSavedDenylisted: string
   indexingProgress: (embedded: number) => string
-  indexingAria: string          // aria-label for the indeterminate indexing indicator (NEW; additive)
+  indexingAria: string
   indexingFailed: (err: string) => string
   captureFailed: (err: string) => string
-  cannotCapturePage: string     // friendly line for restricted pages (chrome://, etc.)
-  reloadToCapture: string       // friendly line when a capturable tab has no content script yet
+  cannotCapturePage: string
+  reloadToCapture: string
   searchFailed: (err: string) => string
-  // SAVED badge (new; PAGE-scoped)
+  // SAVED badge (PAGE-scoped)
   savedBadge: string
   notSavedBadge: string
   // Model status
   loadingPercent: (pct: number) => string
   modelReady: string
   modelError: string
-  // Embedder degraded banners (persistent). unavailable = no on-device search on this hardware;
-  // slow = granite fell back to single-thread WASM.
   embedderUnavailable: string
   embedderSlow: string
   // Pause
   pauseLabel: string
-  // Settings tab (section headings + helper lines under each control)
-  settingsCaptureHeading: string  // "Capture" section heading
-  pauseHelp: string               // helper line under the pause toggle
-  denylistHelp: string            // helper line under the no-remember list
-  denylistEmpty: string           // empty-state line when the user has blocked no sites
+  // Settings tab
+  settingsCaptureHeading: string
+  pauseHelp: string
+  denylistHelp: string
+  denylistEmpty: string
   // Site controls (SITE-scoped)
   dontRememberSite: string
   alreadyOnListShort: string
@@ -65,79 +102,121 @@ export interface UIStrings {
   couldNotForget: string
   restrictedTabAdd: string
   restrictedTabForget: string
-  // Onboarding try-it card chrome (section prose lives inline in its renderer; these are the
-  // live-card action + status labels)
+  // Side-panel chrome (icon button labels)
+  helpTitle: string
+  dismissAria: string
+  // Onboarding try-it card (live action + status labels)
   obSeedButton: string
   obSeeding: string
   obSeeded: string
   obSearchPlaceholder: string
   obRemoveDemo: string
   obDemoRemoved: string
+  // Onboarding inline prose (hero / how-it-works / search-by-meaning / open-recall / try-it)
+  obHeroTagline: string
+  obHeroCalm: string
+  obHowTitle: string
+  obHowAutomaticLabel: string
+  obHowAutomaticText: string
+  obHowManualLabel: string
+  obHowManualText: string
+  obHowPrivateLabel: string
+  obHowPrivateText: string
+  obMeaningTitle: string
+  obMeaningText: string
+  obExampleQueries: string[]
+  obOpenRecall: string
+  obOpenText: string
+  obOpenTip: string
+  obShortcutsTitle: string
+  obMacTip: string
+  obTryTitle: string
+  obTryText: string
 }
 
-export const EN: UIStrings = {
-  brand: 'Recall',
-  searching: 'searching...',
-  noResults: 'no results',
-  searchTabLabel: 'Search',
-  searchButtonLabel: 'Search',
-  searchButtonAria: 'Search',
-  historyTabLabel: 'History',
-  settingsTabLabel: 'Settings',
-  historyEmpty: 'Nothing captured yet - pages you save will show up here.',
-  loadMore: 'Load more',
-  captureButton: 'Capture this page',
-  updateButton: 'Update this page',
-  cannotCaptureButton: "Can't save this page",
-  saving: 'Saving...',
-  savingHint: 'Saving can take a moment.',
-  indexed: 'indexed',
-  capturing: 'capturing...',
-  capturedChunks: (n) => `captured (indexing ${n} chunks...)`,
-  nothingSubstantial: 'nothing substantial to capture',
-  nothingToCapture: 'nothing to capture',
-  pausedNote: 'Paused - nothing is being saved',
-  notSavedDenylisted: 'not saved: this site is on the no-remember list',
-  indexingProgress: (embedded) => `indexing... ${embedded} done`,
-  indexingAria: 'Indexing in progress',
-  indexingFailed: (err) => `indexing failed: ${err}`,
-  captureFailed: (err) => `capture failed: ${err}`,
-  cannotCapturePage: "This page can't be saved",
-  reloadToCapture: "Reload this page, then save it",
-  searchFailed: (err) => `search failed: ${err}`,
-  savedBadge: 'saved',
-  notSavedBadge: 'not saved yet',
-  loadingPercent: (pct) => `Loading ${pct}%`,
-  modelReady: 'Ready',
-  modelError: 'Model error',
-  embedderUnavailable: "On-device search isn't available on this device",
-  embedderSlow: 'Running in slow mode',
-  pauseLabel: 'Pause capturing',
-  settingsCaptureHeading: 'Capture',
-  pauseHelp: 'Recall stops saving new pages until you turn this back on.',
-  denylistHelp: 'Recall never saves pages from these sites. Remove one to start saving it again.',
-  denylistEmpty: "You haven't blocked any sites yet.",
-  dontRememberSite: "Don't remember this site",
-  alreadyOnListShort: 'Already on no-remember list',
-  wonRemember: (host) => `Won't remember ${host}`,
-  alreadyOnListHost: (host) => `Already on the no-remember list: ${host}`,
-  forgetSiteHistory: "Forget this site's history",
-  forgotEverythingFrom: (host) => `Forgot everything from ${host}`,
-  forgetConfirm: (host) => `Delete ALL captured history from ${host} and its subdomains? This cannot be undone.`,
-  noRememberSitesHeader: 'No-remember sites',
-  removeLabel: 'remove',
-  couldNotAdd: 'Could not add to no-remember list - please try again',
-  couldNotRemove: 'Could not remove - please try again',
-  couldNotForget: 'Could not forget - please try again',
-  restrictedTabAdd: 'Cannot add this page (restricted tab)',
-  restrictedTabForget: 'Cannot forget this page (restricted tab)',
-  obSeedButton: 'Add 3 sample pages',
-  obSeeding: 'adding sample pages...',
-  obSeeded: 'Sample pages added',
-  obSearchPlaceholder: 'Search what you just added...',
-  obRemoveDemo: 'Remove demo data',
-  obDemoRemoved: 'Demo data removed',
+// The facade. Static entries resolve once at module load (the locale is fixed for the page's
+// lifetime); dynamic entries resolve per call so their placeholder args substitute correctly.
+export const t: UIStrings = {
+  brand: msg('brand'),
+  searching: msg('searching'),
+  noResults: msg('noResults'),
+  searchTabLabel: msg('searchTabLabel'),
+  searchButtonLabel: msg('searchButtonLabel'),
+  searchButtonAria: msg('searchButtonAria'),
+  historyTabLabel: msg('historyTabLabel'),
+  settingsTabLabel: msg('settingsTabLabel'),
+  historyEmpty: msg('historyEmpty'),
+  loadMore: msg('loadMore'),
+  captureButton: msg('captureButton'),
+  updateButton: msg('updateButton'),
+  cannotCaptureButton: msg('cannotCaptureButton'),
+  saving: msg('saving'),
+  savingHint: msg('savingHint'),
+  indexed: msg('indexed'),
+  capturing: msg('capturing'),
+  capturedChunks: (n) => msg('capturedChunks', [String(n)]),
+  nothingSubstantial: msg('nothingSubstantial'),
+  nothingToCapture: msg('nothingToCapture'),
+  pausedNote: msg('pausedNote'),
+  notSavedDenylisted: msg('notSavedDenylisted'),
+  indexingProgress: (embedded) => msg('indexingProgress', [String(embedded)]),
+  indexingAria: msg('indexingAria'),
+  indexingFailed: (err) => msg('indexingFailed', [err]),
+  captureFailed: (err) => msg('captureFailed', [err]),
+  cannotCapturePage: msg('cannotCapturePage'),
+  reloadToCapture: msg('reloadToCapture'),
+  searchFailed: (err) => msg('searchFailed', [err]),
+  savedBadge: msg('savedBadge'),
+  notSavedBadge: msg('notSavedBadge'),
+  loadingPercent: (pct) => msg('loadingPercent', [String(pct)]),
+  modelReady: msg('modelReady'),
+  modelError: msg('modelError'),
+  embedderUnavailable: msg('embedderUnavailable'),
+  embedderSlow: msg('embedderSlow'),
+  pauseLabel: msg('pauseLabel'),
+  settingsCaptureHeading: msg('settingsCaptureHeading'),
+  pauseHelp: msg('pauseHelp'),
+  denylistHelp: msg('denylistHelp'),
+  denylistEmpty: msg('denylistEmpty'),
+  dontRememberSite: msg('dontRememberSite'),
+  alreadyOnListShort: msg('alreadyOnListShort'),
+  wonRemember: (host) => msg('wonRemember', [host]),
+  alreadyOnListHost: (host) => msg('alreadyOnListHost', [host]),
+  forgetSiteHistory: msg('forgetSiteHistory'),
+  forgotEverythingFrom: (host) => msg('forgotEverythingFrom', [host]),
+  forgetConfirm: (host) => msg('forgetConfirm', [host]),
+  noRememberSitesHeader: msg('noRememberSitesHeader'),
+  removeLabel: msg('removeLabel'),
+  couldNotAdd: msg('couldNotAdd'),
+  couldNotRemove: msg('couldNotRemove'),
+  couldNotForget: msg('couldNotForget'),
+  restrictedTabAdd: msg('restrictedTabAdd'),
+  restrictedTabForget: msg('restrictedTabForget'),
+  helpTitle: msg('helpTitle'),
+  dismissAria: msg('dismissAria'),
+  obSeedButton: msg('obSeedButton'),
+  obSeeding: msg('obSeeding'),
+  obSeeded: msg('obSeeded'),
+  obSearchPlaceholder: msg('obSearchPlaceholder'),
+  obRemoveDemo: msg('obRemoveDemo'),
+  obDemoRemoved: msg('obDemoRemoved'),
+  obHeroTagline: msg('obHeroTagline'),
+  obHeroCalm: msg('obHeroCalm'),
+  obHowTitle: msg('obHowTitle'),
+  obHowAutomaticLabel: msg('obHowAutomaticLabel'),
+  obHowAutomaticText: msg('obHowAutomaticText'),
+  obHowManualLabel: msg('obHowManualLabel'),
+  obHowManualText: msg('obHowManualText'),
+  obHowPrivateLabel: msg('obHowPrivateLabel'),
+  obHowPrivateText: msg('obHowPrivateText'),
+  obMeaningTitle: msg('obMeaningTitle'),
+  obMeaningText: msg('obMeaningText'),
+  obExampleQueries: [msg('obExampleQuery1'), msg('obExampleQuery2'), msg('obExampleQuery3'), msg('obExampleQuery4')],
+  obOpenRecall: msg('obOpenRecall'),
+  obOpenText: msg('obOpenText'),
+  obOpenTip: msg('obOpenTip'),
+  obShortcutsTitle: msg('obShortcutsTitle'),
+  obMacTip: msg('obMacTip'),
+  obTryTitle: msg('obTryTitle'),
+  obTryText: msg('obTryText'),
 }
-
-// English ships. Korean later = add a KO object + a two-line locale switch; no API now.
-export const t: UIStrings = EN

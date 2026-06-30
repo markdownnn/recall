@@ -8,6 +8,7 @@
     "jsxImportSource": "preact",
     "strict": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "types": ["vitest/globals", "chrome"]
   },
   "include": ["src", "tests"],

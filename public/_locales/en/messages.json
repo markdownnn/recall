@@ -1,5 +1,133 @@
 {
   "appDesc": {
     "message": "Remember everything you read - find it later in plain words. Private, on-device search."
-  }
+  },
+
+  "brand": { "message": "Recall" },
+
+  "searching": { "message": "searching..." },
+  "noResults": { "message": "no results" },
+  "searchTabLabel": { "message": "Search" },
+  "searchButtonLabel": { "message": "Search" },
+  "searchButtonAria": { "message": "Search" },
+  "historyTabLabel": { "message": "History" },
+  "settingsTabLabel": { "message": "Settings" },
+  "historyEmpty": { "message": "Nothing captured yet - pages you save will show up here." },
+  "loadMore": { "message": "Load more" },
+
+  "captureButton": { "message": "Capture this page" },
+  "updateButton": { "message": "Update this page" },
+  "cannotCaptureButton": { "message": "Can't save this page" },
+  "saving": { "message": "Saving..." },
+  "savingHint": { "message": "Saving can take a moment." },
+  "indexed": { "message": "indexed" },
+  "capturing": { "message": "capturing..." },
+  "capturedChunks": {
+    "message": "captured (indexing $count$ chunks...)",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "nothingSubstantial": { "message": "nothing substantial to capture" },
+  "nothingToCapture": { "message": "nothing to capture" },
+  "pausedNote": { "message": "Paused - nothing is being saved" },
+  "notSavedDenylisted": { "message": "not saved: this site is on the no-remember list" },
+  "indexingProgress": {
+    "message": "indexing... $count$ done",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "indexingAria": { "message": "Indexing in progress" },
+  "indexingFailed": {
+    "message": "indexing failed: $error$",
+    "placeholders": { "error": { "content": "$1" } }
+  },
+  "captureFailed": {
+    "message": "capture failed: $error$",
+    "placeholders": { "error": { "content": "$1" } }
+  },
+  "cannotCapturePage": { "message": "This page can't be saved" },
+  "reloadToCapture": { "message": "Reload this page, then save it" },
+  "searchFailed": {
+    "message": "search failed: $error$",
+    "placeholders": { "error": { "content": "$1" } }
+  },
+
+  "savedBadge": { "message": "saved" },
+  "notSavedBadge": { "message": "not saved yet" },
+
+  "loadingPercent": {
+    "message": "Loading $percent$%",
+    "placeholders": { "percent": { "content": "$1" } }
+  },
+  "modelReady": { "message": "Ready" },
+  "modelError": { "message": "Model error" },
+  "embedderUnavailable": { "message": "On-device search isn't available on this device" },
+  "embedderSlow": { "message": "Running in slow mode" },
+
+  "pauseLabel": { "message": "Pause capturing" },
+
+  "settingsCaptureHeading": { "message": "Capture" },
+  "pauseHelp": { "message": "Recall stops saving new pages until you turn this back on." },
+  "denylistHelp": { "message": "Recall never saves pages from these sites. Remove one to start saving it again." },
+  "denylistEmpty": { "message": "You haven't blocked any sites yet." },
+
+  "dontRememberSite": { "message": "Don't remember this site" },
+  "alreadyOnListShort": { "message": "Already on no-remember list" },
+  "wonRemember": {
+    "message": "Won't remember $host$",
+    "placeholders": { "host": { "content": "$1" } }
+  },
+  "alreadyOnListHost": {
+    "message": "Already on the no-remember list: $host$",
+    "placeholders": { "host": { "content": "$1" } }
+  },
+  "forgetSiteHistory": { "message": "Forget this site's history" },
+  "forgotEverythingFrom": {
+    "message": "Forgot everything from $host$",
+    "placeholders": { "host": { "content": "$1" } }
+  },
+  "forgetConfirm": {
+    "message": "Delete ALL captured history from $host$ and its subdomains? This cannot be undone.",
+    "placeholders": { "host": { "content": "$1" } }
+  },
+
+  "noRememberSitesHeader": { "message": "No-remember sites" },
+  "removeLabel": { "message": "remove" },
+
+  "couldNotAdd": { "message": "Could not add to no-remember list - please try again" },
+  "couldNotRemove": { "message": "Could not remove - please try again" },
+  "couldNotForget": { "message": "Could not forget - please try again" },
+  "restrictedTabAdd": { "message": "Cannot add this page (restricted tab)" },
+  "restrictedTabForget": { "message": "Cannot forget this page (restricted tab)" },
+
+  "helpTitle": { "message": "How to use Recall" },
+  "dismissAria": { "message": "Dismiss" },
+
+  "obSeedButton": { "message": "Add 3 sample pages" },
+  "obSeeding": { "message": "adding sample pages..." },
+  "obSeeded": { "message": "Sample pages added" },
+  "obSearchPlaceholder": { "message": "Search what you just added..." },
+  "obRemoveDemo": { "message": "Remove demo data" },
+  "obDemoRemoved": { "message": "Demo data removed" },
+
+  "obHeroTagline": { "message": "That page you read last week? Find it again in seconds." },
+  "obHeroCalm": { "message": "100% on your device. Nothing ever leaves it." },
+  "obHowTitle": { "message": "How it works" },
+  "obHowAutomaticLabel": { "message": "Automatic." },
+  "obHowAutomaticText": { "message": "On-device AI quietly remembers the pages you actually read." },
+  "obHowManualLabel": { "message": "Manual." },
+  "obHowManualText": { "message": "Or save any page yourself - one click." },
+  "obHowPrivateLabel": { "message": "Private." },
+  "obHowPrivateText": { "message": "Banking, email, logins? Skipped. Pause anytime." },
+  "obMeaningTitle": { "message": "Search by meaning" },
+  "obMeaningText": { "message": "Forgot the exact words? Just describe it." },
+  "obExampleQuery1": { "message": "that article about sleep and cortisol" },
+  "obExampleQuery2": { "message": "the pricing page I saw" },
+  "obExampleQuery3": { "message": "react useEffect cleanup" },
+  "obExampleQuery4": { "message": "how photosynthesis works" },
+  "obOpenRecall": { "message": "Open Recall" },
+  "obOpenText": { "message": "Click the Recall icon in your toolbar to open the side panel." },
+  "obOpenTip": { "message": "Tip: pin it for one-click access - click the puzzle-piece icon, then the pin next to Recall." },
+  "obShortcutsTitle": { "message": "Keyboard shortcuts" },
+  "obMacTip": { "message": "On Mac, use ⌘ Cmd instead of Ctrl." },
+  "obTryTitle": { "message": "Try it yourself" },
+  "obTryText": { "message": "Add 3 sample pages, then search them by meaning - just like your own." }
 }
