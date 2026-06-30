@@ -9,6 +9,7 @@ export type Msg =
   | { type: 'deny-host'; host: string }
   | { type: 'remove-deny-host'; host: string }
   | { type: 'forget-host'; host: string }
+  | { type: 'has-page'; url: string }
 
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
@@ -16,6 +17,7 @@ export type MsgResult =
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
   | { type: 'settings'; paused: boolean; userDenyHosts: string[] }
+  | { type: 'page-status'; exists: boolean }
   | { type: 'ok' }
 
 // Push message sent from background to popup (not a request/response pair).

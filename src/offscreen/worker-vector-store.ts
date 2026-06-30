@@ -6,6 +6,7 @@ export class WorkerVectorStore implements VectorSearchPort {
   constructor(private readonly c: SqliteWorkerClient) {}
   upsertPage = (p: CapturedPage) => this.c.request<void>('upsertPage', p)
   putChunks = (pageId: string, chunks: Chunk[]) => this.c.request<void>('putChunks', { pageId, chunks })
+  hasPage = (pageId: string) => this.c.request<boolean>('hasPage', pageId)
   pendingChunks = (limit: number) => this.c.request<Chunk[]>('pendingChunks', { limit })
   setVector = (id: string, vector: Float32Array) => this.c.request<void>('setVector', { id, vector })
   search = (queryVector: Float32Array, queryText: string, k: number) =>

@@ -5,6 +5,17 @@ const page: CapturedPage = { id: 'p1', url: 'http://x', title: 'X', capturedAt: 
 const chunkA: Chunk = { id: 'p1#0', pageId: 'p1', index: 0, text: 'cortisol and sleep' }
 const chunkB: Chunk = { id: 'p1#1', pageId: 'p1', index: 1, text: 'tax accounting basics' }
 
+// Scenario: the side panel shows a SAVED badge for the current tab. The badge asks the
+// store "do we already have this page?"; it is false before capture and true after.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort contract).
+test('hasPage is false until a page is upserted, then true', async () => {
+  const store = new MemoryVectorStore()
+  expect(await store.hasPage('p1')).toBe(false)
+  await store.upsertPage({ id: 'p1', url: 'http://x', title: 'X', capturedAt: 1 })
+  expect(await store.hasPage('p1')).toBe(true)
+  expect(await store.hasPage('nope')).toBe(false)
+})
+
 test('chunk is not searchable until setVector is called', async () => {
   const store = new MemoryVectorStore()
   await store.upsertPage(page)

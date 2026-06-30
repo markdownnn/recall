@@ -23,6 +23,10 @@ export class MemoryVectorStore implements VectorSearchPort {
     }
   }
 
+  async hasPage(pageId: string): Promise<boolean> {
+    return this.pages.has(pageId)
+  }
+
   async pendingChunks(limit: number): Promise<Chunk[]> {
     const result: Chunk[] = []
     for (const { chunk, vector } of this.chunks.values()) {

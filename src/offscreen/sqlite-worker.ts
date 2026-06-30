@@ -50,6 +50,13 @@ function opPutChunks(db: any, { pageId, chunks }: { pageId: string; chunks: Chun
   }
 }
 
+function opHasPage(db: any, pageId: string): boolean {
+  let exists = false
+  db.exec({ sql: `SELECT 1 FROM pages WHERE id = ? LIMIT 1`, bind: [pageId],
+    rowMode: 'array', callback: () => { exists = true } })
+  return exists
+}
+
 function opPendingChunks(db: any, { limit }: { limit: number }): Chunk[] {
   const result: Chunk[] = []
   db.exec({
@@ -214,6 +221,7 @@ function opDeletePagesByHost(db: any, host: string): void {
 const handlers: Record<string, (db: any, args: any) => unknown> = {
   upsertPage: (db, args) => { opUpsertPage(db, args as CapturedPage) },
   putChunks: (db, args) => { opPutChunks(db, args) },
+  hasPage: (db, args) => opHasPage(db, args as string),
   pendingChunks: (db, args) => opPendingChunks(db, args),
   setVector: (db, args) => { opSetVector(db, args) },
   search: (db, args) => opSearch(db, args),

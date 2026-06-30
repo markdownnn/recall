@@ -10,7 +10,8 @@ import { WebGpuEmbedder } from './webgpu-embedder'
 import { SqliteWorkerClient } from './sqlite-worker-client'
 import { WorkerVectorStore } from './worker-vector-store'
 import { WorkerSettingsStore } from './worker-settings-store'
-import { CaptureService } from '../core/capture-service'
+import { CaptureService, pageIdFromUrl } from '../core/capture-service'
+import { sanitizeUrl } from '../core/sanitize-url'
 import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
@@ -143,6 +144,20 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   if (op === 'forget-host') {
     await store.deletePagesByHost(p.host as string)
     return { ok: true }
+  }
+
+  // --- has-page: does the store already have this page? Drives the panel SAVED badge.
+  //     Normalize the RAW tab url with the EXACT same two steps capture used
+  //     (sanitizeUrl THEN pageIdFromUrl) so the badge id can't drift from the stored id. ---
+  if (op === 'has-page') {
+    const raw = p.url as string | undefined
+    if (!raw) return { exists: false }
+    try {
+      const pageId = pageIdFromUrl(sanitizeUrl(raw))
+      return { exists: await store.hasPage(pageId) }
+    } catch {
+      return { exists: false }
+    }
   }
 
   // --- recall: embed query, cosine search ---
