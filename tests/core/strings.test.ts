@@ -7,7 +7,7 @@ import { t } from '../../src/ui/sidepanel/strings'
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
   'historyTabLabel', 'settingsTabLabel', 'historyEmpty', 'loadMore',
-  'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
+  'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'cannotCapturePage', 'reloadToCapture',
   'modelReady', 'modelError', 'embedderUnavailable', 'embedderSlow', 'pauseLabel',
@@ -25,7 +25,7 @@ const STATIC_KEYS = [
   'obShortcutsTitle', 'obMacTip', 'obTryTitle', 'obTryText',
 ] as const
 const FUNCTION_KEYS = [
-  'capturedChunks', 'indexingProgress', 'indexingFailed', 'captureFailed', 'searchFailed',
+  'captureFailed', 'searchFailed',
   'loadingPercent', 'wonRemember', 'alreadyOnListHost', 'forgotEverythingFrom', 'forgetConfirm',
 ] as const
 
@@ -63,9 +63,6 @@ test('byte-identical e2e strings are preserved', () => {
   expect(t.savingHint).toBe('Saving can take a moment.')
   expect(t.savedBadge).toBe('saved')
   expect(t.notSavedBadge).toBe('not saved yet')
-  expect(t.indexed).toBe('indexed')
-  expect(t.capturedChunks(3)).toBe('captured (indexing 3 chunks...)')
-  expect(t.indexingProgress(5)).toBe('indexing... 5 done')
   expect(t.pausedNote).toBe('Paused - nothing is being saved')
   expect(t.notSavedDenylisted).toBe('not saved: this site is on the no-remember list')
   expect(t.dontRememberSite).toBe("Don't remember this site")

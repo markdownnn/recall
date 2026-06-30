@@ -1,7 +1,7 @@
 // UI strings facade. Source of truth: public/_locales/{en,ko}/messages.json (standard MV3
 // chrome.i18n). Chrome resolves the right locale from the browser's UI language at load
 // (Korean Chrome -> ko, everything else -> en via default_locale). Call sites stay clean:
-// `t.captureButton`, `t.capturedChunks(3)` - they never touch chrome.i18n directly.
+// `t.captureButton`, `t.captureFailed(err)` - they never touch chrome.i18n directly.
 //
 // In a real extension page (side panel, onboarding) chrome.i18n.getMessage is synchronous and
 // always available. In a plain Node context (vitest) there is no `chrome`, so we fall back to
@@ -58,16 +58,10 @@ export interface UIStrings {
   cannotCaptureButton: string
   saving: string
   savingHint: string
-  indexed: string
-  capturing: string
-  capturedChunks: (n: number) => string
   nothingSubstantial: string
   nothingToCapture: string
   pausedNote: string
   notSavedDenylisted: string
-  indexingProgress: (embedded: number) => string
-  indexingAria: string
-  indexingFailed: (err: string) => string
   captureFailed: (err: string) => string
   cannotCapturePage: string
   reloadToCapture: string
@@ -155,16 +149,10 @@ export const t: UIStrings = {
   cannotCaptureButton: msg('cannotCaptureButton'),
   saving: msg('saving'),
   savingHint: msg('savingHint'),
-  indexed: msg('indexed'),
-  capturing: msg('capturing'),
-  capturedChunks: (n) => msg('capturedChunks', [String(n)]),
   nothingSubstantial: msg('nothingSubstantial'),
   nothingToCapture: msg('nothingToCapture'),
   pausedNote: msg('pausedNote'),
   notSavedDenylisted: msg('notSavedDenylisted'),
-  indexingProgress: (embedded) => msg('indexingProgress', [String(embedded)]),
-  indexingAria: msg('indexingAria'),
-  indexingFailed: (err) => msg('indexingFailed', [err]),
   captureFailed: (err) => msg('captureFailed', [err]),
   cannotCapturePage: msg('cannotCapturePage'),
   reloadToCapture: msg('reloadToCapture'),

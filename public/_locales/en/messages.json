@@ -20,25 +20,10 @@
   "cannotCaptureButton": { "message": "Can't save this page" },
   "saving": { "message": "Saving..." },
   "savingHint": { "message": "Saving can take a moment." },
-  "indexed": { "message": "indexed" },
-  "capturing": { "message": "capturing..." },
-  "capturedChunks": {
-    "message": "captured (indexing $count$ chunks...)",
-    "placeholders": { "count": { "content": "$1" } }
-  },
   "nothingSubstantial": { "message": "nothing substantial to capture" },
   "nothingToCapture": { "message": "nothing to capture" },
   "pausedNote": { "message": "Paused - nothing is being saved" },
   "notSavedDenylisted": { "message": "not saved: this site is on the no-remember list" },
-  "indexingProgress": {
-    "message": "indexing... $count$ done",
-    "placeholders": { "count": { "content": "$1" } }
-  },
-  "indexingAria": { "message": "Indexing in progress" },
-  "indexingFailed": {
-    "message": "indexing failed: $error$",
-    "placeholders": { "error": { "content": "$1" } }
-  },
   "captureFailed": {
     "message": "capture failed: $error$",
     "placeholders": { "error": { "content": "$1" } }

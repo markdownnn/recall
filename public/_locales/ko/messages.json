@@ -20,25 +20,10 @@
   "cannotCaptureButton": { "message": "저장할 수 없는 페이지" },
   "saving": { "message": "저장 중..." },
   "savingHint": { "message": "처음 저장은 조금 걸릴 수 있어요." },
-  "indexed": { "message": "저장됨" },
-  "capturing": { "message": "저장 중..." },
-  "capturedChunks": {
-    "message": "저장됨 (조각 $count$개 처리 중...)",
-    "placeholders": { "count": { "content": "$1" } }
-  },
   "nothingSubstantial": { "message": "저장할 내용이 충분하지 않아요" },
   "nothingToCapture": { "message": "저장할 내용이 없어요" },
   "pausedNote": { "message": "일시중지됨 - 아무것도 저장하지 않아요" },
   "notSavedDenylisted": { "message": "저장 안 함: 이 사이트는 기억 안 함 목록에 있어요" },
-  "indexingProgress": {
-    "message": "처리 중... $count$개 완료",
-    "placeholders": { "count": { "content": "$1" } }
-  },
-  "indexingAria": { "message": "저장 처리 중" },
-  "indexingFailed": {
-    "message": "처리 실패: $error$",
-    "placeholders": { "error": { "content": "$1" } }
-  },
   "captureFailed": {
     "message": "저장 실패: $error$",
     "placeholders": { "error": { "content": "$1" } }
