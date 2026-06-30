@@ -5,7 +5,14 @@
 **Goal:** Raise auto-capture PRECISION. Keep only pages the user actually READ; skip transient/junk pages. Two new signals, both AUTO-only (manual save = explicit intent, never gated by these):
 
 1. **SERP skip** - search engine results pages are navigational link lists, not content worth recalling. New pure `isSerp(url)`, wired into `CaptureGate.decide` as a SOFT gate (new reason `'serp'`), mirroring how the existing `thin` gate is skipped for manual.
-2. **Scroll engagement** - a long page left open 10s but never scrolled was probably not read. CONFIRMED model: a page is ENGAGED if it is SHORT (fits ~1.5 screens, no real scrolling needed) OR the user scrolled at least halfway through a long page. New pure `EngagementTracker` (mirrors `DwellTracker`), wired into the content script so auto-capture fires only when dwell AND engagement are both satisfied.
+2. **Scroll engagement** - a long page left open 10s but never touched was probably not read. CONFIRMED model:
+
+   ```
+   auto-capture = (10s visible DWELL)  AND  engaged     // both; once per page candidate
+   engaged = SHORT page (scrollHeight <= viewport*1.5)  OR  scrolled >= 50%  OR  selected text
+   ```
+
+   A page is ENGAGED if it is SHORT (fits ~1.5 screens, no real scrolling needed) OR the user scrolled at least halfway through a long page OR the user selected a few words of text. The 10s `DwellTracker` is UNCHANGED and still required; engagement is an ADDITIONAL gate. New pure `EngagementTracker` (mirrors `DwellTracker`), wired into the content script so auto-capture fires only when dwell AND engagement are both satisfied, exactly once per candidate via a synchronous `fired` flag.
 
 **Tech Stack:** TypeScript, Vite+CRXJS, Preact, Vitest, Playwright. Hexagonal: `src/core/*` stays pure (no `chrome`, no DOM); browser glue lives in `src/content/*`.
 
@@ -20,9 +27,11 @@
 - **Thresholds are named constants (tunable):**
   - `SHORT_PAGE_RATIO = 1.5` -> page is short when `scrollHeight <= viewport * 1.5`.
   - `ENGAGED_FRACTION = 0.5` -> scrolled-enough when `maxFrac >= 0.5`, where `maxFrac` is the max reached `(scrollY + viewport) / scrollHeight`.
-- **`EngagementTracker` is pure with injected getters**, exactly like `DwellTracker`: no DOM reads, no `chrome`, unit-testable with plain numbers.
-- **Combined firing rule in the content script:** capture happens at `max(dwell-met, engaged)`. Keep `DwellTracker` firing the "dwell reached" signal; gate the actual `sendCapture(false)` on `engagement.engaged(...)`. Re-evaluate on the existing 1s poll AND on scroll events, so a page that becomes engaged *after* dwell still captures (deferred capture). Capture exactly once per candidate.
-- **Reset engagement on SPA url change** in the same place `DwellTracker.reset()` is called.
+  - `MIN_SELECTION_CHARS = 10` -> a selection of at least this many characters (a few words) counts as engagement; a stray single-word double-click does not.
+- **`EngagementTracker` is pure with injected getters**, exactly like `DwellTracker`: no DOM reads, no `chrome`, unit-testable with plain numbers. Signals: `onScroll(scrollY, viewport, scrollHeight)` (sticky `maxFrac`), `onSelection(selectedChars)` (sticky `selected` once `>= MIN_SELECTION_CHARS`), `engaged(viewport, scrollHeight)`, `reset()`.
+- **Combined firing rule in the content script:** capture happens at `max(dwell-met, engaged)`. Keep `DwellTracker` firing the "dwell reached" signal; gate the actual `sendCapture(false)` on `engagement.engaged(...)`. Re-evaluate on the existing 1s poll, on scroll events, AND on selectionchange, so a page that becomes engaged *after* dwell still captures (deferred capture).
+- **Once-per-candidate dedup via a synchronous `fired` flag.** `maybeCapture()` does: `if (!fired && dwellMet && engagement.engaged(vp, sh)) { fired = true; sendCapture(false) }` - `fired` is set BEFORE the async `sendCapture` so concurrent signals (poll tick, scroll, selectionchange) can never double-fire. (Storage is idempotent - capture upserts by pageId - so even a slipped duplicate makes no duplicate page; `fired` just avoids the wasted re-embed.)
+- **Reset engagement on SPA url change** in the same place `DwellTracker.reset()` is called: `tracker.reset()`, `engagement.reset()`, `dwellMet = false`, `fired = false`.
 
 ---
 
@@ -32,16 +41,16 @@
 |------|--------|-----------------------------|
 | `src/core/serp.ts` | Create | Pure `isSerp(url): boolean` matching major search-engine results URLs. No DOM, no chrome. |
 | `src/core/capture-gate.ts` | Modify | Add `'serp'` to `GateDecision.reason`; inside the `!input.manual` soft-gate block, reject SERPs before the thin check. |
-| `src/content/engagement-tracker.ts` | Create | Pure `EngagementTracker`: `onScroll(scrollY, viewport, scrollHeight)`, `engaged(viewport, scrollHeight): boolean`, `reset()`. Injected getters; no DOM. |
-| `src/content/capture.ts` | Modify | Add a scroll listener + an `EngagementTracker`; gate `sendCapture(false)` on dwell-met AND engaged; re-check on poll and scroll; reset on SPA nav. |
+| `src/content/engagement-tracker.ts` | Create | Pure `EngagementTracker`: `onScroll(scrollY, viewport, scrollHeight)`, `onSelection(selectedChars)`, `engaged(viewport, scrollHeight): boolean`, `reset()`. Injected getters; no DOM. |
+| `src/content/capture.ts` | Modify | Add a scroll listener + a selectionchange listener + an `EngagementTracker`; gate `sendCapture(false)` on dwell-met AND engaged; re-check on poll, scroll, and selection; synchronous `fired` flag for once-per-candidate; reset on SPA nav. |
 | `tests/core/serp.test.ts` | Create | `isSerp` matches known SERPs, rejects non-SERPs (incl. content pages on the same hosts). |
 | `tests/core/capture-gate.test.ts` | Modify | Add: SERP blocked for auto (reason `'serp'`), NOT for manual; non-SERP still allowed. All calls pass the `settings` arg. |
-| `tests/content/engagement-tracker.test.ts` | Create | Short page engaged immediately; long page not engaged until scrolled >=50%; `reset` clears; injected-getter style. |
-| `tests/e2e/serp-skip.spec.ts` | Create (if feasible) | A google.com/search-style page: manual capture works; auto-capture is skipped. |
+| `tests/core/engagement-tracker.test.ts` | Create | Short page engaged immediately; long page not engaged until scrolled >=50%; engaged via a >=10-char selection; selection under the minimum ignored; sticky max; `reset` clears both; injected-getter style. |
+| `tests/e2e/serp-skip.spec.ts` | Create | A routed google.com/search page: auto-capture is skipped (reason `'serp'`); manual capture works. |
 
 **NOT touched:** `src/core/denylist.ts` (SERP is a separate, softer concept than the privacy denylist - keep them apart), `src/offscreen/offscreen.ts` (it already calls `gate.decide({...}, s)` and just relays `decision.reason`; the new `'serp'` reason flows through unchanged), the search/index pipeline.
 
-> Note on test location: `dwell-tracker.test.ts` lives in **`tests/core/`** even though the source is in `src/content/`. Create `engagement-tracker.test.ts` under **`tests/content/`** as the prompt directs; if the repo has no `tests/content/` dir yet, create it. Either location runs under Vitest - just keep the relative import path (`../../src/content/engagement-tracker`) correct for wherever the file lands.
+> Note on test location: `dwell-tracker.test.ts` lives in **`tests/core/`** even though the source is in `src/content/`. Create `engagement-tracker.test.ts` under **`tests/core/`** too, for consistency with `dwell-tracker.test.ts` - keep the relative import path `../../src/content/engagement-tracker` correct.
 
 ---
 
@@ -206,23 +215,25 @@ Inside `decide`, in the existing `if (!input.manual) { ... }` block, BEFORE the 
 
 ## Task 2: Pure `EngagementTracker`
 
-Mirror `DwellTracker`: a small pure object that the content script feeds raw numbers. It records the deepest scroll reached and answers "engaged?" = the page is short OR the user scrolled past halfway. No DOM, no chrome - the content script reads `window.scrollY` / `innerHeight` / `scrollHeight` and passes them in.
+Mirror `DwellTracker`: a small pure object that the content script feeds raw numbers. It records the deepest scroll reached AND whether the user selected text, and answers "engaged?" = the page is short OR the user scrolled past halfway OR the user selected a few words. No DOM, no chrome - the content script reads `window.scrollY` / `innerHeight` / `scrollHeight` / the selection length and passes them in.
 
-**Files:** Create `tests/content/engagement-tracker.test.ts` (test first), `src/content/engagement-tracker.ts`.
+**Files:** Create `tests/core/engagement-tracker.test.ts` (test first), `src/content/engagement-tracker.ts`.
 
-- [ ] **Step 1 (RED): `tests/content/engagement-tracker.test.ts`**
+- [ ] **Step 1 (RED): `tests/core/engagement-tracker.test.ts`**
 
-Stub `src/content/engagement-tracker.ts` first so the import resolves and you see assertion-RED:
+Stub `src/content/engagement-tracker.ts` first (export `MIN_SELECTION_CHARS` too, so the import resolves and you get assertion-RED, not a missing-name):
 ```typescript
+export const MIN_SELECTION_CHARS = 10
 export class EngagementTracker {
   onScroll(_y: number, _vp: number, _sh: number): void {}
+  onSelection(_chars: number): void {}
   engaged(_vp: number, _sh: number): boolean { return false }
   reset(): void {}
 }
 ```
-Then the test:
+Then the test (covers short page, scroll >=50%, selection >=MIN, selection <MIN ignored, sticky max, reset clears both):
 ```typescript
-import { EngagementTracker } from '../../src/content/engagement-tracker'
+import { EngagementTracker, MIN_SELECTION_CHARS } from '../../src/content/engagement-tracker'
 
 // Scenario: a short page (fits ~1.5 screens) needs no scrolling to be "read"; reaching
 // dwell on it should count as engaged immediately, with zero scroll events.
@@ -259,19 +270,35 @@ test('engagement sticks after scrolling back up', () => {
   expect(t.engaged(vp, sh)).toBe(true)
 })
 
-// Scenario: SPA navigation to a new page must restart engagement from zero, or a deep
-// scroll on page A would wrongly mark page B as read.
+// Scenario: a user who selects a few words on a long page engaged with it even without
+// scrolling halfway; a single-word double-click (< MIN) must NOT count.
 // Coverage: integration (pure tracker).
-test('reset clears the recorded scroll depth', () => {
+test('long page is engaged via a selection without scrolling', () => {
+  const t = new EngagementTracker()
+  expect(t.engaged(800, 4000)).toBe(false)
+  t.onSelection(MIN_SELECTION_CHARS)
+  expect(t.engaged(800, 4000)).toBe(true)
+})
+test('selection shorter than the minimum is ignored', () => {
+  const t = new EngagementTracker()
+  t.onSelection(MIN_SELECTION_CHARS - 1)
+  expect(t.engaged(800, 4000)).toBe(false)
+})
+
+// Scenario: SPA navigation to a new page must restart engagement from zero, or a deep
+// scroll or selection on page A would wrongly mark page B as read.
+// Coverage: integration (pure tracker).
+test('reset clears both scroll depth and selection', () => {
   const t = new EngagementTracker()
   const vp = 800
   const sh = 4000
-  t.onScroll(1400, vp, sh) // engaged
+  t.onScroll(1400, vp, sh) // engaged via scroll
+  t.onSelection(MIN_SELECTION_CHARS) // engaged via selection
   t.reset()
   expect(t.engaged(vp, sh)).toBe(false)
 })
 ```
-Run `npx vitest run tests/content/engagement-tracker.test.ts` -> MUST fail (stub always returns false / never tracks).
+Run `npx vitest run tests/core/engagement-tracker.test.ts` -> MUST fail (stub always returns false / never tracks).
 
 - [ ] **Step 2 (GREEN): `src/content/engagement-tracker.ts`**
 
@@ -287,9 +314,11 @@ Run `npx vitest run tests/content/engagement-tracker.test.ts` -> MUST fail (stub
 // AUTO-capture only - a long page left open but never scrolled is probably not read.
 export const SHORT_PAGE_RATIO = 1.5 // short when scrollHeight <= viewport * 1.5
 export const ENGAGED_FRACTION = 0.5 // long page counts as read once maxFrac >= 0.5
+export const MIN_SELECTION_CHARS = 10 // a few words; avoids double-click-a-word false positives
 
 export class EngagementTracker {
   private maxFrac = 0
+  private selected = false
 
   // Call on every scroll event (and once after content settles). viewport = innerHeight,
   // scrollHeight = full document height. Records the deepest fraction seen.
@@ -299,22 +328,30 @@ export class EngagementTracker {
     if (frac > this.maxFrac) this.maxFrac = frac
   }
 
-  // Short pages are engaged with no scrolling; long pages need maxFrac >= ENGAGED_FRACTION.
+  // Call on selection change with the trimmed length of the current selection. A few
+  // words (>= MIN_SELECTION_CHARS) sticks; a stray single-word double-click does not.
+  onSelection(selectedChars: number): void {
+    if (selectedChars >= MIN_SELECTION_CHARS) this.selected = true
+  }
+
+  // Short pages are engaged with no scrolling; long pages need maxFrac >= ENGAGED_FRACTION
+  // OR a sticky selection.
   engaged(viewport: number, scrollHeight: number): boolean {
     if (scrollHeight <= viewport * SHORT_PAGE_RATIO) return true
-    return this.maxFrac >= ENGAGED_FRACTION
+    return this.maxFrac >= ENGAGED_FRACTION || this.selected
   }
 
   // Start fresh for a new page/candidate (e.g. SPA navigation).
   reset(): void {
     this.maxFrac = 0
+    this.selected = false
   }
 }
 ```
 
 - [ ] **Step 3: verify Task 2**
 
-`npx vitest run tests/content/engagement-tracker.test.ts` -> green. `rg "chrome|document\.|window\." src/content/engagement-tracker.ts` -> empty (pure; the DOM reads live in the content script, Task 3).
+`npx vitest run tests/core/engagement-tracker.test.ts` -> green. `rg "chrome|document\.|window\." src/content/engagement-tracker.ts` -> only a comment mention (no real DOM use; the DOM reads live in the content script, Task 3).
 
 ---
 
@@ -333,25 +370,26 @@ import { EngagementTracker } from './engagement-tracker'
 Replace the auto-capture block (the `{ ... }` that builds `DwellTracker`, adds the visibilitychange listener, and runs the poll). Keep `DWELL_MS` / `POLL_MS` / `urlKey` as-is. The new wiring:
 - Keep `DwellTracker`, but its `onDwell` now sets a flag `dwellMet = true` and calls a shared `maybeCapture()` instead of capturing directly.
 - Add an `EngagementTracker`; on each scroll event read `window.scrollY`, `window.innerHeight`, `document.documentElement.scrollHeight`, call `engagement.onScroll(...)`, then `maybeCapture()`.
-- `maybeCapture()` reads the current viewport + scrollHeight, and if `dwellMet && engagement.engaged(vp, sh)` and not already captured, sets `captured = true` and calls `sendCapture(false)`.
-- The 1s poll still resets both trackers on SPA url change, still calls `tracker.tick()`, and then calls `maybeCapture()` (so a short page becomes engaged-via-poll without needing a scroll event).
-- On SPA url change: `tracker.reset()`, `engagement.reset()`, `dwellMet = false`, `captured = false`.
+- Add a `selectionchange` listener that feeds `engagement.onSelection(window.getSelection()?.toString().trim().length ?? 0)`, then `maybeCapture()`.
+- `maybeCapture()` reads the current viewport + scrollHeight, and if `!fired && dwellMet && engagement.engaged(vp, sh)`, sets `fired = true` SYNCHRONOUSLY (before the async send) and calls `sendCapture(false)`. The synchronous flag is the once-per-candidate dedup: concurrent signals (poll tick, scroll, selectionchange) can never double-fire.
+- The 1s poll still resets the trackers on SPA url change, still calls `tracker.tick()`, and then calls `maybeCapture()` (so a short page becomes engaged-via-poll without needing a scroll event).
+- On SPA url change: `tracker.reset()`, `engagement.reset()`, `dwellMet = false`, `fired = false`.
 
 Sketch (implementer adapts to the exact existing block):
 ```typescript
 {
   let currentUrlKey = urlKey(location.href)
   let dwellMet = false
-  let captured = false
+  let fired = false
   const engagement = new EngagementTracker()
 
   const viewport = () => window.innerHeight
   const fullHeight = () => document.documentElement.scrollHeight
 
   const maybeCapture = () => {
-    if (captured || !dwellMet) return
+    if (fired || !dwellMet) return
     if (!engagement.engaged(viewport(), fullHeight())) return
-    captured = true
+    fired = true // set BEFORE the async send so concurrent signals cannot double-fire
     sendCapture(false)
   }
 
@@ -368,6 +406,10 @@ Sketch (implementer adapts to the exact existing block):
     engagement.onScroll(window.scrollY, viewport(), fullHeight())
     maybeCapture()
   }, { passive: true })
+  document.addEventListener('selectionchange', () => {
+    engagement.onSelection(window.getSelection()?.toString().trim().length ?? 0)
+    maybeCapture()
+  })
 
   setInterval(() => {
     const nextKey = urlKey(location.href)
@@ -376,7 +418,7 @@ Sketch (implementer adapts to the exact existing block):
       tracker.reset()
       engagement.reset()
       dwellMet = false
-      captured = false
+      fired = false
       return
     }
     tracker.tick()
@@ -384,7 +426,7 @@ Sketch (implementer adapts to the exact existing block):
   }, POLL_MS)
 }
 ```
-Leave the `extract-and-capture` message listener (manual capture) UNTOUCHED - manual ignores engagement.
+Note: storage is idempotent (capture upserts by pageId), so even a slipped duplicate makes no duplicate page - the `fired` flag just avoids the wasted re-embed. Leave the `extract-and-capture` message listener (manual capture) UNTOUCHED - manual ignores engagement.
 
 - [ ] **Step 2 (Coverage note - no new automated test for the glue)**
 
@@ -402,6 +444,8 @@ Leave the `extract-and-capture` message listener (manual capture) UNTOUCHED - ma
 A small end-to-end that proves the SERP gate in the REAL built extension: a results-style page is NOT auto-captured, but a manual save of it IS. This exercises content-script -> offscreen -> gate with the new `'serp'` reason, which the unit tests cannot (they don't build the extension).
 
 **Files:** Create `tests/e2e/serp-skip.spec.ts` (if feasible), `tests/e2e/fixtures/` (a SERP-style fixture if a local file works; otherwise route a `google.com/search` URL).
+
+**DONE:** Implemented option (a) - routing a real `https://www.google.com/search?q=...` URL via `page.route(...)` to a deterministic results-style fixture (`tests/e2e/fixtures/serp.html`). Both legs are in `tests/e2e/serp-skip.spec.ts` and pass: the auto leg waits past the 10s dwell and asserts ZERO results (gate rejected it with reason `'serp'`), then the manual leg clicks "Capture this page" and recalls it. Routing works here because the content script matches `<all_urls>`, so it injects on the routed google host and `location.href` reads as the real SERP URL that `isSerp` parses.
 
 - [ ] **Step 1: decide feasibility, then write the spec**
 
@@ -447,8 +491,8 @@ test('SERP is skipped by auto-capture but savable manually', async () => {
 
 - [ ] `isSerp` is pure (no chrome/DOM), matches every engine in the spec (google/bing/yahoo/brave/ecosia/startpage/kagi `/search`, duckduckgo `?q=` at root, baidu `/s`, yandex `/search/`), and rejects content pages on the SAME hosts (maps/about/news).
 - [ ] SERP gate is SOFT + AUTO-only: blocked for `manual:false` with reason `'serp'`, allowed for `manual:true`; sits inside the existing `!input.manual` block. `offscreen.ts` relays `'serp'` unchanged (no code change needed there).
-- [ ] `EngagementTracker` is pure with injected numbers (mirrors `DwellTracker`): short page engaged immediately, long page engaged only at maxFrac >= 0.5, max is sticky, `reset()` clears. Thresholds are NAMED constants (`SHORT_PAGE_RATIO`, `ENGAGED_FRACTION`).
-- [ ] Content script fires `sendCapture(false)` exactly once per candidate, only when `dwellMet && engaged`; re-checks on BOTH the 1s poll and scroll (deferred capture works); resets dwell + engagement + flags on SPA url change in the same place. Manual path untouched (ignores engagement).
+- [ ] `EngagementTracker` is pure with injected numbers (mirrors `DwellTracker`): short page engaged immediately, long page engaged at maxFrac >= 0.5 OR a >=10-char selection, both signals sticky, `reset()` clears both. Thresholds are NAMED constants (`SHORT_PAGE_RATIO`, `ENGAGED_FRACTION`, `MIN_SELECTION_CHARS`).
+- [ ] Content script fires `sendCapture(false)` exactly once per candidate via a SYNCHRONOUS `fired` flag, only when `dwellMet && engaged`; re-checks on the 1s poll, scroll, AND selectionchange (deferred capture works); resets dwell + engagement + flags on SPA url change in the same place. Manual path untouched (ignores engagement).
 - [ ] Each test step has the Scenario:/Coverage: 2 lines; the two glue/e2e gaps carry an honest N/A justification (real-path flakiness), not "manual check".
 - [ ] All test code is ASCII-only - URL strings, no Hangul, no em-dash/smart quotes.
 - [ ] Watched the RED: `serp.test.ts` positives fail on the stub; the two gate SERP asserts fail before the gate edit; `engagement-tracker.test.ts` fails on the stub.
