@@ -3,11 +3,17 @@ import type { CapturedPage } from './model'
 import { stripTrackingParams } from './strip-tracking-params'
 
 export function pageIdFromUrl(url: string): string {
-  const u = new URL(stripTrackingParams(url))
-  u.hash = ''
-  u.username = ''
-  u.password = ''
-  return u.toString()
+  // A malformed url (no protocol, garbage, etc.) makes new URL(...) throw. Rather than
+  // crash capture, fall back to the raw url string as the id.
+  try {
+    const u = new URL(stripTrackingParams(url))
+    u.hash = ''
+    u.username = ''
+    u.password = ''
+    return u.toString()
+  } catch {
+    return url
+  }
 }
 
 export class CaptureService {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect, useRef } from 'preact/hooks'
 import type { MsgResult } from '../../messaging'
 import { siteHost } from '../../core/site-host'
 import { t } from './strings'
@@ -35,10 +35,15 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   const [paused, setPaused] = useState(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
   const [denyStatus, setDenyStatus] = useState('')
+  // Tracks the url of the MOST RECENT refresh. On a rapid tab switch an older has-page
+  // round-trip can resolve after a newer one started; we ignore any response whose url is
+  // no longer the active one, so the badge never shows a stale page's saved-state.
+  const latestUrlRef = useRef('')
 
   const refreshActiveTab = async () => {
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
     const url = active?.url ?? ''
+    latestUrlRef.current = url
     const next: ActiveTab = { url, host: hostOf(url), title: active?.title ?? '' }
     setTab(next)
 
@@ -47,8 +52,11 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     if (!isCapturable(url)) { setSaved(false); return }
     try {
       const res: MsgResult = await chrome.runtime.sendMessage({ type: 'has-page', url })
+      // Out-of-order guard: the active url changed while we were waiting; drop this answer.
+      if (latestUrlRef.current !== url) return
       setSaved(res?.type === 'page-status' ? res.exists : false)
     } catch {
+      if (latestUrlRef.current !== url) return
       setSaved(false)
     }
   }
@@ -156,6 +164,11 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // PRIMARY line falls back to host, then url, so the bar is never blank.
   const primary = tab.title || tab.host || tab.url
 
+  // Is THIS host already on the no-remember list? Compare the registrable form (the same
+  // siteHost(...) the deny/forget logic derives) against state - never sniff English
+  // status strings, so the label stays correct under i18n.
+  const hostDenied = tab.host !== '' && userDenyHosts.includes(siteHost(tab.host))
+
   return (
     <div class="thispage">
       <div class="page-head">
@@ -187,7 +200,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
 
         <div class="toolbar">
           <button class="linkbtn" onClick={denyHost}>
-            {userDenyHosts.length > 0 && denyStatus.startsWith('Already') ? t.alreadyOnListShort : t.dontRememberSite}
+            {hostDenied ? t.alreadyOnListShort : t.dontRememberSite}
           </button>
           <button class="linkbtn danger" onClick={forgetHost}>{t.forgetSiteHistory}</button>
         </div>

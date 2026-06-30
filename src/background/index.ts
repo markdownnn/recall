@@ -74,7 +74,7 @@ registerOffscreenEnsurer(ensureOffscreen, resetOffscreen)
 //   active tab's content script to extract and send a manual capture (no UI).
 chrome.commands?.onCommand.addListener((command, tab) => {
   if (command === 'open-panel') {
-    if (tab?.windowId != null) chrome.sidePanel.open({ windowId: tab.windowId })
+    if (tab?.windowId != null) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {})
     return
   }
   if (command !== 'capture-page') return
