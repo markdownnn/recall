@@ -13,9 +13,12 @@
 
 // Conventional intranet suffixes (mDNS / split-horizon naming) + reserved non-routable
 // TLDs (RFC 2606 / 6761). SUFFIX match only.
+// NOTE: `.example` is deliberately NOT here. It is a documentation-only TLD nobody actually
+// browses, so flagging it as internal has no real-world value - it only ever bit our own
+// e2e fixtures (which used `*.example` hosts) by silently skipping their auto-capture.
 const INTERNAL_SUFFIXES = [
   '.local', '.internal', '.corp', '.lan', '.intranet', '.home', '.localdomain',
-  '.test', '.localhost', '.invalid', '.example',
+  '.test', '.localhost', '.invalid',
 ]
 
 export function isInternalHost(hostname: string): boolean {

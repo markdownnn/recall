@@ -25,11 +25,11 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
 
   // Page A is the existing article fixture (recallable via "hormone that ruins sleep"
   // -> Cortisol). Served at a real http host so a real page id is recorded. NOTE: the host
-  // must NOT be a reserved/internal TLD - this spec relies on AUTO-capture, and the internal-
-  // network skip gate (isInternalHost) treats `.example`/`.test`/`.local` as private and
-  // silently skips AUTO-capture there (manual capture would override, but this test is auto).
-  // So we use a routable public-looking host (.io). The route interception is at the CDP
-  // level before DNS, so the domain need not exist.
+  // must NOT be an internal/intranet TLD - this spec relies on AUTO-capture, and the
+  // internal-network skip gate (isInternalHost) silently skips AUTO-capture on `.test`/
+  // `.local`/private-IP hosts (manual capture would override, but this test is auto). A
+  // routable public host (.io) is safe. The route interception is at the CDP level before
+  // DNS, so the domain need not exist.
   const articleHtml = fs.readFileSync(path.resolve(dir, 'fixtures/article.html'), 'utf8')
   const urlA = 'http://spa-test.io/a'
   const page = await ctx.newPage()

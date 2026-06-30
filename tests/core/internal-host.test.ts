@@ -19,8 +19,8 @@ test('recognizes internal / private-network hosts', () => {
     'localhost',
     'wiki.local', 'printer.internal', 'jira.corp',
     'nas.lan', 'docs.intranet', 'router.home', 'box.localdomain',
-    // Reserved / non-routable TLDs.
-    'app.test', 'site.localhost', 'thing.invalid', 'demo.example',
+    // Reserved / non-routable TLDs (NOT .example - it is deliberately treated as public).
+    'app.test', 'site.localhost', 'thing.invalid',
     // Single-label hosts (no dot at all) - intranet shortcuts.
     'wiki', 'jira', 'confluence',
   ]
@@ -33,6 +33,7 @@ test('recognizes internal / private-network hosts', () => {
 test('does not flag public hosts that look close', () => {
   const publicHosts = [
     'en.wikipedia.org', 'github.com', 'example.org',
+    'demo.example', 'spa-test.example',  // .example is documentation-only, treated as PUBLIC (capturable)
     '8.8.8.8', '1.1.1.1',          // public DNS resolvers
     '11.0.0.1',                    // 11.x is public (only 10.x is private)
     '172.15.0.1', '172.32.0.1', '172.200.0.1', // only 172.16-31 is private
