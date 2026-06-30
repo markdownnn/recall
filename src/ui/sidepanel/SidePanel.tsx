@@ -22,6 +22,9 @@ export function SidePanel() {
   const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
   const [status, setStatus] = useState('')
   const [tab, setTab] = useState<TabKey>('search')
+  // Bumped after a successful capture so ThisPageBar re-queries `has-page` and the SAVED
+  // badge flips false->true without the user switching tabs.
+  const [savedRefresh, setSavedRefresh] = useState(0)
 
   useEffect(() => {
     // Ask the SW for model status on mount.
@@ -57,6 +60,8 @@ export function SidePanel() {
         else if (!res.captured && res.reason === 'denylisted') setStatus(t.notSavedDenylisted)
         else if (!res.captured) setStatus(t.nothingSubstantial)
         else setStatus(t.nothingToCapture)
+        // The page is now stored, so tell ThisPageBar to re-query the SAVED badge.
+        setSavedRefresh((n) => n + 1)
       } else {
         setStatus(t.captureFailed(res && 'error' in res ? res.error : 'unknown'))
       }
@@ -79,7 +84,7 @@ export function SidePanel() {
         {renderModelStatus()}
       </div>
 
-      <ThisPageBar onCapture={capture} />
+      <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} />
       {status && <div class="note">{status}</div>}
 
       <hr class="rule" />

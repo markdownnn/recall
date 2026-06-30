@@ -12,14 +12,15 @@ function hostOf(url: string | undefined): string {
   try { return new URL(url).hostname } catch { return '' }
 }
 
-// The SAVED badge only round-trips for real web pages. chrome://, extension, blank, and
-// other restricted tabs have no stored page and would throw inside the offscreen
-// `new URL(...)`, so skip them.
-function isHttp(url: string | undefined): boolean {
+// The SAVED badge only round-trips for pages capture can actually store: http(s) and
+// local file:// pages (the content script matches <all_urls>, so a file:// article is
+// captured and SHOULD read SAVED). chrome://, extension, and blank/restricted tabs are
+// never captured, so skip the round-trip for them.
+function isCapturable(url: string | undefined): boolean {
   if (!url) return false
   try {
     const p = new URL(url).protocol
-    return p === 'http:' || p === 'https:'
+    return p === 'http:' || p === 'https:' || p === 'file:'
   } catch { return false }
 }
 
@@ -28,7 +29,7 @@ function isHttp(url: string | undefined): boolean {
 // no-remember list). The combined capture/index status is NOT owned here - the Capture
 // button fires the `onCapture` prop and SidePanel renders the one status line. Uses no
 // <article> element (that tag is reserved for SearchTab result cards).
-export function ThisPageBar({ onCapture }: { onCapture: () => void }) {
+export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => void; refreshSignal: number }) {
   const [tab, setTab] = useState<ActiveTab>({ url: '', host: '', title: '' })
   const [saved, setSaved] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -43,7 +44,7 @@ export function ThisPageBar({ onCapture }: { onCapture: () => void }) {
 
     // Badge READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
     // the id can never drift from what capture stored. Skip non-http(s) tabs.
-    if (!isHttp(url)) { setSaved(false); return }
+    if (!isCapturable(url)) { setSaved(false); return }
     try {
       const res: MsgResult = await chrome.runtime.sendMessage({ type: 'has-page', url })
       setSaved(res?.type === 'page-status' ? res.exists : false)
@@ -75,6 +76,13 @@ export function ThisPageBar({ onCapture }: { onCapture: () => void }) {
       chrome.tabs.onUpdated.removeListener(onUpdated)
     }
   }, [])
+
+  // After a capture, SidePanel bumps refreshSignal; re-query the badge for the current tab
+  // so it flips to "saved" without the user switching tabs. Skip the initial 0 (mount
+  // already queried above).
+  useEffect(() => {
+    if (refreshSignal > 0) void refreshActiveTab()
+  }, [refreshSignal])
 
   const togglePause = async (e: Event) => {
     const checked = (e.target as HTMLInputElement).checked
