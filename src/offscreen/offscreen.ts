@@ -16,6 +16,8 @@ import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
+import { migrateEmbeddingModel } from '../core/embed-migration'
+import { EMBED_MODEL_VERSION } from '../core/embed-version'
 import type { EmbeddingPort } from '../core/ports'
 
 // ---------------------------------------------------------------------------
@@ -34,6 +36,15 @@ function emitModelProgress(e: { status: string; progress?: number }): void {
     .catch(() => {})
 }
 embedder.setProgressSink(emitModelProgress)
+
+// Surface a WASM fallback (granite runs but slow) to the SW -> side panel as a "running slow"
+// notice. Consuming this in the IndexingIndicator is a one-line UI follow-up (parallel task);
+// the event is emitted here regardless.
+embedder.setDegradedSink((info) => {
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'wasm', device: info.device })
+    .catch(() => {})
+})
 
 // Adapter: WebGpuEmbedder.embed() returns number[][] (legacy type for RPC wire
 // compatibility). Core services need Float32Array[]. Convert in one place.
@@ -93,10 +104,61 @@ function runDrainWithProgress(): void {
     })
 }
 
-// On load: resume any pending chunks left from a previous session.
-// The store worker may still be initialising its OPFS DB; pendingChunks() will
-// wait for the worker's initPromise before replying, so this is safe to call now.
-runDrainWithProgress()
+// ---------------------------------------------------------------------------
+// Re-index (model-swap migration) progress helpers. They reuse the existing
+// indexing-progress rpc-event and ADD a `total` (the page count) so the side
+// panel can render a real "N of M" bar. emitReindexTotal carries the page-level
+// {done,total}; bumpReindexProgress keeps the per-page drain's chunk activity
+// flowing so the bar still moves within a page.
+// ---------------------------------------------------------------------------
+
+let reindexEmbedded = 0
+function bumpReindexProgress(n: number): void {
+  reindexEmbedded += n
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'indexing-progress', embedded: reindexEmbedded })
+    .catch(() => {})
+}
+function emitReindexTotal(p: { done: number; total: number }): void {
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'indexing-progress', embedded: p.done, total: p.total })
+    .catch(() => {})
+}
+
+// On load: (1) load granite; (2) if this profile's stored version differs from granite's
+// (e5-era profiles have none, or a legacy id), re-embed the corpus PAGE BY PAGE - so search
+// degrades gradually (already-re-embedded pages keep serving) instead of going blank; (3) run
+// the normal drain afterward to finish any chunks left pending (a fresh capture or an
+// interrupted re-index). The migration + drain broadcast indexing-progress (now with a
+// `total`), which the side panel renders as the "updating search index N of M" state.
+// The store worker may still be initialising its OPFS DB; pendingChunks() waits for the
+// worker's initPromise before replying, so this is safe to start now.
+embedder
+  .ensureLoaded()
+  .then(async () => {
+    await migrateEmbeddingModel(
+      store,
+      settings,
+      EMBED_MODEL_VERSION,
+      () =>
+        new Promise<void>((done) => {
+          // Re-embed the currently-pending chunks (this page's) and resolve when the drain ends.
+          indexing.drain((n) => bumpReindexProgress(n)).then(() => done())
+        }),
+      (p) => emitReindexTotal(p),
+    )
+    await runDrainWithProgress() // finish any freshly-captured chunks
+  })
+  .catch((e) => {
+    // ensureLoaded rejects ONLY when granite failed on BOTH WebGPU and WASM: this device cannot
+    // run the on-device model. Surface an explicit "search unavailable on this hardware" state
+    // so the user isn't left with capture silently piling up NULL-vector chunks that never
+    // become searchable. Do NOT spin the drain - every embed would just fail.
+    console.error('[recall/offscreen] granite unavailable on this device:', e)
+    chrome.runtime
+      .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'unavailable' })
+      .catch(() => {})
+  })
 
 // ---------------------------------------------------------------------------
 // RPC handler: dispatches on payload.op
