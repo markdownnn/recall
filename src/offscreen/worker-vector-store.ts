@@ -11,6 +11,7 @@ export class WorkerVectorStore implements VectorSearchPort {
     this.c.request<CapturedPage[]>('recentPages', { limit, beforeTs })
   pendingChunks = (limit: number) => this.c.request<Chunk[]>('pendingChunks', { limit })
   setVector = (id: string, vector: Float32Array) => this.c.request<void>('setVector', { id, vector })
+  clearVectorsForPage = (pageId: string) => this.c.request<void>('clearVectorsForPage', pageId)
   search = (queryVector: Float32Array, queryText: string, k: number) =>
     this.c.request<RankedResult[]>('search', { queryVector: Array.from(queryVector), queryText, k })
   deletePagesByHost = (host: string) => this.c.request<void>('deletePagesByHost', host)

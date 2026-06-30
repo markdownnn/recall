@@ -50,4 +50,7 @@ export interface SettingsPort {
   setPaused(paused: boolean): Promise<void>
   addDenyHost(host: string): Promise<void>
   removeDenyHost(host: string): Promise<void>
+  // The embedding-model version last used to embed this profile (null on a fresh DB).
+  getEmbedVersion(): Promise<string | null>
+  setEmbedVersion(version: string): Promise<void>
 }

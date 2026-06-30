@@ -7,4 +7,6 @@ export class WorkerSettingsStore implements SettingsPort {
   setPaused = (paused: boolean) => this.c.request<void>('setPaused', paused)
   addDenyHost = (host: string) => this.c.request<void>('addDenyHost', host)
   removeDenyHost = (host: string) => this.c.request<void>('removeDenyHost', host)
+  getEmbedVersion = () => this.c.request<string | null>('getEmbedVersion')
+  setEmbedVersion = (version: string) => this.c.request<void>('setEmbedVersion', version)
 }

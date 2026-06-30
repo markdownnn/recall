@@ -243,6 +243,29 @@ function opDeletePagesByHost(db: any, host: string): void {
   } catch (e) { db.exec('ROLLBACK'); throw e }
 }
 
+function opClearVectorsForPage(db: any, pageId: string): void {
+  // Re-queue ONLY this page's chunks for the drain by nulling their vectors. Other pages
+  // keep their vectors and stay searchable. Page/chunk text untouched.
+  db.exec({ sql: `UPDATE chunks SET vector = NULL WHERE pageId = ?`, bind: [pageId] })
+}
+
+function opGetEmbedVersion(db: any): string | null {
+  let version: string | null = null
+  db.exec({
+    sql: `SELECT value FROM settings WHERE key='embedModelVersion'`,
+    rowMode: 'array',
+    callback: (r: any) => { version = r[0] },
+  })
+  return version
+}
+
+function opSetEmbedVersion(db: any, version: string): void {
+  db.exec({
+    sql: `INSERT OR REPLACE INTO settings (key, value) VALUES ('embedModelVersion', ?)`,
+    bind: [version],
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Op -> handler MAP (declarative)
 // ---------------------------------------------------------------------------
@@ -260,6 +283,9 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   addDenyHost: (db, args) => { opAddDenyHost(db, args as string) },
   removeDenyHost: (db, args) => { opRemoveDenyHost(db, args as string) },
   deletePagesByHost: (db, args) => { opDeletePagesByHost(db, args as string) },
+  clearVectorsForPage: (db, args) => { opClearVectorsForPage(db, args as string) },
+  getEmbedVersion: (db) => opGetEmbedVersion(db),
+  setEmbedVersion: (db, args) => { opSetEmbedVersion(db, args as string) },
 }
 
 // ---------------------------------------------------------------------------
