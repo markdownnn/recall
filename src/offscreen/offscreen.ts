@@ -70,9 +70,13 @@ function runDrainWithProgress(): void {
     })
     .then(() => {
       // Signal "drain complete" so the popup shows "indexed".
-      chrome.runtime
-        .sendMessage({ channel: 'rpc-event', kind: 'indexing-complete', totalEmbedded })
-        .catch(() => {})
+      // Only emit when real work happened — emitting with totalEmbedded=0 would
+      // falsely set the popup to "indexed" on every keep-alive ping or idle startup.
+      if (totalEmbedded > 0) {
+        chrome.runtime
+          .sendMessage({ channel: 'rpc-event', kind: 'indexing-complete', totalEmbedded })
+          .catch(() => {})
+      }
     })
     .catch((e) => {
       // The drain runs fire-and-forget after capture returns, so an embedding
