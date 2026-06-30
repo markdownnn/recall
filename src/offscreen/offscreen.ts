@@ -114,7 +114,16 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     if (!decision.capture) {
       return { captured: false, chunkCount: 0, reason: decision.reason }
     }
-    const { chunkCount } = await capture.capture({ url, title, text })
+    // A manual save (side panel Capture/Update button, command shortcut) is explicit user
+    // intent, so it FORCES (re)capture. The auto path (content-script dwell/engagement) is
+    // not manual, so force=false and an already-saved page is skipped (dedup) by the service.
+    const { chunkCount, skipped } = await capture.capture({ url, title, text, force: manual })
+    if (skipped) {
+      // Auto-path dedup: page already saved and not forced. The auto path discards this
+      // response, so no UI reason is needed; just report not-captured.
+      console.log(`[recall] skipped capture (${skipped})`)
+      return { captured: false, chunkCount: 0 }
+    }
     console.log(`[recall] captured ${chunkCount} chunks`)
     // Fire-and-forget: drain runs in background; the RPC reply returns immediately.
     runDrainWithProgress()
