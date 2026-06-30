@@ -1,6 +1,14 @@
-import { CaptureService } from '../../src/core/capture-service'
+import { CaptureService, pageIdFromUrl } from '../../src/core/capture-service'
 import { ParagraphChunker } from '../../src/core/paragraph-chunker'
 import { MemoryVectorStore } from '../../src/adapters/memory-vector-store'
+
+// Scenario: a user saves an article via a clean link, then re-visits it via a campaign
+// link (?utm_source=...). The page must dedup to ONE id, or it saves twice and the
+// SAVED badge misreads. Pins the guarantee directly on pageIdFromUrl (not just the helper).
+// Coverage: integration (real exported pageIdFromUrl).
+test('pageIdFromUrl gives a campaign link and a clean link the same id', () => {
+  expect(pageIdFromUrl('https://x.com/a?utm_source=s&id=1')).toBe(pageIdFromUrl('https://x.com/a?id=1'))
+})
 
 // Scenario: capturing a page must store chunks as pending and return a chunk count.
 // Coverage: integration (real chunker + real MemoryVectorStore).

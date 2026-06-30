@@ -44,3 +44,10 @@ test('case-insensitive match on token param names', () => {
   expect(result).not.toContain('Access_Token')
   expect(result).toContain('Name=alice')
 })
+
+// Scenario: a campaign link is captured; the url we STORE must drop ?utm_* but keep the
+// real ?id=1, so the stored url is clean yet still points at the right page.
+// Coverage: integration (real sanitizeUrl, which now composes stripTrackingParams).
+test('strips tracking params from the stored url, keeps real params', () => {
+  expect(sanitizeUrl('https://x.com/a?utm_source=s&id=1')).toBe('https://x.com/a?id=1')
+})

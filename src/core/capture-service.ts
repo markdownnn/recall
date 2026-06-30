@@ -1,8 +1,9 @@
 import type { ContentChunkerPort, VectorSearchPort } from './ports'
 import type { CapturedPage } from './model'
+import { stripTrackingParams } from './strip-tracking-params'
 
-function pageIdFromUrl(url: string): string {
-  const u = new URL(url)
+export function pageIdFromUrl(url: string): string {
+  const u = new URL(stripTrackingParams(url))
   u.hash = ''
   u.username = ''
   u.password = ''
