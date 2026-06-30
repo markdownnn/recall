@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from 'preact/hooks'
+import { useState } from 'preact/hooks'
 import type { MsgResult } from '../../messaging'
 import type { RankedResult } from '../../core/model'
 import { t } from './strings'
-import { SUGGESTIONS, randomIndex, nextIndex } from './suggestions'
+import { SUGGESTIONS, randomIndex } from './suggestions'
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
 }
 
-// Search hero: searchbox + accent Search button + rotating suggested-query placeholder +
+// Search hero: searchbox + accent Search button + a suggested-query placeholder +
 // <article> result cards. The recall round-trip (k:5) and the card markup match the spike
 // exactly so the e2e <article> + getByText asserts keep resolving.
 export function SearchTab() {
@@ -17,21 +17,9 @@ export function SearchTab() {
   const [searching, setSearching] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [searchErr, setSearchErr] = useState('')
-  // Rotating placeholder: random on mount, then a gentle 1-step rotation every ~5s while
-  // the box is empty AND unfocused. The index math is pure (suggestions.ts); the timer +
-  // focus/empty gating is glue.
-  const [placeIdx, setPlaceIdx] = useState(() => randomIndex(SUGGESTIONS.length))
-  const emptyRef = useRef(true)
-  const focusedRef = useRef(false)
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (emptyRef.current && !focusedRef.current) {
-        setPlaceIdx((cur) => nextIndex(cur, SUGGESTIONS.length))
-      }
-    }, 5000)
-    return () => clearInterval(id)
-  }, [])
+  // Placeholder: pick ONE random suggestion on mount and keep it (no rotation). The index
+  // math is pure (suggestions.ts).
+  const [placeholder] = useState(() => SUGGESTIONS[randomIndex(SUGGESTIONS.length)])
 
   const search = async () => {
     if (!q.trim() || searching) return
@@ -56,15 +44,9 @@ export function SearchTab() {
         <input
           type="search"
           value={q}
-          onInput={(e) => {
-            const v = (e.target as HTMLInputElement).value
-            emptyRef.current = v.trim() === ''
-            setQ(v)
-          }}
-          onFocus={() => { focusedRef.current = true }}
-          onBlur={() => { focusedRef.current = false }}
+          onInput={(e) => setQ((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && search()}
-          placeholder={SUGGESTIONS[placeIdx]}
+          placeholder={placeholder}
         />
         <button class="searchbtn" aria-label={t.searchButtonAria} onClick={search}>
           {t.searchButtonLabel}
