@@ -62,7 +62,7 @@ export function SearchTab() {
             <article class="card" key={r.chunk.id}>
               <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
               <p>{r.chunk.text}</p>
-              <div class="meta">{hostOf(r.page.url)} &middot; {r.score.toFixed(2)}</div>
+              <div class="meta">{hostOf(r.page.url)}</div>
             </article>
           ))}
         </div>
