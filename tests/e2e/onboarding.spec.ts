@@ -1,6 +1,7 @@
 // Scenario: a user installs Recall; the welcome/onboarding tab must render the
-// brand, an example "search by meaning" chip, the sample result card, and the
-// "open the side panel" instruction so the first-run page is not blank/broken.
+// brand, an example "search by meaning" chip, the live try-it card's seed entry
+// point, and the "open the side panel" instruction so the first-run page is not
+// blank/broken. (The seed->search ride itself is the interactive spec.)
 // Coverage: integration (built extension loaded in Chrome; real CRXJS-emitted
 // onboarding page rendered by Preact). The auto-open-on-install trigger itself is
 // build/eyeball-verified - asserting it deterministically across a fresh-profile
@@ -33,13 +34,12 @@ test('onboarding page renders key content', async () => {
   const page = await ctx.newPage()
   await page.goto(`chrome-extension://${extId}/src/ui/onboarding/index.html`)
 
-  // Brand.
+  // Brand (exact - the PinIllustration splits "Recall" so this stays unambiguous).
   await expect(page.getByText('Recall', { exact: true })).toBeVisible({ timeout: 10_000 })
-  // One example chip.
+  // One example "search by meaning" chip (still a static explainer span).
   await expect(page.getByText('that article about sleep and cortisol')).toBeVisible()
-  // Sample result card mock - title is a link (the chip text is a separate element).
-  await expect(page.getByRole('link', { name: 'How photosynthesis works' })).toBeVisible()
-  await expect(page.getByText('wikipedia.org', { exact: false })).toBeVisible()
+  // The live try-it card's entry point.
+  await expect(page.getByRole('button', { name: 'Add 3 sample pages' })).toBeVisible()
   // Side panel instruction.
   await expect(page.getByText('side panel', { exact: false })).toBeVisible()
 
