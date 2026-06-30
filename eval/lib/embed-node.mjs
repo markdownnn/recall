@@ -12,10 +12,11 @@
 //                vector is sliced to the first N dims and re-normalized (applied to query AND
 //                passage so dims match). Empty/0 = full native dim. Lets us trade storage for
 //                quality on MRL models like EmbeddingGemma (768 native).
-//   EVAL_MODEL_FILE  optional: exact onnx base name under onnx/ (no .onnx), for repos whose
-//                quantized file does not follow the transformers.js dtype suffix convention
-//                (e.g. granite R1's onnx/model_qint8_arm64.onnx). When set, dtype suffixing is
-//                bypassed and this file is loaded verbatim.
+//   EVAL_MODEL_FILE  optional: exact onnx base name under onnx/ (no .onnx), for A/B'ing repos
+//                whose quantized file does not follow the transformers.js dtype suffix
+//                convention. When set, dtype suffixing is bypassed and this file is loaded
+//                verbatim. (Unused by the bundled granite default, which ships a standard
+//                onnx/model_quantized.onnx loaded via dtype:'q8'.)
 //
 // The bundled granite is loaded OFFLINE from public/models (committed + verified by
 // scripts/fetch-model.mjs); any OTHER model id is fetched remotely into eval/.cache
