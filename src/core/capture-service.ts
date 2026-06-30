@@ -22,8 +22,17 @@ export class CaptureService {
     private readonly store: VectorSearchPort,
   ) {}
 
-  async capture(input: { url: string; title: string; text: string }): Promise<{ chunkCount: number }> {
+  async capture(input: { url: string; title: string; text: string; force?: boolean }): Promise<{ chunkCount: number; skipped?: 'already-saved' }> {
     const pageId = pageIdFromUrl(input.url)
+    // Auto-capture dedup: an already-saved page is NOT re-captured by the automatic
+    // (engagement/dwell) path; only an explicit user action (force=true, the manual
+    // Capture/Update button) re-captures. Besides saving redundant re-embedding on every
+    // revisit, this removes the re-capture-wipes-vectors race: a forced putChunks() during
+    // an in-flight embed of the prior chunks would drop those vectors - the same race the
+    // e2e worked around with about:blank navigation. Skipping the auto re-capture closes it.
+    if (!input.force && (await this.store.hasPage(pageId))) {
+      return { chunkCount: 0, skipped: 'already-saved' }
+    }
     const chunks = this.chunker.chunk({ pageId, text: input.text })
     if (chunks.length === 0) return { chunkCount: 0 }
     const page: CapturedPage = { id: pageId, url: input.url, title: input.title, capturedAt: Date.now() }

@@ -36,8 +36,9 @@ test('re-capture of same URL replaces chunks - no stale entries', async () => {
   // First capture: 3 paragraphs merge into 1 chunk (word-stream, 9 words < 220).
   await svc.capture({ url: 'http://x/a', title: 'A', text: 'para one\n\npara two\n\npara three' })
 
-  // Second capture: 1 paragraph -> 1 chunk.
-  const result2 = await svc.capture({ url: 'http://x/a', title: 'A', text: 'only one para' })
+  // Second capture: 1 paragraph -> 1 chunk. force:true = explicit re-capture (manual Update),
+  // which is the path that is allowed to overwrite an already-saved page.
+  const result2 = await svc.capture({ url: 'http://x/a', title: 'A', text: 'only one para', force: true })
 
   // Only the new chunks must be pending.
   const pending = await store.pendingChunks(100)
@@ -65,12 +66,68 @@ test('URLs differing only in credentials map to the same stored page', async () 
 
   // First capture uses a URL with embedded credentials.
   await svc.capture({ url: 'https://user:pass@example.com/a', title: 'A', text: 'hello world' })
-  // Second capture uses the clean URL for the same resource.
-  await svc.capture({ url: 'https://example.com/a', title: 'A', text: 'hello again' })
+  // Second capture uses the clean URL for the same resource. force:true = explicit re-capture
+  // (manual Update), the only path allowed to overwrite an already-saved page.
+  await svc.capture({ url: 'https://example.com/a', title: 'A', text: 'hello again', force: true })
 
   // Second capture must have replaced the first (same pageId).
   // Only the second capture's chunks are pending.
   const pending = await store.pendingChunks(100)
   expect(pending.length).toBe(1)
   expect(pending[0].text).toBe('hello again')
+})
+
+// Scenario: a user re-opens an article they already saved. The auto path (dwell/engagement,
+// force=false) must NOT re-embed it - silent revisits should not rewrite a saved page's
+// chunks (which also avoids the in-flight-embed wipe race).
+// Coverage: integration (real chunker + real MemoryVectorStore.hasPage).
+test('auto (force=false) on an already-saved page is skipped - chunks NOT rewritten', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), store)
+
+  // First visit captures (page not yet saved).
+  const first = await svc.capture({ url: 'http://x/a', title: 'A', text: 'first saved body' })
+  expect(first.skipped).toBeUndefined()
+  expect(first.chunkCount).toBeGreaterThan(0)
+
+  // Revisit on the auto path: page is already saved -> skip, do not rewrite chunks.
+  const second = await svc.capture({ url: 'http://x/a', title: 'A', text: 'second different body', force: false })
+  expect(second.skipped).toBe('already-saved')
+  expect(second.chunkCount).toBe(0)
+
+  // The original chunks must remain untouched (still the first body, still pending).
+  const pending = await store.pendingChunks(100)
+  expect(pending.length).toBe(1)
+  expect(pending[0].text).toBe('first saved body')
+})
+
+// Scenario: a user clicks "Update this page" (manual, force=true) on a page they already
+// saved. That explicit intent MUST re-capture - the new content replaces the old chunks.
+// Coverage: integration (real chunker + real MemoryVectorStore.hasPage).
+test('force=true on an already-saved page re-captures - chunks rewritten', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), store)
+
+  await svc.capture({ url: 'http://x/a', title: 'A', text: 'first saved body' })
+
+  const updated = await svc.capture({ url: 'http://x/a', title: 'A', text: 'updated body text', force: true })
+  expect(updated.skipped).toBeUndefined()
+  expect(updated.chunkCount).toBeGreaterThan(0)
+
+  const pending = await store.pendingChunks(100)
+  expect(pending.length).toBe(updated.chunkCount)
+  expect(pending[0].text).toBe('updated body text')
+})
+
+// Scenario: the common auto-capture case - a brand-new page the user just dwelled on.
+// force=false must still capture when the page is NOT already saved.
+// Coverage: integration (real chunker + real MemoryVectorStore.hasPage).
+test('auto (force=false) on a NOT-saved page captures normally', async () => {
+  const store = new MemoryVectorStore()
+  const svc = new CaptureService(new ParagraphChunker(220), store)
+
+  const result = await svc.capture({ url: 'http://x/a', title: 'A', text: 'brand new page body', force: false })
+  expect(result.skipped).toBeUndefined()
+  expect(result.chunkCount).toBeGreaterThan(0)
+  expect(await store.hasPage('http://x/a')).toBe(true)
 })
