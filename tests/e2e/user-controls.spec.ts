@@ -115,3 +115,44 @@ test('deny-host blocks capture via real SQL path', async () => {
 
   await ctx.close()
 })
+
+// Scenario: the denylist editor's "remove" must actually delete the user_denylist row
+// (not just hide it in the UI) so the site is captured again afterwards. Proven through
+// the real worker SQL path.
+// Coverage: integration (real extension; deny -> list -> remove -> capture succeeds).
+test('removing a no-remember site re-enables capture (real SQL path)', async () => {
+  test.setTimeout(120_000)
+
+  const ctx = await chromium.launchPersistentContext('', {
+    headless: false,
+    args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
+  })
+  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'))
+  const extId = sw.url().split('/')[2]
+
+  const articleHtml = fs.readFileSync(path.resolve(dir, 'fixtures/article.html'), 'utf8')
+  const url = 'http://remove-test.example/article'
+  const articlePage = await ctx.newPage()
+  await articlePage.route(url, (route) => route.fulfill({ contentType: 'text/html', body: articleHtml }))
+  await articlePage.goto(url)
+
+  const popup = await ctx.newPage()
+  await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
+  await articlePage.bringToFront()
+
+  // Deny the host; while denied, capture is blocked.
+  await popup.getByText("Don't remember this site").click()
+  await expect(popup.getByText(/won't remember remove-test\.example/i)).toBeVisible({ timeout: 10_000 })
+  await popup.getByText('Capture this page').click()
+  await expect(popup.getByText('not saved: this site is on the no-remember list')).toBeVisible({ timeout: 10_000 })
+
+  // Remove it via the denylist editor's "remove" button (the only such button, since
+  // exactly one host is denied) -> the user_denylist row must be deleted.
+  await popup.getByRole('button', { name: 'remove' }).click()
+
+  // Capture now succeeds -> proves the row was really deleted, not just hidden.
+  await popup.getByText('Capture this page').click()
+  await expect(popup.getByText(/captured/i)).toBeVisible({ timeout: 10_000 })
+
+  await ctx.close()
+})

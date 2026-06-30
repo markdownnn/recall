@@ -31,25 +31,6 @@ function extract(): { title: string; text: string } | null {
   }
 }
 
-// Returns true when the page should be skipped by auto-capture:
-// - a robots meta instructs crawlers/archivers not to index/archive the page, OR
-// - a password input is currently visible (e.g. a login widget in the page header).
-// Manual capture intentionally bypasses this check (explicit user intent wins).
-function isSensitivePage(): boolean {
-  const robotsMeta = document.querySelector('meta[name="robots" i]')
-  if (robotsMeta) {
-    const content = robotsMeta.getAttribute('content')?.toLowerCase() ?? ''
-    if (content.includes('noindex') || content.includes('noarchive') || content.includes('none')) {
-      return true
-    }
-  }
-  const pwInputs = document.querySelectorAll('input[type="password"]')
-  for (const el of pwInputs) {
-    if ((el as HTMLElement).offsetParent !== null) return true
-  }
-  return false
-}
-
 function sendCapture(manual: boolean): void {
   const ex = extract()
   if (!ex) return
@@ -76,10 +57,7 @@ function sendCapture(manual: boolean): void {
     DWELL_MS,
     () => Date.now(),
     () => document.visibilityState === 'visible',
-    () => {
-      if (isSensitivePage()) return
-      sendCapture(false)
-    },
+    () => sendCapture(false),
   )
   tracker.reset()
   document.addEventListener('visibilitychange', () => tracker.onVisibilityChange())

@@ -58,6 +58,13 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await popup1.getByText('Capture this page').click()
     await expect(popup1.getByText('captured', { exact: false })).toBeVisible({ timeout: 30_000 })
 
+    // The manual capture is now committed. Navigate the source tab away so the dwell
+    // auto-capture can't fire and re-run putChunks (which DELETEs + re-inserts the chunks
+    // with NULL vectors) - that would race the restart and leave un-embedded chunks that
+    // session 2's search can't find. (This test is about durability of stored data, not
+    // auto-capture.) Honest stop: the page genuinely leaves; no sleep, no sensitivity trick.
+    await articlePage.goto('about:blank')
+
     // Wait for indexing (model download + embed).
     await expect(popup1.getByText('indexed')).toBeVisible({ timeout: 240_000 })
 
