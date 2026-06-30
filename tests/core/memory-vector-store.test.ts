@@ -16,6 +16,39 @@ test('hasPage is false until a page is upserted, then true', async () => {
   expect(await store.hasPage('nope')).toBe(false)
 })
 
+// Scenario: the History tab lists captured pages newest-first; a fresh install has none,
+// and after capturing pages they come back in reverse-chronological order.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort contract).
+test('recentPages returns pages newest-first', async () => {
+  const store = new MemoryVectorStore()
+  expect(await store.recentPages(10)).toEqual([])
+  await store.upsertPage({ id: 'a', url: 'http://a', title: 'A', capturedAt: 100 })
+  await store.upsertPage({ id: 'b', url: 'http://b', title: 'B', capturedAt: 300 })
+  await store.upsertPage({ id: 'c', url: 'http://c', title: 'C', capturedAt: 200 })
+  const ids = (await store.recentPages(10)).map((p) => p.id)
+  expect(ids).toEqual(['b', 'c', 'a'])
+})
+
+// Scenario: a large corpus must page in, not load all at once; limit caps the first page.
+// Coverage: integration (real MemoryVectorStore).
+test('recentPages caps the result at limit', async () => {
+  const store = new MemoryVectorStore()
+  for (let i = 0; i < 5; i++) await store.upsertPage({ id: String(i), url: 'http://x/' + i, title: 'P' + i, capturedAt: i })
+  expect((await store.recentPages(2)).map((p) => p.id)).toEqual(['4', '3'])
+})
+
+// Scenario: "Load more" asks for the next page using the last row's capturedAt as a cursor;
+// only strictly-older pages come back, so paging never repeats or skips a row.
+// Coverage: integration (real MemoryVectorStore).
+test('recentPages pages by the beforeTs cursor', async () => {
+  const store = new MemoryVectorStore()
+  for (let i = 1; i <= 5; i++) await store.upsertPage({ id: String(i), url: 'http://x/' + i, title: 'P' + i, capturedAt: i * 10 })
+  const page1 = await store.recentPages(2)              // [50, 40]
+  expect(page1.map((p) => p.id)).toEqual(['5', '4'])
+  const page2 = await store.recentPages(2, page1[page1.length - 1].capturedAt) // before 40 -> [30, 20]
+  expect(page2.map((p) => p.id)).toEqual(['3', '2'])
+})
+
 test('chunk is not searchable until setVector is called', async () => {
   const store = new MemoryVectorStore()
   await store.upsertPage(page)

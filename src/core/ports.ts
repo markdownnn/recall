@@ -18,6 +18,9 @@ export interface VectorSearchPort {
   setVector(chunkId: string, vector: Float32Array): Promise<void>
   // True if this page id is already stored (drives the panel's SAVED badge).
   hasPage(pageId: string): Promise<boolean>
+  // Reverse-chronological browse for the History tab. `beforeTs` is a keyset cursor:
+  // omit for the first page, pass the last row's capturedAt for the next page.
+  recentPages(limit: number, beforeTs?: number): Promise<import('./model').CapturedPage[]>
   // Search ONLY over embedded chunks (those with a vector).
   search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]>
   // Delete all pages (and their chunks) whose host equals or is a subdomain of the given host.

@@ -27,6 +27,13 @@ export class MemoryVectorStore implements VectorSearchPort {
     return this.pages.has(pageId)
   }
 
+  async recentPages(limit: number, beforeTs?: number): Promise<CapturedPage[]> {
+    return [...this.pages.values()]
+      .filter((p) => beforeTs === undefined || p.capturedAt < beforeTs)
+      .sort((a, b) => b.capturedAt - a.capturedAt)
+      .slice(0, limit)
+  }
+
   async pendingChunks(limit: number): Promise<Chunk[]> {
     const result: Chunk[] = []
     for (const { chunk, vector } of this.chunks.values()) {
