@@ -40,13 +40,15 @@ export class CaptureGate {
       if (isSerp(input.url)) return { capture: false, reason: 'serp' }
       // Internal / private-network hosts are not public content worth recalling.
       if (isInternalHost(hostOf(input.url))) return { capture: false, reason: 'internal' }
-      // Measure content size script-agnostically by counting Unicode LETTERS (\p{L}), not
-      // whitespace-split "words". A long Chinese/Japanese page has no inter-word spaces, so a
-      // word count collapses the whole page to 1 "word" and the gate wrongly rejects it as
-      // thin (auto-capture never fires) even though the model is multilingual. Counting
-      // letters mirrors prose-score.ts (which also treats CJK as \p{L}). The threshold is the
-      // word budget scaled by average word length, so English behavior stays equivalent.
-      const letters = (input.text.match(/\p{L}/gu) ?? []).length
+      // Measure content size script-agnostically by counting Unicode LETTERS + NUMBERS
+      // (\p{L} + \p{N}), not whitespace-split "words". A long Chinese/Japanese page has no
+      // inter-word spaces, so a word count collapses the whole page to 1 "word" and the gate
+      // wrongly rejects it as thin (auto-capture never fires) even though the model is
+      // multilingual. We count \p{N} too so number/code-heavy English pages (stats tables, code
+      // listings) - lots of digits, few letters - aren't wrongly dropped as thin the way a
+      // letter-only count would. CJK stays \p{L} (matching prose-score.ts). The threshold is
+      // the word budget scaled by average word length, so English behavior stays equivalent.
+      const letters = (input.text.match(/[\p{L}\p{N}]/gu) ?? []).length
       if (letters < this.minWords * AVG_WORD_LEN) return { capture: false, reason: 'thin' }
     }
     return { capture: true }

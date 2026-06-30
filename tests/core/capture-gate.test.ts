@@ -44,6 +44,20 @@ test('auto: very short CJK page is still thin', () => {
   expect(d.reason).toBe('thin')
 })
 
+// Scenario: a number/code-heavy English page (a stats table or code listing) has many digits
+// and symbols but few alphabetic letters. A letter-only thin gate (\p{L}) drops these digits,
+// so the page can fall under the letter threshold and get wrongly rejected as 'thin' - even
+// though the old word-count gate captured it. Counting letters AND numbers (\p{L} + \p{N})
+// keeps numeric/code tokens contributing, so the page is captured.
+// Coverage: integration (real CaptureGate soft-gate path).
+test('auto: number/code-heavy page is NOT thin (letters+numbers counted)', () => {
+  // 30 digits, 0 alphabetic letters. minWords 5 * AVG_WORD_LEN 5 = 25 threshold. A letter-only
+  // count is 0 (rejected); counting digits gives 30 >= 25 (captured).
+  const numeric = '1234567890'.repeat(3)
+  const d = gate.decide({ url: 'https://site.com/stats', text: numeric, manual: false }, open)
+  expect(d.capture).toBe(true)
+})
+
 test('manual: thin page IS captured (soft gate skipped)', () => {
   expect(gate.decide({ url: 'https://site.com/post', text: short, manual: true }, open).capture).toBe(true)
 })
