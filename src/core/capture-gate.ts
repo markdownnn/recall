@@ -1,8 +1,9 @@
 import { DEFAULT_DENYLIST, isDenylisted } from './denylist'
+import { isSerp } from './serp'
 import type { AppSettings } from './ports'
 
 export interface GateInput { url: string; text: string; manual: boolean }
-export interface GateDecision { capture: boolean; reason?: 'paused' | 'denylisted' | 'thin' }
+export interface GateDecision { capture: boolean; reason?: 'paused' | 'denylisted' | 'thin' | 'serp' }
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
@@ -29,6 +30,8 @@ export class CaptureGate {
     if (hostDenied(hostOf(input.url), settings.userDenyHosts)) return { capture: false, reason: 'denylisted' }
     // Soft gate (quality): skipped for explicit manual save.
     if (!input.manual) {
+      // SERPs are navigational link lists, not content worth recalling.
+      if (isSerp(input.url)) return { capture: false, reason: 'serp' }
       const words = input.text.trim().split(/\s+/).filter(Boolean).length
       if (words < this.minWords) return { capture: false, reason: 'thin' }
     }

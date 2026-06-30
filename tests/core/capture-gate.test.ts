@@ -63,3 +63,27 @@ test('user deny does NOT block lookalike hosts', () => {
   expect(gateNoBuiltin.decide({ url: 'https://evilbank.com/x', text: long, manual: false }, s).capture).toBe(true)
   expect(gateNoBuiltin.decide({ url: 'https://bank.com.evil.com/x', text: long, manual: false }, s).capture).toBe(true)
 })
+
+// Scenario: a user who searched then bounced through results should NOT have the SERP
+// auto-captured - it is a link list, not an article.
+// Coverage: integration (real CaptureGate + isSerp, soft-gate path).
+test('auto: SERP rejected with reason serp', () => {
+  const d = gate.decide({ url: 'https://www.google.com/search?q=cortisol', text: long, manual: false }, open)
+  expect(d.capture).toBe(false)
+  expect(d.reason).toBe('serp')
+})
+
+// Scenario: if the user EXPLICITLY clicks save on a results page, honor the intent -
+// the SERP soft gate is skipped for manual, just like the thin gate.
+// Coverage: integration (real CaptureGate, manual path).
+test('manual: SERP IS captured (soft gate skipped)', () => {
+  const d = gate.decide({ url: 'https://www.google.com/search?q=cortisol', text: long, manual: true }, open)
+  expect(d.capture).toBe(true)
+})
+
+// Scenario: a normal article must still pass - the SERP gate must not over-block.
+// Coverage: integration (real CaptureGate).
+test('auto: non-SERP article still captured', () => {
+  const d = gate.decide({ url: 'https://example.com/article/cortisol', text: long, manual: false }, open)
+  expect(d.capture).toBe(true)
+})
