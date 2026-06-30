@@ -2,6 +2,7 @@ import { EN } from '../../src/ui/sidepanel/strings'
 
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
+  'historyTabLabel', 'historyEmpty', 'loadMore',
   'captureButton', 'updateButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'modelReady', 'modelError', 'pauseLabel',
@@ -49,4 +50,9 @@ test('byte-identical e2e strings are preserved', () => {
   expect(EN.forgotEverythingFrom('example.com')).toBe('Forgot everything from example.com')
   expect(EN.forgetConfirm('example.com'))
     .toBe('Delete ALL captured history from example.com and its subdomains? This cannot be undone.')
+  // Scenario: the History tab label + Load-more button are asserted verbatim by the e2e;
+  // a wording change here must fail loudly.
+  // Coverage: integration (real EN object).
+  expect(EN.historyTabLabel).toBe('History')
+  expect(EN.loadMore).toBe('Load more')
 })

@@ -6,6 +6,9 @@ export interface UIStrings {
   searchTabLabel: string       // the 'Search' tab label
   searchButtonLabel: string    // the accent Search button label
   searchButtonAria: string     // its aria-label
+  historyTabLabel: string      // the 'History' tab label
+  historyEmpty: string         // empty-state line when nothing is captured yet
+  loadMore: string             // the load-more button
   // Capture + status
   captureButton: string
   updateButton: string          // label when the active page is already saved
@@ -56,6 +59,9 @@ export const EN: UIStrings = {
   searchTabLabel: 'Search',
   searchButtonLabel: 'Search',
   searchButtonAria: 'Search',
+  historyTabLabel: 'History',
+  historyEmpty: 'Nothing captured yet - pages you save will show up here.',
+  loadMore: 'Load more',
   captureButton: 'Capture this page',
   updateButton: 'Update this page',
   indexed: 'indexed',
