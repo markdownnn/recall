@@ -170,7 +170,10 @@ installOffscreenRpcHandler(async (payload: unknown) => {
 
   // --- ping: keep-alive from the SW ---
   if (op === 'ping') {
-    return { pong: true }
+    // Re-attempt any pending (un-embedded) chunks left by a failed/interrupted drain.
+    // Single-flight + empty-fast, so this is free when there is nothing to do.
+    runDrainWithProgress()
+    return { ok: true }
   }
 })
 
