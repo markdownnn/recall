@@ -28,17 +28,37 @@ test('pendingChunks returns un-vectored chunks', async () => {
   expect(pending2[0].id).toBe('p1#1')
 })
 
-test('ranks the nearest chunk first after setVector', async () => {
+// Scenario: document-level results - the nearest page ranks first, represented by its
+// best chunk; two pages -> two results.
+// Coverage: integration (real MemoryVectorStore + topPagesBySnippet, hybrid path).
+test('ranks the nearest page first, each carrying its best chunk', async () => {
+  const store = new MemoryVectorStore()
+  const pageB: CapturedPage = { id: 'p2', url: 'http://y', title: 'Y', capturedAt: 1 }
+  await store.upsertPage(page)
+  await store.upsertPage(pageB)
+  await store.putChunks('p1', [{ id: 'p1#0', pageId: 'p1', index: 0, text: 'near' }])
+  await store.putChunks('p2', [{ id: 'p2#0', pageId: 'p2', index: 0, text: 'far' }])
+  await store.setVector('p1#0', new Float32Array([1, 0]))
+  await store.setVector('p2#0', new Float32Array([0, 1]))
+
+  const results = await store.search(new Float32Array([0.9, 0.1]), '', 2)
+  expect(results[0].page.id).toBe('p1')
+  expect(results[0].chunk.id).toBe('p1#0')
+  expect(results[0].score).toBeGreaterThan(results[1].score)
+})
+
+// Scenario: many chunks of one page collapse to a single result, snippet = best chunk.
+// Coverage: integration (real MemoryVectorStore + topPagesBySnippet).
+test('collapses many chunks of one page into a single result (its best chunk)', async () => {
   const store = new MemoryVectorStore()
   await store.upsertPage(page)
   await store.putChunks('p1', [chunkA, chunkB])
   await store.setVector('p1#0', new Float32Array([1, 0]))
   await store.setVector('p1#1', new Float32Array([0, 1]))
 
-  const results = await store.search(new Float32Array([0.9, 0.1]), '', 2)
-  expect(results[0].chunk.id).toBe('p1#0')
-  expect(results[0].page.id).toBe('p1')
-  expect(results[0].score).toBeGreaterThan(results[1].score)
+  const results = await store.search(new Float32Array([0.1, 0.9]), '', 5)
+  expect(results.length).toBe(1)
+  expect(results[0].chunk.id).toBe('p1#1') // nearest chunk is the snippet
 })
 
 test('respects k', async () => {

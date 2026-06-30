@@ -2,6 +2,7 @@ import type { VectorSearchPort } from '../core/ports'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
+import { topPagesBySnippet } from '../core/ranking'
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
@@ -69,8 +70,9 @@ export class MemoryVectorStore implements VectorSearchPort {
       for (const m of matched) lexicalIds.push(m.id)
     }
 
-    // 3. Fuse both rankings with RRF and map top-k to RankedResult.
-    const fused = rrfFuse([vectorIds, lexicalIds]).slice(0, k)
+    // 3. Fuse both rankings with RRF over the FULL list (no slice), hydrate every fused
+    //    id to a RankedResult, then collapse to top-k PAGES (best chunk per page).
+    const fused = rrfFuse([vectorIds, lexicalIds])
     const chunkById = new Map(
       [...this.chunks.values()].map(({ chunk, vector }) => [chunk.id, { chunk, vector }]),
     )
@@ -82,7 +84,7 @@ export class MemoryVectorStore implements VectorSearchPort {
       if (!page) continue
       results.push({ chunk: entry.chunk, page, score: hit.score })
     }
-    return results
+    return topPagesBySnippet(results, k)
   }
 
   async deletePagesByHost(host: string): Promise<void> {

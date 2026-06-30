@@ -6,6 +6,7 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
 import { toFtsQuery } from '../core/fts-query'
+import { topPagesBySnippet } from '../core/ranking'
 
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import type { AppSettings } from '../core/ports'
@@ -136,9 +137,10 @@ function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[
     }
   }
 
-  // 3. Fuse and take top k, then hydrate to RankedResult.
-  const fused = rrfFuse([vectorIds, lexicalIds]).slice(0, k)
-  return fused.map((hit) => hydrate(db, hit.id, hit.score)).filter(Boolean) as RankedResult[]
+  // 3. Fuse the FULL list (no slice), hydrate every fused id, then collapse to k PAGES.
+  const fused = rrfFuse([vectorIds, lexicalIds]) // full ranking; bounded by the N=50 candidate caps
+  const hydrated = fused.map((hit) => hydrate(db, hit.id, hit.score)).filter(Boolean) as RankedResult[]
+  return topPagesBySnippet(hydrated, k)
 }
 
 function opGetSettings(db: any): AppSettings {
