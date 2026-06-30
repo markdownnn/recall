@@ -262,9 +262,15 @@ function enableSidePanelOnActionClick(): void {
   chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   enableSidePanelOnActionClick()
   void prewarm('onInstalled')
+  // Show the onboarding page in a new tab on FIRST install only (not on update/
+  // chrome_update). It's an extension page on our own origin, so tabs.create can
+  // load it directly without a web_accessible_resources entry.
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/onboarding/index.html') })
+  }
 })
 
 chrome.runtime.onStartup.addListener(() => {
