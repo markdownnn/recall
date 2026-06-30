@@ -85,6 +85,10 @@ export class WebGpuEmbedder {
   // model-load progress instead of a silent wait.
   private progressSink?: ProgressCb
   private degradedSink?: (info: { device: 'wasm' }) => void
+  // createPipe re-runs on every pipe reset (device-lost/inference reset), and each WASM reload
+  // would re-fire the 'wasm' degraded notice. Emit it AT MOST ONCE per session so the side panel
+  // doesn't flap the "running slow" banner on every reset.
+  private degradedEmitted = false
 
   // pipelineFactory defaults to the real transformers pipeline(); tests inject a fake.
   constructor(private readonly pipelineFactory: PipelineFactory = pipeline as unknown as PipelineFactory) {}
@@ -173,7 +177,10 @@ export class WebGpuEmbedder {
     await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix
     this._device = 'wasm'
     console.warn('[recall] DEGRADED embedder: granite on WASM single-thread (slow)')
-    this.degradedSink?.({ device: 'wasm' })
+    if (!this.degradedEmitted) {
+      this.degradedEmitted = true
+      this.degradedSink?.({ device: 'wasm' })
+    }
     console.log('[recall] embedder ready on WASM (single-thread)')
     return pipe
   }
