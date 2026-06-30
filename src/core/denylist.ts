@@ -17,6 +17,8 @@ export const DEFAULT_DENYLIST: RegExp[] = [
   /^https?:\/\/mail\./,
 
   // Financial/banking/crypto hosts.
+  // NOTE: [^/]* here has the same host-label over-match as the old task-board pattern.
+  // Fixing it is out of scope for this change.
   /^https?:\/\/[^/]*(bank|paypal|stripe|venmo|wallet|chase|wellsfargo|citibank|capitalone|americanexpress|amex|fidelity|schwab|coinbase|robinhood)/,
 
   // Health portals.
@@ -38,7 +40,10 @@ export const DEFAULT_DENYLIST: RegExp[] = [
   // Chat / messaging app screens.
   /^https?:\/\/(app\.slack\.com|discord\.com\/(app|channels)|web\.whatsapp\.com|web\.telegram\.org|teams\.(microsoft|live)\.com|(www\.)?messenger\.com|web\.skype\.com)/,
   // Task / project-management boards.
-  /^https?:\/\/[^/]*(trello\.com|asana\.com|\.atlassian\.net|monday\.com|clickup\.com|basecamp\.com)/,
+  // ([a-z0-9-]+\.)* anchors each brand to a host-label boundary so that
+  // e.g. nottrello.com and cyber-monday.com are not wrongly blocked.
+  // atlassian.net has no leading dot here: bare apex and *.atlassian.net are both covered.
+  /^https?:\/\/([a-z0-9-]+\.)*(trello\.com|asana\.com|monday\.com|clickup\.com|basecamp\.com|atlassian\.net)([/:?]|$)/,
   // Cloud / infra consoles.
   /^https?:\/\/(console\.aws\.amazon\.com|[^/]*\.console\.aws\.amazon\.com|portal\.azure\.com|console\.cloud\.google\.com)/,
 ]

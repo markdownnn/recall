@@ -81,3 +81,31 @@ test('keeps allowing content sites that look app-like (docs, code, video, notion
   expect(isDenylisted('https://www.youtube.com/watch?v=abc', DEFAULT_DENYLIST)).toBe(false)
   expect(isDenylisted('https://www.notion.so/Some-Public-Page-123', DEFAULT_DENYLIST)).toBe(false)
 })
+
+// --- Task / project-management host boundary fix ---
+// RED (over-match): a domain that merely ENDS in the brand string must NOT be blocked.
+test('does not block domains that end with a brand string but are not the brand', () => {
+  expect(isDenylisted('https://nottrello.com/x', DEFAULT_DENYLIST)).toBe(false)
+  expect(isDenylisted('https://cyber-monday.com/deals', DEFAULT_DENYLIST)).toBe(false)
+})
+
+// A path or query string that contains the brand name is NOT a board host.
+test('does not block when brand appears only in the path or query, not the host', () => {
+  expect(isDenylisted('https://example.com/go?to=trello.com', DEFAULT_DENYLIST)).toBe(false)
+})
+
+// Positive cases: exact brand hosts and their subdomains must still be blocked.
+test('blocks task-management brands at the host-label boundary', () => {
+  // bare apex
+  expect(isDenylisted('https://trello.com/b/abc/board', DEFAULT_DENYLIST)).toBe(true)
+  // www subdomain
+  expect(isDenylisted('https://www.trello.com/', DEFAULT_DENYLIST)).toBe(true)
+  // arbitrary subdomain
+  expect(isDenylisted('https://x.monday.com/boards', DEFAULT_DENYLIST)).toBe(true)
+  // asana with app subdomain
+  expect(isDenylisted('https://app.asana.com/0/1', DEFAULT_DENYLIST)).toBe(true)
+  // atlassian.net with tenant subdomain
+  expect(isDenylisted('https://acme.atlassian.net/jira', DEFAULT_DENYLIST)).toBe(true)
+  // atlassian.net bare apex (old pattern wrongly missed this - now fixed)
+  expect(isDenylisted('https://atlassian.net/home', DEFAULT_DENYLIST)).toBe(true)
+})
