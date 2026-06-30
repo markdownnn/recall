@@ -1,113 +1,59 @@
 #!/usr/bin/env node
-// fetch-model.mjs — idempotent model fetcher for the bundled embedding model.
-// Run automatically via `prebuild` before `npm run build`.
-// Downloads 4 files for Xenova/multilingual-e5-small from a pinned HuggingFace
-// commit SHA into public/models/Xenova/multilingual-e5-small/.
-// Skips any file already present with the correct SHA-256 hash.
-// No npm dependencies — uses Node built-ins only (fetch + fs + crypto).
+// fetch-model.mjs -> now a VERIFIER (no download). The granite embedding model is COMMITTED
+// into the repo under public/models/granite/ (plain git blobs; git-lfs was unavailable in the
+// build env so the weights are committed directly), so nothing is fetched at build. This runs
+// in `prebuild` and CI to guard two failure modes:
+//   1. an incomplete clone (or a clone that did not run `git lfs pull` if LFS is later adopted)
+//      -> a missing file or a tiny pointer stub -> the SHA-256 will not match -> we fail with a
+//      clear message.
+//   2. a corrupted/tampered weight file -> hash mismatch -> build fails.
+// No network, no npm deps - Node built-ins only. (Renaming this file to verify-model.mjs is
+// cosmetic; the prebuild/eval:fetch-model npm scripts point here.)
 
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
-import { pipeline as streamPipeline } from 'stream/promises'
-import { dirname, resolve } from 'path'
+import { createReadStream, existsSync, statSync } from 'fs'
+import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(__dirname, '..')
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const DIR = resolve(ROOT, 'public/models/granite')
 
-const SHA = '761b726dd34fb83930e26aab4e9ac3899aa1fa78'
-const HF_BASE = `https://huggingface.co/Xenova/multilingual-e5-small/resolve/${SHA}`
-const MODEL_DIR = resolve(ROOT, 'public/models/Xenova/multilingual-e5-small')
-
-// SHA-256 hashes pinned to commit 761b726dd34fb83930e26aab4e9ac3899aa1fa78.
-// A file whose hash does not match is deleted and a build error is raised —
-// this closes the TOFU gap where a correctly-sized but tampered file passes silently.
-const EXPECTED_HASHES = {
-  'config.json':                     'cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1',
-  'tokenizer_config.json':           'a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b',
-  'tokenizer.json':                  '0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39',
-  'onnx/model_quantized.onnx':       'f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193',
+// SHA-256 of each committed granite file (printed by scripts/quantize-granite.py).
+const HASHES = {
+  'config.json':               '624bd250eb6334715c8d76295a65d18c05a3bf3435ca35b74fcce1cb996ea0e0',
+  'tokenizer_config.json':     'a572845c401dc50c54729a11ae765fddebeb03d6fd1923e89f4ac93ffb06881b',
+  'tokenizer.json':            '14917dd757b81bc44d4af6b028367351702656670c1954e055dabdfcf21593cf',
+  'onnx/model_quantized.onnx': '08da7a657ba6069b389b9cc0742a7d623542f48d322b84f489ba3acaf4aab76d',
 }
 
-// Files to fetch: [local relative path from MODEL_DIR, remote path suffix]
-const FILES = [
-  { rel: 'config.json',               url: `${HF_BASE}/config.json` },
-  { rel: 'tokenizer_config.json',     url: `${HF_BASE}/tokenizer_config.json` },
-  { rel: 'tokenizer.json',            url: `${HF_BASE}/tokenizer.json` },
-  { rel: 'onnx/model_quantized.onnx', url: `${HF_BASE}/onnx/model_quantized.onnx` },
-]
-
-/** Compute the SHA-256 hex digest of a file on disk. */
-async function sha256OfFile(absPath) {
-  return new Promise((resolve, reject) => {
+function sha256OfFile(absPath) {
+  return new Promise((res, rej) => {
     const hash = createHash('sha256')
     const stream = createReadStream(absPath)
-    stream.on('error', reject)
+    stream.on('error', rej)
     stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('end', () => resolve(hash.digest('hex')))
+    stream.on('end', () => res(hash.digest('hex')))
   })
 }
 
-async function fetchFile(rel, url) {
-  const absPath = resolve(MODEL_DIR, rel)
-  const dir = dirname(absPath)
-  const expectedHash = EXPECTED_HASHES[rel]
-
-  // If the file already exists, verify its hash instead of re-downloading.
-  // A file with the wrong hash is stale/tampered — delete it and re-fetch.
-  if (existsSync(absPath)) {
-    const actualHash = await sha256OfFile(absPath)
-    if (actualHash === expectedHash) {
-      const size = statSync(absPath).size
-      console.log(`[fetch-model] skip  ${rel} (${(size / 1e6).toFixed(1)} MB, hash ok)`)
-      return
-    }
-    console.log(`[fetch-model] hash mismatch on existing ${rel} — re-fetching`)
-    unlinkSync(absPath)
-  }
-
-  mkdirSync(dir, { recursive: true })
-
-  console.log(`[fetch-model] fetch ${rel} ...`)
-  const resp = await fetch(url)
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} fetching ${url}`)
-  }
-
-  // Stream to disk to avoid loading 118MB into memory
-  const tmpPath = `${absPath}.tmp`
-  const writer = createWriteStream(tmpPath)
-  await streamPipeline(resp.body, writer)
-
-  // Verify hash of the downloaded file before promoting to the final path.
-  const downloadedHash = await sha256OfFile(tmpPath)
-  if (downloadedHash !== expectedHash) {
-    unlinkSync(tmpPath)
-    throw new Error(
-      `[fetch-model] SHA-256 mismatch for ${rel}:\n` +
-      `  expected: ${expectedHash}\n` +
-      `  got:      ${downloadedHash}\n` +
-      `Downloaded file was deleted. Do NOT bundle an unverified model.`
-    )
-  }
-
-  // Rename to final path only on success (atomic enough for our purposes)
-  const { renameSync } = await import('fs')
-  if (existsSync(absPath)) unlinkSync(absPath)
-  renameSync(tmpPath, absPath)
-
-  const finalSize = statSync(absPath).size
-  console.log(`[fetch-model] done  ${rel} (${(finalSize / 1e6).toFixed(1)} MB, hash ok)`)
-}
-
-console.log('[fetch-model] Checking bundled model files...')
-
+console.log('[verify-model] Verifying committed granite artifact...')
 try {
-  for (const { rel, url } of FILES) {
-    await fetchFile(rel, url)
+  for (const [rel, expected] of Object.entries(HASHES)) {
+    const abs = resolve(DIR, rel)
+    if (!existsSync(abs)) {
+      throw new Error(`missing ${rel} - the granite weights are committed in the repo; ensure a complete clone (if using Git LFS, run \`git lfs install && git lfs pull\`)`)
+    }
+    const actual = await sha256OfFile(abs)
+    if (actual !== expected) {
+      throw new Error(
+        `SHA-256 mismatch for ${rel}:\n  expected ${expected}\n  got      ${actual}\n` +
+        `If ${rel} is a Git LFS pointer stub, run: git lfs install && git lfs pull`,
+      )
+    }
+    console.log(`[verify-model] ok ${rel} (${(statSync(abs).size / 1e6).toFixed(1)} MB)`)
   }
-  console.log('[fetch-model] All model files present and verified. Build may proceed.')
+  console.log('[verify-model] granite artifact present and verified. Build may proceed.')
 } catch (err) {
-  console.error('[fetch-model] FAILED:', err.message)
+  console.error('[verify-model] FAILED:', err.message)
   process.exit(1)
 }

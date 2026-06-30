@@ -7,9 +7,10 @@ playwright-report/
 recall-extension.zip
 .DS_Store
 src/.DS_Store
-# Bundled embedding model — fetched by scripts/fetch-model.mjs (run via prebuild).
-# Not committed: 135MB binary, reproducible via pinned SHA.
-public/models/
+# The granite embedding model is COMMITTED under public/models/granite/ (plain git blobs;
+# git-lfs was unavailable in the build env). The old e5 model is removed; ignore any stale
+# local copy so it can't be re-committed.
+public/models/Xenova/
 .claude/worktrees/
 
 # eval harness
