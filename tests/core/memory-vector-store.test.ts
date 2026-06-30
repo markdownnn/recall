@@ -61,6 +61,38 @@ test('collapses many chunks of one page into a single result (its best chunk)', 
   expect(results[0].chunk.id).toBe('p1#1') // nearest chunk is the snippet
 })
 
+// Scenario: a single busy page with far more chunks than the candidate cap must not
+// monopolize the candidate lanes and crowd out other matching pages; document-level
+// recall should still surface k DISTINCT pages.
+// Coverage: integration (real MemoryVectorStore hybrid path + topPagesBySnippet).
+test('busy page does not crowd out other pages', async () => {
+  const store = new MemoryVectorStore()
+  // pBig: 60 chunks (more than the N=50 cap), all vectors equal to the query.
+  const bigPage: CapturedPage = { id: 'pBig', url: 'http://big', title: 'BIG', capturedAt: 1 }
+  await store.upsertPage(bigPage)
+  const bigChunks: Chunk[] = []
+  for (let i = 0; i < 60; i++) {
+    bigChunks.push({ id: `pBig#${i}`, pageId: 'pBig', index: i, text: `big chunk ${i}` })
+  }
+  await store.putChunks('pBig', bigChunks)
+  for (let i = 0; i < 60; i++) {
+    await store.setVector(`pBig#${i}`, new Float32Array([1, 0]))
+  }
+  // 5 other pages, each a single chunk slightly farther from the query.
+  for (let p = 0; p < 5; p++) {
+    const id = `pOther${p}`
+    await store.upsertPage({ id, url: `http://o${p}`, title: id.toUpperCase(), capturedAt: 1 })
+    await store.putChunks(id, [{ id: `${id}#0`, pageId: id, index: 0, text: `other ${p}` }])
+    await store.setVector(`${id}#0`, new Float32Array([0.7, 0.7]))
+  }
+
+  const results = await store.search(new Float32Array([1, 0]), '', 5)
+  const pageIds = results.map((x) => x.page.id)
+  // 5 DISTINCT pages: pBig once + 4 others, NOT just pBig flooding the cap.
+  expect(new Set(pageIds).size).toBe(5)
+  expect(pageIds).toContain('pBig')
+})
+
 test('respects k', async () => {
   const store = new MemoryVectorStore()
   await store.upsertPage(page)

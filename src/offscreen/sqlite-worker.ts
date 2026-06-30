@@ -6,7 +6,7 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
 import { toFtsQuery } from '../core/fts-query'
-import { topPagesBySnippet } from '../core/ranking'
+import { topPagesBySnippet, CANDIDATE_PAGE_LIMIT } from '../core/ranking'
 
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import type { AppSettings } from '../core/ports'
@@ -98,39 +98,58 @@ function hydrate(db: any, chunkId: string, score: number): RankedResult | null {
 }
 
 function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[]; queryText: string; k: number }): RankedResult[] {
-  const N = 50
+  const N = CANDIDATE_PAGE_LIMIT
+  // Pull this many bm25-ordered FTS rows before deduping to N pages in JS: enough headroom
+  // that even a busy page contributing many top rows still leaves room for N distinct pages.
+  const LEXICAL_SCAN_LIMIT = 300
   const q = Float32Array.from(queryVector)
 
-  // 1. Vector candidates: cosine over embedded chunks, top N ids (best-first).
+  // 1. Vector candidates (PAGE-DIVERSE): cosine over embedded chunks, reduced to the best-
+  //    cosine chunk PER pageId, sorted by cosine desc, capped to N DISTINCT PAGES. Capping
+  //    pages (not chunks) stops one busy page with >N high-scoring chunks from monopolizing
+  //    the lane and collapsing the result to a single document.
   //    Reuse the shared cosineSimilarity (NOT a hand-rolled dot product, which would
   //    silently assume normalize:true and diverge from the core/memory-store ranking).
-  const vec: { id: string; cos: number }[] = []
+  const vecBestByPage = new Map<string, { id: string; cos: number }>()
   db.exec({
-    sql: `SELECT c.id AS id, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
+    sql: `SELECT c.id AS id, c.pageId AS pageId, c.vector AS vector FROM chunks c WHERE c.vector IS NOT NULL`,
     rowMode: 'object',
     callback: (r: any) => {
       const bytes = r.vector as Uint8Array
       const v = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
-      vec.push({ id: r.id, cos: cosineSimilarity(q, v) })
+      const cos = cosineSimilarity(q, v)
+      const cur = vecBestByPage.get(r.pageId)
+      if (!cur || cos > cur.cos) vecBestByPage.set(r.pageId, { id: r.id, cos })
     },
   })
-  vec.sort((a, b) => b.cos - a.cos)
-  const vectorIds = vec.slice(0, N).map((x) => x.id)
+  const vectorIds = [...vecBestByPage.values()]
+    .sort((a, b) => b.cos - a.cos)
+    .slice(0, N)
+    .map((x) => x.id)
 
-  // 2. Lexical candidates: FTS5 trigram BM25, top N ids. Skipped entirely when the FTS
-  //    failed to initialize (ftsAvailable=false) -> graceful vector-only fallback.
+  // 2. Lexical candidates (PAGE-DIVERSE): FTS5 trigram BM25, deduped to the first (best)
+  //    chunk per pageId, capped to N DISTINCT PAGES. Skipped entirely when the FTS failed
+  //    to initialize (ftsAvailable=false) -> graceful vector-only fallback.
   //    MATCH/bm25 must name the real table `chunks_fts`, NOT the alias `f` (verified).
   const lexicalIds: string[] = []
   const match = ftsAvailable ? toFtsQuery(queryText) : null
   if (match) {
     try {
+      const rows: { id: string; pageId: string }[] = []
       db.exec({
-        sql: `SELECT c.id AS id FROM chunks_fts f JOIN chunks c ON c.rowid = f.rowid
+        sql: `SELECT c.id AS id, c.pageId AS pageId FROM chunks_fts f JOIN chunks c ON c.rowid = f.rowid
               WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?`,
-        bind: [match, N],
+        bind: [match, LEXICAL_SCAN_LIMIT],
         rowMode: 'object',
-        callback: (r: any) => lexicalIds.push(r.id),
+        callback: (r: any) => rows.push({ id: r.id, pageId: r.pageId }),
       })
+      const seenPages = new Set<string>()
+      for (const row of rows) {
+        if (seenPages.has(row.pageId)) continue
+        seenPages.add(row.pageId)
+        lexicalIds.push(row.id)
+        if (lexicalIds.length >= N) break
+      }
     } catch (e) {
       // Malformed match (defensive) -> vector-only this query.
       console.warn('[recall-worker] FTS MATCH failed, vector-only this query:', String(e))

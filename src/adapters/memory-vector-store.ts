@@ -2,7 +2,7 @@ import type { VectorSearchPort } from '../core/ports'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
-import { topPagesBySnippet } from '../core/ranking'
+import { topPagesBySnippet, CANDIDATE_PAGE_LIMIT } from '../core/ranking'
 
 export class MemoryVectorStore implements VectorSearchPort {
   private pages = new Map<string, CapturedPage>()
@@ -40,34 +40,48 @@ export class MemoryVectorStore implements VectorSearchPort {
   }
 
   async search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]> {
-    // 1. Vector ranking: cosine similarity over all embedded chunks, best-first.
-    const cosineRanked: { chunk: Chunk; page: CapturedPage; cos: number }[] = []
+    // 1. Vector lane (PAGE-DIVERSE): cosine over all embedded chunks, reduced to the single
+    //    best-cosine chunk PER pageId, then sorted by cosine desc and capped to N DISTINCT
+    //    PAGES. Capping pages (not chunks) stops one busy page with >N high-scoring chunks
+    //    from monopolizing the lane and collapsing the result to a single document.
+    const vecBestByPage = new Map<string, { id: string; cos: number }>()
     for (const { chunk, vector } of this.chunks.values()) {
       if (vector === null) continue // pending chunks are not searchable
       const page = this.pages.get(chunk.pageId)
       if (!page) continue
-      cosineRanked.push({ chunk, page, cos: cosineSimilarity(queryVector, vector) })
+      const cos = cosineSimilarity(queryVector, vector)
+      const cur = vecBestByPage.get(chunk.pageId)
+      if (!cur || cos > cur.cos) vecBestByPage.set(chunk.pageId, { id: chunk.id, cos })
     }
-    cosineRanked.sort((a, b) => b.cos - a.cos)
-    const vectorIds = cosineRanked.map((x) => x.chunk.id)
+    const vectorIds = [...vecBestByPage.values()]
+      .sort((a, b) => b.cos - a.cos)
+      .slice(0, CANDIDATE_PAGE_LIMIT)
+      .map((x) => x.id)
 
-    // 2. Naive lexical ranking: chunks whose lowercased text contains any query term
-    //    of length >= 3, ordered by number of distinct terms matched (desc).
+    // 2. Lexical lane (PAGE-DIVERSE): chunks whose lowercased text contains any query term
+    //    of length >= 3, ordered by number of distinct terms matched (desc); keep the FIRST
+    //    (best) chunk per pageId, capped to N DISTINCT PAGES.
     const queryTerms = queryText
       .split(/\s+/)
       .map((t) => t.trim())
       .filter((t) => [...t].length >= 3)
     const lexicalIds: string[] = []
     if (queryTerms.length > 0) {
-      const matched: { id: string; count: number }[] = []
+      const matched: { id: string; pageId: string; count: number }[] = []
       for (const { chunk, vector } of this.chunks.values()) {
         if (vector === null) continue
         const lower = chunk.text.toLowerCase()
         const count = queryTerms.reduce((n, term) => n + (lower.includes(term.toLowerCase()) ? 1 : 0), 0)
-        if (count > 0) matched.push({ id: chunk.id, count })
+        if (count > 0) matched.push({ id: chunk.id, pageId: chunk.pageId, count })
       }
       matched.sort((a, b) => b.count - a.count)
-      for (const m of matched) lexicalIds.push(m.id)
+      const seenPages = new Set<string>()
+      for (const m of matched) {
+        if (seenPages.has(m.pageId)) continue
+        seenPages.add(m.pageId)
+        lexicalIds.push(m.id)
+        if (lexicalIds.length >= CANDIDATE_PAGE_LIMIT) break
+      }
     }
 
     // 3. Fuse both rankings with RRF over the FULL list (no slice), hydrate every fused

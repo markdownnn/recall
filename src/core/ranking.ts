@@ -1,5 +1,13 @@
 import type { RankedResult } from './model'
 
+// Per-lane candidate cap. Each retrieval lane (vector, lexical) yields up to this many
+// DISTINCT PAGES (each represented by its best chunk in that lane), NOT this many chunks.
+// Capping chunks let one busy page with >N high-scoring chunks fill a lane and collapse to
+// a single result after topPagesBySnippet; capping DISTINCT PAGES keeps the fused set
+// page-diverse so topPagesBySnippet(k) can return min(k, distinctMatchingPages). Shared by
+// the sqlite worker and the in-memory oracle so the two engines stay semantically identical.
+export const CANDIDATE_PAGE_LIMIT = 50
+
 // Collapse chunk-level results to document-level: keep, per page, the single highest-
 // scoring chunk as that page's representative snippet, then rank pages by that best score
 // and return the top k. One busy page shows up once (with its strongest match) instead of
