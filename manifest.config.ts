@@ -4,11 +4,27 @@ export default defineManifest({
   manifest_version: 3,
   name: 'Recall',
   version: '0.0.1',
-  description: 'Local-first research recall (walking skeleton)',
+  // Localized description. The strings live in public/_locales/{en,ko}/messages.json;
+  // Chrome resolves __MSG_appDesc__ at load from the user's UI language, falling back to
+  // default_locale ('en').
+  default_locale: 'en',
+  description: '__MSG_appDesc__',
+  icons: {
+    16: 'icons/icon-16.png',
+    32: 'icons/icon-32.png',
+    48: 'icons/icon-48.png',
+    128: 'icons/icon-128.png',
+  },
   // Bare action (no popup): the toolbar icon is clickable and, via
   // setPanelBehavior({openPanelOnActionClick:true}) in src/background/index.ts, opens the
   // side panel. The popup is gone; the side panel is the only UI surface.
-  action: {},
+  action: {
+    default_icon: {
+      16: 'icons/icon-16.png',
+      32: 'icons/icon-32.png',
+      48: 'icons/icon-48.png',
+    },
+  },
   side_panel: { default_path: 'src/ui/sidepanel/index.html' },
   background: { service_worker: 'src/background/index.ts', type: 'module' },
   content_scripts: [
