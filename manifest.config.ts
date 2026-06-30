@@ -28,13 +28,14 @@ export default defineManifest({
   },
   permissions: ['unlimitedStorage', 'activeTab', 'offscreen', 'sidePanel'],
   host_permissions: ['<all_urls>'],
-  // Keyboard shortcuts. _execute_action opens the popup (handled by Chrome);
-  // capture-page is handled by the service worker. Users can rebind at
-  // chrome://extensions/shortcuts.
+  // Keyboard shortcuts. open-panel opens the side panel (the SW calls sidePanel.open in
+  // the command handler - a command is a user gesture); capture-page is handled by the
+  // service worker. Users can rebind at chrome://extensions/shortcuts.
+  // (default_popup above is kept for now; a later bundle removes the popup.)
   commands: {
-    _execute_action: {
+    'open-panel': {
       suggested_key: { default: 'Ctrl+Shift+K', mac: 'Command+Shift+K' },
-      description: 'Open Recall',
+      description: 'Open the Recall side panel',
     },
     'capture-page': {
       suggested_key: { default: 'Ctrl+Shift+U', mac: 'Command+Shift+U' },

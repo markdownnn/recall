@@ -65,14 +65,22 @@ function resetOffscreen(): void {
 installSwRpcListener()
 registerOffscreenEnsurer(ensureOffscreen, resetOffscreen)
 
-// Keyboard shortcut: Ctrl/Cmd+Shift+U captures the current page. Mirrors the popup's
-// "Capture this page" button by asking the active tab's content script to extract
-// and send a manual capture. (_execute_action opens the popup; Chrome handles that.)
-chrome.commands?.onCommand.addListener((command) => {
+// Keyboard shortcuts.
+// - open-panel (Ctrl/Cmd+Shift+K): opens the side panel. chrome.sidePanel.open() MUST be
+//   called SYNCHRONOUSLY in the gesture handler - hopping through an async chrome.tabs.query
+//   callback loses the user gesture and Chrome throws. Use the `tab` arg the listener
+//   already passes (onCommand fires with (command, tab)) for the windowId.
+// - capture-page (Ctrl/Cmd+Shift+U): mirrors the "Capture this page" button by asking the
+//   active tab's content script to extract and send a manual capture (no UI).
+chrome.commands?.onCommand.addListener((command, tab) => {
+  if (command === 'open-panel') {
+    if (tab?.windowId != null) chrome.sidePanel.open({ windowId: tab.windowId })
+    return
+  }
   if (command !== 'capture-page') return
-  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, { type: 'extract-and-capture' }, () => void chrome.runtime.lastError)
+  chrome.tabs.query({ active: true, currentWindow: true }, ([active]) => {
+    if (active?.id) {
+      chrome.tabs.sendMessage(active.id, { type: 'extract-and-capture' }, () => void chrome.runtime.lastError)
     }
   })
 })
