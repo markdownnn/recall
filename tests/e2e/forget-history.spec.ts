@@ -60,7 +60,7 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await expect(async () => {
     await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
   // Capture the subdomain page and wait until ITS content is recallable.
@@ -69,7 +69,7 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await expect(async () => {
     await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('chlorophyll', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('chlorophyll', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
   // Forget from the apex tab -> host = forget-test.example. This must delete the apex
@@ -82,13 +82,13 @@ test('forget this site deletes apex + subdomain captured history', async () => {
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
   await popup.waitForTimeout(2_000)
-  await expect(popup.locator('li')).toHaveCount(0)
+  await expect(popup.locator('article')).toHaveCount(0)
 
   // Subdomain content gone too (proves the LIKE subdomain delete branch).
   await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
   await popup.getByPlaceholder('recall...').press('Enter')
   await popup.waitForTimeout(2_000)
-  await expect(popup.locator('li')).toHaveCount(0)
+  await expect(popup.locator('article')).toHaveCount(0)
 
   await ctx.close()
 })

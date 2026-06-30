@@ -91,13 +91,13 @@ test('hybrid search: lexical win (isolated), vector win, Korean sub-word lexical
   //     near-identical, so vector alone cannot prefer term over decoy. Lexical must.
   await expect(async () => {
     await search(popup, 'Zylophin')
-    await expect(popup.locator('li').first()).toContainText('Zylophin', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Zylophin', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
   // (2) Vector win: query shares no words with the sleep doc, yet semantic match wins.
   await expect(async () => {
     await search(popup, 'trouble sleeping at night')
-    await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
   // (3) Korean sub-word lexical: trigram matches the 3-syllable term inside the longer
@@ -105,7 +105,7 @@ test('hybrid search: lexical win (isolated), vector win, Korean sub-word lexical
   //     title shown in the result link (no Hangul in this test source).
   await expect(async () => {
     await search(popup, KO_QUERY)
-    await expect(popup.locator('li').first()).toContainText('Photosynthesis', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Photosynthesis', { timeout: 5_000 })
   }).toPass({ timeout: 60_000 })
 
   await ctx.close()

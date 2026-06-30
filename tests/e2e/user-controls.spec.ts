@@ -49,7 +49,7 @@ test('pause blocks capture; unpausing restores it', async () => {
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
   await popup.waitForTimeout(2_000)
-  await expect(popup.locator('li')).toHaveCount(0)
+  await expect(popup.locator('article')).toHaveCount(0)
 
   // Unpause, capture ONCE (article tab active), wait for it to land, then navigate the
   // article away so the dwell auto-capture can't re-run putChunks and wipe the chunk
@@ -63,7 +63,7 @@ test('pause blocks capture; unpausing restores it', async () => {
   await expect(async () => {
     await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 90_000 })
 
   await ctx.close()

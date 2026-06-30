@@ -71,8 +71,8 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     // Quick sanity: Cortisol ranks first in session 1.
     await popup1.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup1.getByPlaceholder('recall...').press('Enter')
-    const items1 = popup1.locator('li')
-    await expect(items1).toHaveCount(2, { timeout: 30_000 })
+    const items1 = popup1.locator('article')
+    await expect(items1).toHaveCount(1, { timeout: 30_000 })
     await expect(items1.first()).toContainText('Cortisol', { timeout: 10_000 })
 
     // Set Paused = on in session 1 so we can assert it survives the restart. Retry until
@@ -109,8 +109,8 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
 
     // Cortisol must still rank first  -  from the OPFS-persisted data.
     // 30s timeout: model loads from cache (no download needed); OPFS read is fast.
-    const items2 = popup2.locator('li')
-    await expect(items2).toHaveCount(2, { timeout: 30_000 })
+    const items2 = popup2.locator('article')
+    await expect(items2).toHaveCount(1, { timeout: 30_000 })
     await expect(items2.first()).toContainText('Cortisol', { timeout: 10_000 })
 
     // Assert that the Pause setting also survived the restart.

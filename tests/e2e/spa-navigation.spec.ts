@@ -41,7 +41,7 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
     await popup.bringToFront()
     await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
     await page.bringToFront()
   }).toPass({ timeout: 60_000 })
 
@@ -73,7 +73,7 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
     await popup.bringToFront()
     await popup.getByPlaceholder('recall...').fill('how do plants make food from sunlight')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('chlorophyll', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('chlorophyll', { timeout: 5_000 })
     await page.bringToFront()
   }).toPass({ timeout: 60_000 })
 
@@ -81,7 +81,7 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
   await popup.bringToFront()
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
-  await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+  await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
 
   await ctx.close()
 })

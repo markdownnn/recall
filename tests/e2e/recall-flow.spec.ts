@@ -74,9 +74,9 @@ test('capture an article then recall the matching chunk', async () => {
   await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
   await popup.getByPlaceholder('recall...').press('Enter')
 
-  // 8. Both chunks must be stored (exactly 2 results returned).
-  const items = popup.locator('li')
-  await expect(items).toHaveCount(2, { timeout: 30_000 })
+  // 8. Both chunks must be stored, collapsed to ONE page result (one article card).
+  const items = popup.locator('article')
+  await expect(items).toHaveCount(1, { timeout: 30_000 })
 
   // 9. The cortisol paragraph must be the top-ranked result.
   const first = items.first()
@@ -93,7 +93,7 @@ test('capture an article then recall the matching chunk', async () => {
   await input.press('Enter')
 
   // 11. The bookkeeping/tax chunk must now be first.
-  const firstAfter = popup.locator('li').first()
+  const firstAfter = popup.locator('article').first()
   await expect(firstAfter).toContainText('bookkeeping', { timeout: 30_000 })
   // Cortisol chunk must NOT be the top result for this query.
   await expect(firstAfter).not.toContainText('Cortisol', { timeout: 5_000 })

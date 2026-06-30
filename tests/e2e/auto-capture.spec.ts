@@ -32,7 +32,7 @@ test('auto-captures an article after dwell, recallable without clicking', async 
   await expect(async () => {
     await popup.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup.getByPlaceholder('recall...').press('Enter')
-    await expect(popup.locator('li').first()).toContainText('Cortisol', { timeout: 5_000 })
+    await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
   }).toPass({ timeout: 90_000 })
 
   await ctx.close()
