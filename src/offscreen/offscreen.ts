@@ -160,6 +160,13 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     }
   }
 
+  // --- recent-pages: reverse-chronological browse for the History tab ---
+  if (op === 'recent-pages') {
+    const limit = p.limit as number
+    const beforeTs = p.beforeTs as number | undefined
+    return { pages: await store.recentPages(limit, beforeTs) }
+  }
+
   // --- recall: embed query, cosine search ---
   if (op === 'recall') {
     const text = p.text as string

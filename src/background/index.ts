@@ -167,7 +167,8 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'deny-host' &&
     msg.type !== 'remove-deny-host' &&
     msg.type !== 'forget-host' &&
-    msg.type !== 'has-page'
+    msg.type !== 'has-page' &&
+    msg.type !== 'recent-pages'
   ) return false
 
   ;(async () => {
@@ -215,6 +216,11 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
       } else if (msg.type === 'has-page') {
         const r = await callOffscreen<{ exists: boolean }>({ op: 'has-page', url: msg.url })
         sendResponse({ type: 'page-status', exists: r.exists } satisfies MsgResult)
+      } else if (msg.type === 'recent-pages') {
+        const r = await callOffscreen<{ pages: import('../core/model').CapturedPage[] }>(
+          { op: 'recent-pages', limit: msg.limit, beforeTs: msg.beforeTs },
+        )
+        sendResponse({ type: 'pages', pages: r.pages } satisfies MsgResult)
       }
     } catch (err) {
       console.error('[recall/bg]', msg.type, 'FAILED:', err)

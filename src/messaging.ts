@@ -1,4 +1,4 @@
-import type { RankedResult } from './core/model'
+import type { CapturedPage, RankedResult } from './core/model'
 
 export type Msg =
   | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
@@ -10,6 +10,7 @@ export type Msg =
   | { type: 'remove-deny-host'; host: string }
   | { type: 'forget-host'; host: string }
   | { type: 'has-page'; url: string }
+  | { type: 'recent-pages'; limit: number; beforeTs?: number }
 
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
@@ -18,6 +19,7 @@ export type MsgResult =
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
   | { type: 'settings'; paused: boolean; userDenyHosts: string[] }
   | { type: 'page-status'; exists: boolean }
+  | { type: 'pages'; pages: CapturedPage[] }
   | { type: 'ok' }
 
 // Push message sent from background to popup (not a request/response pair).

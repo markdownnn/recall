@@ -57,6 +57,20 @@ function opHasPage(db: any, pageId: string): boolean {
   return exists
 }
 
+function opRecentPages(db: any, { limit, beforeTs }: { limit: number; beforeTs?: number }): CapturedPage[] {
+  const pages: CapturedPage[] = []
+  db.exec({
+    sql: `SELECT id, url, title, capturedAt, host FROM pages
+          WHERE (?2 IS NULL OR capturedAt < ?2)
+          ORDER BY capturedAt DESC
+          LIMIT ?1`,
+    bind: [limit, beforeTs ?? null],   // array index 0 -> ?1, index 1 -> ?2
+    rowMode: 'object',
+    callback: (r: any) => pages.push({ id: r.id, url: r.url, title: r.title, capturedAt: r.capturedAt }),
+  })
+  return pages
+}
+
 function opPendingChunks(db: any, { limit }: { limit: number }): Chunk[] {
   const result: Chunk[] = []
   db.exec({
@@ -222,6 +236,7 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   upsertPage: (db, args) => { opUpsertPage(db, args as CapturedPage) },
   putChunks: (db, args) => { opPutChunks(db, args) },
   hasPage: (db, args) => opHasPage(db, args as string),
+  recentPages: (db, args) => opRecentPages(db, args),
   pendingChunks: (db, args) => opPendingChunks(db, args),
   setVector: (db, args) => { opSetVector(db, args) },
   search: (db, args) => opSearch(db, args),
