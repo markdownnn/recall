@@ -75,7 +75,7 @@ function removeHeadingSection(node: Element): void {
   }
 }
 
-export function cleanReferenceNodes<T extends ParentNode>(root: T): T {
+function applyRemovals(root: ParentNode): void {
   for (const sel of REFERENCE_SELECTORS) {
     for (const el of [...root.querySelectorAll(sel)]) el.remove()
   }
@@ -83,5 +83,27 @@ export function cleanReferenceNodes<T extends ParentNode>(root: T): T {
     const node = root.querySelector(`[id="${id}"]`)
     if (node) removeHeadingSection(node)
   }
+}
+
+// Non-whitespace text length of a node's subtree. Used to detect "removal would empty the
+// article". textContent is on Node (Element/Document both have it); ParentNode does not declare
+// it, so we read it through a narrow cast.
+function nonWhitespaceLen(root: ParentNode): number {
+  const t = (root as unknown as { textContent: string | null }).textContent ?? ''
+  return t.replace(/\s+/g, '').length
+}
+
+export function cleanReferenceNodes<T extends ParentNode>(root: T): T {
+  // All-dropped guard. Unlike boilerplate-strip (bounded by minIndex so it only cuts the tail),
+  // these removals are UNCONDITIONAL - a pathological page whose entire body sits under a
+  // reference selector/section would be emptied. Dry-run the removals on a deep clone first; if
+  // that would leave no real text behind, skip the removal and keep the body (a noisy page beats
+  // an empty one). Otherwise commit the same removals to the real root.
+  const clone = (root as unknown as { cloneNode(deep: boolean): ParentNode }).cloneNode(true)
+  applyRemovals(clone)
+  if (nonWhitespaceLen(clone) === 0 && nonWhitespaceLen(root) > 0) {
+    return root
+  }
+  applyRemovals(root)
   return root
 }

@@ -86,6 +86,39 @@ test('leaves a document without reference markup unchanged', () => {
   expect(out).toBe('Just prose.More prose.')
 })
 
+// Scenario: a pathological page whose ENTIRE body is a reference container (here ol.references
+// with nothing else) must NOT be emptied. Unlike boilerplate-strip (bounded by minIndex), these
+// removals are unconditional, so without a guard the whole article would vanish. The guard must
+// detect that removal would leave no text and skip it, keeping the body (a noisy page beats an
+// empty one).
+// Coverage: integration (real linkedom DOM, all-references body).
+test('keeps the body when removing references would empty the whole article', () => {
+  const out = clean('<ol class="references"><li>cite row one</li><li>cite row two</li></ol>')
+  expect(out).toContain('cite row one')
+  expect(out).toContain('cite row two')
+})
+
+// Scenario: same guard for a heading-anchored section that is the entire body (a page that is
+// nothing but a "References" section). Removal would empty it, so it must be skipped.
+// Coverage: integration (real linkedom DOM, all-references heading section).
+test('keeps the body when a heading-section removal would empty the whole article', () => {
+  const out = clean(
+    '<section><h2 id="References">References</h2><ol><li>only citations here</li></ol></section>',
+  )
+  expect(out).toContain('only citations here')
+})
+
+// Scenario: the guard must NOT make removal too timid - when there is real body text alongside
+// the references, the references must still be dropped (regression guard for the guard).
+// Coverage: integration (real linkedom DOM, mixed body).
+test('still removes references when real body text remains', () => {
+  const out = clean(
+    '<p>Real body prose.</p><ol class="references"><li>cite row</li></ol>',
+  )
+  expect(out).toContain('Real body prose.')
+  expect(out).not.toContain('cite row')
+})
+
 // Scenario: the selector/id lists are the load-bearing contract; lock the exact members so a
 // future careless edit that drops a selector is caught.
 // Coverage: integration (pure constant assertion).
