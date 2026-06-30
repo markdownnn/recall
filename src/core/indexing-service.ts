@@ -24,7 +24,7 @@ export class IndexingService {
   // Single-flight: a concurrent call returns immediately.
   // onTiming (optional) reports total chunks drained + total wall-ms once the drain
   // finishes, ONLY when real work happened. It carries raw numbers so the offscreen can
-  // format/log the [Recall:perf] line - core stays chrome-free (no console, no chrome here).
+  // format/log the [Recall:perf] line - core stays platform-free (no console, no browser APIs here).
   async drain(
     onBatch?: (embeddedCount: number) => void,
     onTiming?: (info: { chunks: number; ms: number }) => void,
