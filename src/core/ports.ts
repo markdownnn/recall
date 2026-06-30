@@ -36,6 +36,10 @@ export interface VectorSearchPort {
   pagesWithVectors(): Promise<string[]>
   // True if this page id is already stored (drives the panel's SAVED badge).
   hasPage(pageId: string): Promise<boolean>
+  // True if this page has at least one un-embedded (NULL-vector) chunk still pending. Drives
+  // the side panel's PER-PAGE indexing indicator: it lights up only while the CURRENT page is
+  // being indexed, so background/migration drains of OTHER pages stay silent.
+  pagePending(pageId: string): Promise<boolean>
   // Reverse-chronological browse for the History tab. `beforeTs` is a keyset cursor:
   // omit for the first page, pass the last row's capturedAt for the next page.
   recentPages(limit: number, beforeTs?: number): Promise<import('./model').CapturedPage[]>

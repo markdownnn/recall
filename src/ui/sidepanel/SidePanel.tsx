@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect, useRef } from 'preact/hooks'
 import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg, EmbedderDegradedMsg } from '../../messaging'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
@@ -19,12 +19,20 @@ import type { TabKey } from './Tabs'
 export function SidePanel() {
   const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
   const [status, setStatus] = useState('')
-  // Explicit indexing phase, derived from the EVENTS (not by sniffing the status string).
-  // `indexing` is the on/off phase; `indexedCount` is the running `done` total shown in
-  // the indicator. While `indexing` is true we render the animated indicator instead of
-  // the plain status line.
-  const [indexing, setIndexing] = useState(false)
+  // PER-PAGE indexing indicator. `currentPending` is true ONLY while the CURRENT active tab's
+  // page still has un-embedded chunks (queried via `page-pending`). The animated indicator
+  // shows iff this is true, so a background/migration drain re-indexing OTHER pages stays
+  // silent - the user only sees the bar for the page they are looking at. `indexedCount` is
+  // the running `done` total carried by the progress events, shown as the indicator's count.
+  const [currentPending, setCurrentPending] = useState(false)
   const [indexedCount, setIndexedCount] = useState(0)
+  // Out-of-order guard for page-pending: on a rapid tab switch an older round-trip can resolve
+  // after a newer one; we drop any answer whose url is no longer the active one.
+  const pendingUrlRef = useRef('')
+  // Set true when the user manually captures the CURRENT page, so the next drain-complete
+  // (pending=0) event surfaces the terminal "indexed" line for THIS page. A background/migration
+  // drain (no current-page capture) leaves this false, so its completion stays silent.
+  const expectIndexedRef = useRef(false)
   // Persistent degraded-embedder banner state. `degraded` is the embedder state (or null when
   // healthy); `degradedDismissed` hides the banner until the next degraded event re-shows it
   // (dismissible-but-recurring) so the user is never left unaware that search is broken/slow.
@@ -35,26 +43,36 @@ export function SidePanel() {
   // badge flips false->true without the user switching tabs.
   const [savedRefresh, setSavedRefresh] = useState(0)
 
+  // Query whether the CURRENT active tab's page still has pending (un-embedded) chunks, and
+  // drive the per-page indicator from the answer. Send the RAW tab url; the offscreen applies
+  // sanitizeUrl+pageIdFromUrl so the id matches what capture stored. Out-of-order safe.
+  const refreshPagePending = async () => {
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [])
+    const url = active?.url ?? ''
+    pendingUrlRef.current = url
+    if (!isCapturableUrl(url)) { setCurrentPending(false); return }
+    try {
+      const res: MsgResult = await chrome.runtime.sendMessage({ type: 'page-pending', url })
+      if (pendingUrlRef.current !== url) return // a newer tab won the race; drop this answer
+      setCurrentPending(res?.type === 'page-pending-status' ? res.pending : false)
+    } catch {
+      if (pendingUrlRef.current !== url) return
+      setCurrentPending(false)
+    }
+  }
+
   useEffect(() => {
     // Ask the SW for model status on mount.
     chrome.runtime.sendMessage({ type: 'model-status' }).then((res: MsgResult) => {
       if (res?.type === 'model-status') setModelStatus(res.status)
     }).catch(() => {})
 
-    // DECLARATIVE seed: ask the offscreen for the current embed-queue snapshot. Opening the panel
-    // mid-drain (e.g. after an auto-capture happened while the panel was closed) would otherwise
-    // miss the indicator entirely, since the `indexing` phase is driven by FUTURE
-    // indexing-progress events. Seed it from STATE so the indicator derives from the queue, not
-    // from a manual capture() call.
-    chrome.runtime.sendMessage({ type: 'indexing-status' }).then((res: MsgResult) => {
-      if (res?.type === 'indexing-status' && res.pending > 0) {
-        setIndexing(true)
-        setIndexedCount(res.embedded)
-      }
-    }).catch(() => {})
+    // Seed the per-page indicator: is the page I am looking at right now being indexed?
+    void refreshPagePending()
 
-    // Progress broadcasts from the background (moved from the popup, unchanged). These
-    // write the SAME status line that capture() writes.
+    // Progress broadcasts from the background. The per-page indicator is driven from the
+    // `page-pending` query (NOT the global event), so a migration/background drain of OTHER
+    // pages re-queries THIS page, finds it not pending, and stays silent.
     const listener = (msg: ModelProgressMsg | IndexingProgressMsg | IndexingErrorMsg | EmbedderDegradedMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
       if (msg?.type === 'embedder-degraded') {
@@ -64,25 +82,38 @@ export function SidePanel() {
         setDegradedDismissed(false)
       }
       if (msg?.type === 'indexing-progress') {
-        if (msg.pending === 0) {
-          // pending=0 is the "drain finished" signal: leave the indexing phase and show
-          // the plain `indexed` status line (the e2e waits for getByText('indexed')).
-          setIndexing(false)
+        // Carry the live done count for the indicator label, then re-check whether THIS page is
+        // (still) pending - it may have just finished, which turns the indicator off.
+        setIndexedCount(msg.embedded)
+        void refreshPagePending()
+        // Terminal "indexed" line: only after the user captured the CURRENT page (expectIndexed)
+        // and its drain reported done. A pure background/migration completion leaves the flag
+        // false, so it never writes "indexed".
+        if (msg.pending === 0 && expectIndexedRef.current) {
+          expectIndexedRef.current = false
           setStatus(t.indexed)
-        } else {
-          // Still draining: enter/stay in the indexing phase, update the live done count.
-          setIndexing(true)
-          setIndexedCount(msg.embedded)
         }
       }
       if (msg?.type === 'indexing-error') {
-        setIndexing(false)
+        expectIndexedRef.current = false
         setStatus(t.indexingFailed(msg.error))
       }
     }
     chrome.runtime.onMessage.addListener(listener)
+
+    // Active-tab reactivity: re-check the per-page indicator when the user switches or reloads
+    // tabs (the indicator must follow whichever page is now in front).
+    const onActivated = () => void refreshPagePending()
+    const onUpdated = (_id: number, info: chrome.tabs.OnUpdatedInfo, tabArg: chrome.tabs.Tab) => {
+      if (tabArg.active && (info.status === 'complete' || info.url)) void refreshPagePending()
+    }
+    chrome.tabs.onActivated.addListener(onActivated)
+    chrome.tabs.onUpdated.addListener(onUpdated)
+
     return () => {
       chrome.runtime.onMessage.removeListener(listener)
+      chrome.tabs.onActivated.removeListener(onActivated)
+      chrome.tabs.onUpdated.removeListener(onUpdated)
     }
   }, [])
 
@@ -125,8 +156,8 @@ export function SidePanel() {
   // Capture round-trip: ask the active content tab to extract-and-capture. Reads the active
   // tab itself, so it needs nothing from ThisPageBar.
   const capture = async () => {
-    // A fresh capture leaves any prior indexing phase so the "capturing..." line shows.
-    setIndexing(false)
+    // A fresh capture clears any prior terminal expectation so a stale event can't fire "indexed".
+    expectIndexedRef.current = false
     // Read the active tab FIRST. Restricted pages (chrome://, extension, new-tab, PDFs,
     // view-source) can never host a content script, so messaging them rejects with
     // "Receiving end does not exist". Guard here and show a friendly line instead.
@@ -139,7 +170,13 @@ export function SidePanel() {
     try {
       const res: MsgResult = await chrome.tabs.sendMessage(activeTab!.id!, { type: 'extract-and-capture' })
       if (res?.type === 'captured') {
-        if (res.captured && res.chunkCount > 0) setStatus(t.capturedChunks(res.chunkCount))
+        if (res.captured && res.chunkCount > 0) {
+          setStatus(t.capturedChunks(res.chunkCount))
+          // This page now has pending chunks; arm the terminal so its drain-complete writes
+          // "indexed". The indicator itself lights up from the first indexing-progress event's
+          // page-pending re-check (a natural beat that keeps the "captured" line briefly visible).
+          expectIndexedRef.current = true
+        }
         else if (!res.captured && res.reason === 'paused') setStatus(t.pausedNote)
         else if (!res.captured && res.reason === 'denylisted') setStatus(t.notSavedDenylisted)
         else if (!res.captured) setStatus(t.nothingSubstantial)
@@ -186,7 +223,7 @@ export function SidePanel() {
       )}
 
       <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} />
-      {indexing
+      {currentPending
         ? <IndexingIndicator done={indexedCount} />
         : status && <div class="note">{status}</div>}
 

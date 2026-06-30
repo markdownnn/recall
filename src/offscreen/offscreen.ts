@@ -264,6 +264,20 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     }
   }
 
+  // --- page-pending: does THIS page still have un-embedded chunks? Drives the side panel's
+  //     per-page indexing indicator. Normalize the RAW tab url with the EXACT same two steps
+  //     capture + has-page use (sanitizeUrl THEN pageIdFromUrl) so the id can't drift. ---
+  if (op === 'page-pending') {
+    const raw = p.url as string | undefined
+    if (!raw) return { pending: false }
+    try {
+      const pageId = pageIdFromUrl(sanitizeUrl(raw))
+      return { pending: await store.pagePending(pageId) }
+    } catch {
+      return { pending: false }
+    }
+  }
+
   // --- recent-pages: reverse-chronological browse for the History tab ---
   if (op === 'recent-pages') {
     const limit = p.limit as number

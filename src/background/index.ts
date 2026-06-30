@@ -199,6 +199,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'remove-deny-host' &&
     msg.type !== 'forget-host' &&
     msg.type !== 'has-page' &&
+    msg.type !== 'page-pending' &&
     msg.type !== 'recent-pages' &&
     msg.type !== 'indexing-status'
   ) return false
@@ -256,6 +257,9 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
       } else if (msg.type === 'has-page') {
         const r = await callOffscreen<{ exists: boolean }>({ op: 'has-page', url: msg.url })
         sendResponse({ type: 'page-status', exists: r.exists } satisfies MsgResult)
+      } else if (msg.type === 'page-pending') {
+        const r = await callOffscreen<{ pending: boolean }>({ op: 'page-pending', url: msg.url })
+        sendResponse({ type: 'page-pending-status', pending: r.pending } satisfies MsgResult)
       } else if (msg.type === 'recent-pages') {
         const r = await callOffscreen<{ pages: import('../core/model').CapturedPage[] }>(
           { op: 'recent-pages', limit: msg.limit, beforeTs: msg.beforeTs },

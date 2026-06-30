@@ -34,6 +34,13 @@ export class MemoryVectorStore implements VectorSearchPort {
     return this.pages.has(pageId)
   }
 
+  async pagePending(pageId: string): Promise<boolean> {
+    for (const { chunk, vector } of this.chunks.values()) {
+      if (chunk.pageId === pageId && vector === null) return true
+    }
+    return false
+  }
+
   async recentPages(limit: number, beforeTs?: number): Promise<CapturedPage[]> {
     return [...this.pages.values()]
       .filter((p) => beforeTs === undefined || p.capturedAt < beforeTs)

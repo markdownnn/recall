@@ -29,6 +29,28 @@ test('recentPages returns pages newest-first', async () => {
   expect(ids).toEqual(['b', 'c', 'a'])
 })
 
+// Scenario: the side panel's per-page indexing indicator must light up ONLY while the
+// CURRENT page still has un-embedded chunks. pagePending(pageId) is that signal: false when
+// the page has no chunks or every chunk is embedded, true while >=1 chunk is still NULL.
+// Coverage: integration (real MemoryVectorStore - the VectorSearchPort contract).
+test('pagePending is true only while a page has an un-embedded chunk', async () => {
+  const store = new MemoryVectorStore()
+  // No chunks for this page yet -> not pending.
+  expect(await store.pagePending('p1')).toBe(false)
+  await store.upsertPage(page)
+  await store.putChunks('p1', [chunkA, chunkB])
+  // Both freshly stored chunks are NULL-vectored -> pending.
+  expect(await store.pagePending('p1')).toBe(true)
+  // Embedding one still leaves one pending.
+  await store.setVector('p1#0', new Float32Array([1, 0]))
+  expect(await store.pagePending('p1')).toBe(true)
+  // All embedded -> no longer pending.
+  await store.setVector('p1#1', new Float32Array([0, 1]))
+  expect(await store.pagePending('p1')).toBe(false)
+  // A different, unknown page is never pending.
+  expect(await store.pagePending('other')).toBe(false)
+})
+
 // Scenario: a large corpus must page in, not load all at once; limit caps the first page.
 // Coverage: integration (real MemoryVectorStore).
 test('recentPages caps the result at limit', async () => {

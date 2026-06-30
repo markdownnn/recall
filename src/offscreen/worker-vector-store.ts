@@ -7,6 +7,7 @@ export class WorkerVectorStore implements VectorSearchPort {
   upsertPage = (p: CapturedPage) => this.c.request<void>('upsertPage', p)
   putChunks = (pageId: string, chunks: Chunk[]) => this.c.request<void>('putChunks', { pageId, chunks })
   hasPage = (pageId: string) => this.c.request<boolean>('hasPage', pageId)
+  pagePending = (pageId: string) => this.c.request<boolean>('pagePending', pageId)
   recentPages = (limit: number, beforeTs?: number) =>
     this.c.request<CapturedPage[]>('recentPages', { limit, beforeTs })
   pendingChunks = (limit: number) => this.c.request<Chunk[]>('pendingChunks', { limit })

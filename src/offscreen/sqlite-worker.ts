@@ -64,6 +64,15 @@ function opHasPage(db: any, pageId: string): boolean {
   return exists
 }
 
+// True if this page still has at least one un-embedded (NULL-vector) chunk. Drives the side
+// panel's per-page indexing indicator. LIMIT 1: existence check, no need to count.
+function opPagePending(db: any, pageId: string): boolean {
+  let pending = false
+  db.exec({ sql: `SELECT 1 FROM chunks WHERE pageId = ? AND vector IS NULL LIMIT 1`, bind: [pageId],
+    rowMode: 'array', callback: () => { pending = true } })
+  return pending
+}
+
 function opRecentPages(db: any, { limit, beforeTs }: { limit: number; beforeTs?: number }): CapturedPage[] {
   const pages: CapturedPage[] = []
   db.exec({
@@ -306,6 +315,7 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   upsertPage: (db, args) => { opUpsertPage(db, args as CapturedPage) },
   putChunks: (db, args) => { opPutChunks(db, args) },
   hasPage: (db, args) => opHasPage(db, args as string),
+  pagePending: (db, args) => opPagePending(db, args as string),
   recentPages: (db, args) => opRecentPages(db, args),
   pendingChunks: (db, args) => opPendingChunks(db, args),
   chunkCounts: (db) => opChunkCounts(db),

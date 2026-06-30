@@ -11,6 +11,7 @@ export type Msg =
   | { type: 'remove-deny-host'; host: string }
   | { type: 'forget-host'; host: string }
   | { type: 'has-page'; url: string }
+  | { type: 'page-pending'; url: string }
   | { type: 'recent-pages'; limit: number; beforeTs?: number }
   | { type: 'indexing-status' }
 
@@ -21,6 +22,7 @@ export type MsgResult =
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
   | { type: 'settings'; paused: boolean; userDenyHosts: string[] }
   | { type: 'page-status'; exists: boolean }
+  | { type: 'page-pending-status'; pending: boolean }
   | { type: 'pages'; pages: CapturedPage[] }
   | { type: 'indexing-status'; pending: number; embedded: number }
   | { type: 'ok' }
