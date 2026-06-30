@@ -22,20 +22,31 @@ export class IndexingService {
 
   // Drain pending chunks until none remain OR a batch fails persistently.
   // Single-flight: a concurrent call returns immediately.
-  async drain(onBatch?: (embeddedCount: number) => void): Promise<void> {
+  // onTiming (optional) reports total chunks drained + total wall-ms once the drain
+  // finishes, ONLY when real work happened. It carries raw numbers so the offscreen can
+  // format/log the [Recall:perf] line - core stays chrome-free (no console, no chrome here).
+  async drain(
+    onBatch?: (embeddedCount: number) => void,
+    onTiming?: (info: { chunks: number; ms: number }) => void,
+  ): Promise<void> {
     if (this.running) return
     this.running = true
+    const startedAt = Date.now()
+    let chunks = 0
     try {
       for (;;) {
         const pending = await this.store.pendingChunks(this.batch)
         if (pending.length === 0) break
         const ok = await this.embedBatchWithRetry(pending)
         if (!ok) break // persistent failure: leave the rest pending for a later re-drain
+        chunks += pending.length
         onBatch?.(pending.length)
         await this.sleep(YIELD_MS)
       }
     } finally {
       this.running = false
+      // Emit only when work happened so idle ping/keep-alive re-drains stay silent.
+      if (chunks > 0) onTiming?.({ chunks, ms: Date.now() - startedAt })
     }
   }
 

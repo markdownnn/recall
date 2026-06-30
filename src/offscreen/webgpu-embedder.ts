@@ -60,6 +60,11 @@ export class WebGpuEmbedder {
   // Created once per instance; concurrent ensureLoaded/embed share this promise.
   private pipeP: Promise<FeatureExtractionPipeline> | null = null
   private _device: 'webgpu' | 'wasm' | null = null
+  // [Recall:perf] instrumentation. _everLoaded distinguishes a FRESH first load from a
+  // RELOAD after a device-lost/inference reset; _resetCount tracks how often the pipe was
+  // nulled (each reset forces a costly model reload). Remove with the perf logs.
+  private _everLoaded = false
+  private _resetCount = 0
   // Single-flight, two-lane scheduler: ONNX never gets two overlapping inputs, AND an
   // interactive query never waits behind background passage work. queries -> highQ,
   // passages -> lowQ; the pump always drains highQ first. The in-flight runEmbed is never
@@ -95,14 +100,25 @@ export class WebGpuEmbedder {
 
   private getPipe(onProgress?: ProgressCb): Promise<FeatureExtractionPipeline> {
     if (!this.pipeP) {
+      // [Recall:perf] time the model load and tag it fresh vs reload (a reload follows a
+      // device-lost/inference reset and re-pays the full load cost - a prime suspect for
+      // a 30s indexing stall). Remove this block with the other perf logs.
+      const fresh = !this._everLoaded
+      const t0 = performance.now()
       // POISONED-PIPE FIX: if createPipe rejects, null out pipeP so the NEXT
       // call retries (e.g. after the network recovers). Without this, the
       // rejected promise stays cached forever and every later call replays the
       // same rejection.
-      this.pipeP = this.createPipe(onProgress ?? this.progressSink).catch((e) => {
-        this.pipeP = null
-        throw e
-      })
+      this.pipeP = this.createPipe(onProgress ?? this.progressSink)
+        .then((pipe) => {
+          this._everLoaded = true
+          console.log(`[Recall:perf] model load ${Math.round(performance.now() - t0)}ms (${fresh ? 'fresh' : 'reload'})`)
+          return pipe
+        })
+        .catch((e) => {
+          this.pipeP = null
+          throw e
+        })
     }
     return this.pipeP
   }
@@ -172,7 +188,11 @@ export class WebGpuEmbedder {
       for (let i = 0; i < texts.length; i += BATCH) {
         const slice = texts.slice(i, i + BATCH)
         const prefixed = slice.map((t) => `${kind}: ${t}`)
+        // [Recall:perf] per-batch embed cost. Summed over a drain this shows whether the
+        // ~30s is the model inference itself vs the load/yields around it. Removable.
+        const b0 = performance.now()
         const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
+        console.log(`[Recall:perf] embed batch=${prefixed.length} ${Math.round(performance.now() - b0)}ms`)
         for (const arr of output.tolist() as number[][]) out.push(arr)
         // Yield the GPU between batches (not after the last) so the foreground page
         // the user is reading keeps rendering smoothly during background indexing.
@@ -186,6 +206,9 @@ export class WebGpuEmbedder {
       // guarantees one runEmbed at a time, so no concurrent caller is mid-use of
       // this promise; nulling it here is safe.
       this.pipeP = null
+      // [Recall:perf] each reset forces a full model reload on the next embed; a high
+      // count points at WebGPU instability as the regression cause. Removable.
+      console.log(`[Recall:perf] pipe reset (count=${++this._resetCount}) after inference failure`)
       throw e
     }
     return out
