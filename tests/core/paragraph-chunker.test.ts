@@ -3,7 +3,7 @@ import { ParagraphChunker } from '../../src/core/paragraph-chunker'
 const chunker = new ParagraphChunker(5) // maxWords=5 for testing
 
 // Scenario: Two short paragraphs that are both under maxWords should merge into one chunk,
-// not remain separate — this is the core behavior change vs. the old per-paragraph flush.
+// not remain separate  -  this is the core behavior change vs. the old per-paragraph flush.
 // Coverage: integration (pure chunking logic, no external deps).
 test('merges across blank lines: two short paras become one chunk', () => {
   const chunks = chunker.chunk({ pageId: 'p1', text: 'first para\n\nsecond para' })
@@ -102,7 +102,7 @@ test('surrogate pairs are never split: emoji run round-trips through chunking', 
 // Scenario: A page with 300 short paragraphs (the real-world 369-chunk bug) must NOT
 // produce one chunk per paragraph. With word-stream merging, 300 x 3-word paragraphs
 // (900 words total) should yield ceil(900/220) = 5 chunks, NOT 300.
-// Coverage: unit — regression guard for the performance bug.
+// Coverage: unit  -  regression guard for the performance bug.
 test('count-reduction: 300 short paragraphs collapse to ~5 chunks, not 300', () => {
   const defaultChunker = new ParagraphChunker()
   // Each paragraph: "para number N" = 3 words. 300 paragraphs = 900 words total.

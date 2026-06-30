@@ -70,7 +70,7 @@ test('pause blocks capture; unpausing restores it', async () => {
 })
 
 // Scenario: clicking "Don't remember this site" must actually block a subsequent
-// capture via the real worker+SQL path — not just show optimistic popup text.
+// capture via the real worker+SQL path  -  not just show optimistic popup text.
 // This is the end-to-end proof of the privacy promise.
 //
 // Approach: route 'http://deny-test.example/article' to serve the article HTML

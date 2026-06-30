@@ -63,7 +63,7 @@ test('capture an article then recall the matching chunk', async () => {
   // 6. Wait for indexing to complete.
   //    The background drain embeds all pending chunks (may need to download the model
   //    first on a fresh browser context).  The popup shows "indexed" once the background
-  //    broadcasts pending=0.  Give up to 240s — same budget as the old synchronous capture.
+  //    broadcasts pending=0.  Give up to 240s  -  same budget as the old synchronous capture.
   await expect(popup.getByText('indexed')).toBeVisible({ timeout: 240_000 })
 
   // --- Search 1: hormone query ---

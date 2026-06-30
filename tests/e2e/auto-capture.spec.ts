@@ -17,7 +17,7 @@ test('auto-captures an article after dwell, recallable without clicking', async 
   const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'))
   const extId = sw.url().split('/')[2]
 
-  // Open the article and DO NOTHING — no capture click. Dwell counts VISIBLE time,
+  // Open the article and DO NOTHING  -  no capture click. Dwell counts VISIBLE time,
   // so keep the article tab in the foreground while it accumulates ~10s of visible
   // time and auto-captures.
   const page = await ctx.newPage()
@@ -25,7 +25,7 @@ test('auto-captures an article after dwell, recallable without clicking', async 
   await page.bringToFront()
   await page.waitForTimeout(13_000) // visible dwell (10s) + extract + send
 
-  // Now open the popup and recall — proves the article was auto-captured + indexed.
+  // Now open the popup and recall  -  proves the article was auto-captured + indexed.
   const popup = await ctx.newPage()
   await popup.goto(`chrome-extension://${extId}/src/ui/popup/index.html`)
 

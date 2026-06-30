@@ -43,7 +43,7 @@ test('per-call timeout rejects when no reply arrives', async () => {
   const c = new SqliteWorkerClient(w, 10) // 10ms timeout
   const p = c.request('x')
 
-  // Never send a reply — let the 10ms timeout fire.
+  // Never send a reply  -  let the 10ms timeout fire.
   await expect(p).rejects.toThrow(/timeout/)
 
   // Pending entry must be cleaned up: a late reply for that id must be silently

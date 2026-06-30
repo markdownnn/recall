@@ -1,7 +1,7 @@
 import { CaptureGate } from '../../src/core/capture-gate'
 
 const gate = new CaptureGate({ minWords: 5 })
-// A gate with no built-in denylist — isolates user-denylist suffix-matching behaviour.
+// A gate with no built-in denylist  -  isolates user-denylist suffix-matching behaviour.
 const gateNoBuiltin = new CaptureGate({ minWords: 5, denylist: [] })
 const long = 'one two three four five six seven eight'
 const short = 'too short here'

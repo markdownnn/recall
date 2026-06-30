@@ -35,7 +35,7 @@ async function getExtId(ctx: Awaited<ReturnType<typeof launchCtx>>): Promise<str
 test('captured data survives a full browser restart (OPFS persistence)', async () => {
   test.setTimeout(360_000)
 
-  // Clean slate — ensures run starts with empty OPFS.
+  // Clean slate  -  ensures run starts with empty OPFS.
   if (fs.existsSync(PROFILE)) fs.rmSync(PROFILE, { recursive: true, force: true })
 
   // ==========================================================================
@@ -85,7 +85,7 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     // Give the round-trip (popup -> SW -> offscreen -> SQLite) time to complete.
     await popup1.waitForTimeout(2_000)
 
-    console.log('[persistence] session 1 OK — Cortisol ranked first, paused=true set, closing context...')
+    console.log('[persistence] session 1 OK  -  Cortisol ranked first, paused=true set, closing context...')
   } finally {
     await ctx1.close()
   }
@@ -107,7 +107,7 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     await popup2.getByPlaceholder('recall...').fill('hormone that ruins sleep')
     await popup2.getByPlaceholder('recall...').press('Enter')
 
-    // Cortisol must still rank first — from the OPFS-persisted data.
+    // Cortisol must still rank first  -  from the OPFS-persisted data.
     // 30s timeout: model loads from cache (no download needed); OPFS read is fast.
     const items2 = popup2.locator('li')
     await expect(items2).toHaveCount(2, { timeout: 30_000 })
@@ -118,7 +118,7 @@ test('captured data survives a full browser restart (OPFS persistence)', async (
     // so if the checkbox is checked the SQLite value persisted across the restart.
     await expect(popup2.getByLabel(/pause/i)).toBeChecked({ timeout: 10_000 })
 
-    console.log('[persistence] session 2 OK — Cortisol ranked first WITHOUT re-capturing, pause setting persisted. OPFS persistence confirmed.')
+    console.log('[persistence] session 2 OK  -  Cortisol ranked first WITHOUT re-capturing, pause setting persisted. OPFS persistence confirmed.')
   } finally {
     await ctx2.close()
   }

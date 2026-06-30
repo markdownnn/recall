@@ -7,7 +7,7 @@ const dir = path.dirname(fileURLToPath(import.meta.url))
 const distPath = path.resolve(dir, '../../dist-ext')
 
 // Scenario: in a Single-Page App the URL changes via history.pushState WITHOUT a
-// page reload, so the content script is never re-injected — the same instance must
+// page reload, so the content script is never re-injected  -  the same instance must
 // notice the virtual navigation (its 1s poll compares the hash-stripped URL key),
 // reset the dwell timer, and auto-capture the NEW virtual page after a fresh dwell.
 // This proves the SPA wiring in content/capture.ts (urlKey + poll + reset), which is
