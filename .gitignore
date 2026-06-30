@@ -11,3 +11,7 @@ src/.DS_Store
 # Not committed: 135MB binary, reproducible via pinned SHA.
 public/models/
 .claude/worktrees/
+
+# eval harness
+eval/.cache/
+eval/last-scorecard.json

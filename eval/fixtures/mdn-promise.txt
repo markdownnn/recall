@@ -1,0 +1,118 @@
+Promise
+The Promise object represents the eventual completion (or failure) of an asynchronous operation and its resulting value.
+To learn about the way promises work and how you can use them, we advise you to read Using promises first.
+A Promise is a proxy for a value not necessarily known when the promise is created. It allows you to associate handlers with an asynchronous action's eventual success value or failure reason. This lets asynchronous methods return values like synchronous methods: instead of immediately returning the final value, the asynchronous method returns a promise to supply the value at some point in the future.
+A Promise is in one of these states:
+pending: initial state, neither fulfilled nor rejected.
+fulfilled: meaning that the operation was completed successfully.
+rejected: meaning that the operation failed.
+The eventual state of a pending promise can either be fulfilled with a value or rejected with a reason (error). When either of these options occur, the associated handlers queued up by a promise's then method are called. If the promise has already been fulfilled or rejected when a corresponding handler is attached, the handler will be called, so there is no race condition between an asynchronous operation completing and its handlers being attached.
+A promise is said to be settled if it is either fulfilled or rejected, but not pending.
+You will also hear the term resolved used with promises — this means that the promise is settled or "locked-in" to match the eventual state of another promise, and further resolving or rejecting it has no effect. The States and fates document from the original Promise proposal contains more details about promise terminology. Colloquially, "resolved" promises are often equivalent to "fulfilled" promises, but as illustrated in "States and fates", resolved promises can be pending or rejected as well. For example:
+This promise is already resolved at the time when it's created (because the resolveOuter is called synchronously), but it is resolved with another promise, and therefore won't be fulfilled until 1 second later, when the inner promise fulfills. In practice, the "resolution" is often done behind the scenes and not observable, and only its fulfillment or rejection are.
+Note: Several other languages have mechanisms for lazy evaluation and deferring a computation, which they also call "promises", e.g., Scheme. Promises in JavaScript represent processes that are already happening, which can be chained with callback functions. If you are looking to lazily evaluate an expression, consider using a function with no arguments e.g., f = () => expression to create the lazily-evaluated expression, and f() to evaluate the expression immediately.
+Promise itself has no first-class protocol for cancellation, but you may be able to directly cancel the underlying asynchronous operation, typically using AbortController.
+The promise methods then(), catch(), and finally() are used to associate further action with a promise that becomes settled. The then() method takes up to two arguments; the first argument is a callback function for the fulfilled case of the promise, and the second argument is a callback function for the rejected case. The catch() and finally() methods call then() internally and make error handling less verbose. For example, a catch() is really just a then() without passing the fulfillment handler. As these methods return promises, they can be chained. For example:
+We will use the following terminology: initial promise is the promise on which then is called; new promise is the promise returned by then. The two callbacks passed to then are called fulfillment handler and rejection handler, respectively.
+The settled state of the initial promise determines which handler to execute.
+If the initial promise is fulfilled, the fulfillment handler is called with the fulfillment value.
+If the initial promise is rejected, the rejection handler is called with the rejection reason.
+The completion of the handler determines the settled state of the new promise.
+If the handler returns a thenable value, the new promise settles in the same state as the returned value.
+If the handler returns a non-thenable value, the new promise is fulfilled with the returned value.
+If the handler throws an error, the new promise is rejected with the thrown error.
+If the initial promise has no corresponding handler attached, the new promise will settle to the same state as the initial promise — that is, without a rejection handler, a rejected promise stays rejected with the same reason.
+For example, in the code above, if myPromise rejects, handleRejectedA will be called, and if handleRejectedA completes normally (without throwing or returning a rejected promise), the promise returned by the first then will be fulfilled instead of staying rejected. Therefore, if an error must be handled immediately, but we want to maintain the error state down the chain, we must throw an error of some type in the rejection handler. On the other hand, in the absence of an immediate need, we can leave out error handling until the final catch() handler.
+Using arrow functions for the callback functions, implementation of the promise chain might look something like this:
+Note: For faster execution, all synchronous actions should preferably be done within one handler, otherwise it would take several ticks to execute all handlers in sequence.
+JavaScript maintains a job queue. Each time, JavaScript picks a job from the queue and executes it to completion. The jobs are defined by the executor of the Promise() constructor, the handlers passed to then, or any platform API that returns a promise. The promises in a chain represent the dependency relationship between these jobs. When a promise settles, the respective handlers associated with it are added to the back of the job queue.
+A promise can participate in more than one chain. For the following code, the fulfillment of promiseA will cause both handleFulfilled1 and handleFulfilled2 to be added to the job queue. Because handleFulfilled1 is registered first, it will be invoked first.
+An action can be assigned to an already settled promise. In this case, the action is added immediately to the back of the job queue and will be performed when all existing jobs are completed. Therefore, an action for an already "settled" promise will occur only after the current synchronous code completes and at least one loop-tick has passed. This guarantees that promise actions are asynchronous.
+The JavaScript ecosystem had made multiple Promise implementations long before it became part of the language. Despite being represented differently internally, at the minimum, all Promise-like objects implement the Thenable interface. A thenable implements the .then() method, which is called with two callbacks: one for when the promise is fulfilled, one for when it's rejected. Promises are thenables as well.
+To interoperate with the existing Promise implementations, the language allows using thenables in place of promises. For example, Promise.resolve will not only resolve promises, but also trace thenables.
+The then() method is responsible for scheduling the execution of the provided onFulfilled and onRejected callbacks. Its semantics, including error handling and asynchronicity, are precisely defined in the Promises/A+ specification, and we shall not repeat them here. It's very rare that you need to implement a thenable yourself; even if you are not using native promises, you would probably be using a Promise library such as Bluebird.
+The Promise class offers four static methods to facilitate async task concurrency:
+Promise.all()
+Fulfills when all of the promises fulfill; rejects when any of the promises rejects.
+Fulfills when all of the promises fulfill; rejects when any of the promises rejects.
+Promise.allSettled()
+Fulfills when all promises settle.
+Fulfills when all promises settle.
+Promise.any()
+Fulfills when any of the promises fulfills; rejects when all of the promises reject.
+Fulfills when any of the promises fulfills; rejects when all of the promises reject.
+Promise.race()
+Settles when any of the promises settles. In other words, fulfills when any of the promises fulfills; rejects when any of the promises rejects.
+Settles when any of the promises settles. In other words, fulfills when any of the promises fulfills; rejects when any of the promises rejects.
+All these methods take an iterable of promises (thenables, to be exact) and return a new promise. They all support subclassing, which means they can be called on subclasses of Promise, and the result will be a promise of the subclass type. To do so, the subclass's constructor must implement the same signature as the Promise() constructor — accepting a single executor function that can be called with the resolve and reject callbacks as parameters. The subclass must also have a resolve static method that can be called like Promise.resolve() to resolve values to promises.
+Note that JavaScript is single-threaded by nature, so at a given instant, only one task will be executing, although control can shift between different promises, making execution of the promises appear concurrent. Parallel execution in JavaScript can only be achieved through worker threads.
+Promise()
+Creates a new Promise object. The constructor is primarily used to wrap functions that do not already support promises.
+Creates a new Promise object. The constructor is primarily used to wrap functions that do not already support promises.
+Promise[Symbol.species]
+Returns the constructor used to construct return values from promise methods.
+Returns the constructor used to construct return values from promise methods.
+Promise.all()
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when all of the input's promises fulfill (including when an empty iterable is passed), with an array of the fulfillment values. It rejects when any of the input's promises reject, with this first rejection reason.
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when all of the input's promises fulfill (including when an empty iterable is passed), with an array of the fulfillment values. It rejects when any of the input's promises reject, with this first rejection reason.
+Promise.allSettled()
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when all of the input's promises settle (including when an empty iterable is passed), with an array of objects that describe the outcome of each promise.
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when all of the input's promises settle (including when an empty iterable is passed), with an array of objects that describe the outcome of each promise.
+Promise.any()
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when any of the input's promises fulfill, with this first fulfillment value. It rejects when all of the input's promises reject (including when an empty iterable is passed), with an AggregateError containing an array of rejection reasons.
+Takes an iterable of promises as input and returns a single Promise. This returned promise fulfills when any of the input's promises fulfill, with this first fulfillment value. It rejects when all of the input's promises reject (including when an empty iterable is passed), with an AggregateError containing an array of rejection reasons.
+Promise.race()
+Takes an iterable of promises as input and returns a single Promise. This returned promise settles with the eventual state of the first promise that settles.
+Takes an iterable of promises as input and returns a single Promise. This returned promise settles with the eventual state of the first promise that settles.
+Promise.reject()
+Returns a new Promise object that is rejected with the given reason.
+Returns a new Promise object that is rejected with the given reason.
+Promise.resolve()
+Returns a Promise object that is resolved with the given value. If the value is a thenable (i.e., has a then method), the returned promise will "follow" that thenable, adopting its eventual state; otherwise, the returned promise will be fulfilled with the value.
+Returns a Promise object that is resolved with the given value. If the value is a thenable (i.e., has a then method), the returned promise will "follow" that thenable, adopting its eventual state; otherwise, the returned promise will be fulfilled with the value.
+Promise.try()
+Takes a callback of any kind (returns or throws, synchronously or asynchronously) and wraps its result in a Promise.
+Takes a callback of any kind (returns or throws, synchronously or asynchronously) and wraps its result in a Promise.
+Promise.withResolvers()
+Returns an object containing a new Promise object and two functions to resolve or reject it, corresponding to the two parameters passed to the executor of the Promise() constructor.
+Returns an object containing a new Promise object and two functions to resolve or reject it, corresponding to the two parameters passed to the executor of the Promise() constructor.
+These properties are defined on Promise.prototype and shared by all Promise instances.
+Promise.prototype.constructor
+The constructor function that created the instance object. For Promise instances, the initial value is the Promise constructor.
+The constructor function that created the instance object. For Promise instances, the initial value is the Promise constructor.
+Promise.prototype[Symbol.toStringTag]
+The initial value of the [Symbol.toStringTag] property is the string "Promise". This property is used in Object.prototype.toString().
+The initial value of the [Symbol.toStringTag] property is the string "Promise". This property is used in Object.prototype.toString().
+Promise.prototype.catch()
+Appends a rejection handler callback to the promise, and returns a new promise resolving to the return value of the callback if it is called, or to its original fulfillment value if the promise is instead fulfilled.
+Appends a rejection handler callback to the promise, and returns a new promise resolving to the return value of the callback if it is called, or to its original fulfillment value if the promise is instead fulfilled.
+Promise.prototype.finally()
+Appends a handler to the promise, and returns a new promise that is resolved when the original promise is resolved. The handler is called when the promise is settled, whether fulfilled or rejected.
+Appends a handler to the promise, and returns a new promise that is resolved when the original promise is resolved. The handler is called when the promise is settled, whether fulfilled or rejected.
+Promise.prototype.then()
+Appends fulfillment and rejection handlers to the promise, and returns a new promise resolving to the return value of the called handler, or to its original settled value if the promise was not handled (i.e., if the relevant handler onFulfilled or onRejected is not a function).
+Appends fulfillment and rejection handlers to the promise, and returns a new promise resolving to the return value of the called handler, or to its original settled value if the promise was not handled (i.e., if the relevant handler onFulfilled or onRejected is not a function).
+In this example, we use setTimeout(...) to simulate async code. In reality, you will probably be using something like XHR or an HTML API.
+This example shows diverse techniques for using Promise capabilities and diverse situations that can occur. To understand this, start by scrolling to the bottom of the code block, and examine the promise chain. Upon provision of an initial promise, a chain of promises can follow. The chain is composed of .then() calls, and typically (but not necessarily) has a single .catch() at the end, optionally followed by .finally(). In this example, the promise chain is initiated by a custom-written new Promise() construct; but in actual practice, promise chains more typically start with an API function (written by someone else) that returns a promise.
+The example function tetheredGetNumber() shows that a promise generator will utilize reject() while setting up an asynchronous call, or within the call-back, or both. The function promiseGetWord() illustrates how an API function might generate and return a promise in a self-contained manner.
+Note that the function troubleWithGetNumber() ends with a throw. That is forced because a promise chain goes through all the .then() promises, even after an error, and without the throw, the error would seem "fixed". This is a hassle, and for this reason, it is common to omit onRejected throughout the chain of .then() promises, and just have a single onRejected in the final catch().
+This code can be run under NodeJS. Comprehension is enhanced by seeing the errors actually occur. To force more errors, change the threshold values.
+This small example shows the mechanism of a Promise. The testPromise() method is called each time the <button> is clicked. It creates a promise that will be fulfilled, using setTimeout(), to the promise count (number starting from 1) every 1-3 seconds, at random. The Promise() constructor is used to create the promise.
+The fulfillment of the promise is logged, via a fulfill callback set using p1.then(). A few logs show how the synchronous part of the method is decoupled from the asynchronous completion of the promise.
+By clicking the button several times in a short amount of time, you'll even see the different promises being fulfilled one after another.
+HTML
+JavaScript
+Result
+Another example using Promise and XMLHttpRequest to load an image is shown below. Each step is commented on and allows you to follow the Promise and XHR architecture closely.
+A settings object is an environment that provides additional information when JavaScript code is running. This includes the realm and module map, as well as HTML specific information such as the origin. The incumbent settings object is tracked in order to ensure that the browser knows which one to use for a given piece of user code.
+To better picture this, we can take a closer look at how the realm might be an issue. A realm can be roughly thought of as the global object. What is unique about realms is that they hold all of the necessary information to run JavaScript code. This includes objects like Array and Error. Each settings object has its own "copy" of these and they are not shared. That can cause some unexpected behavior in relation to promises. In order to get around this, we track something called the incumbent settings object. This represents information specific to the context of the user code responsible for a certain function call.
+To illustrate this a bit further we can take a look at how an <iframe> embedded in a document communicates with its host. Since all web APIs are aware of the incumbent settings object, the following will work in all browsers:
+The same concept applies to promises. If we modify the above example a little bit, we get this:
+If we change this so that the <iframe> in the document is listening to post messages, we can observe the effect of the incumbent settings object:
+In the above example, the inner text of the <iframe> will be updated only if the incumbent settings object is tracked. This is because without tracking the incumbent, we may end up using the wrong environment to send the message.
+Note: Currently, incumbent realm tracking is fully implemented in Firefox, and has partial implementations in Chrome and Safari.
+Polyfill of Promise in core-js
+Using promises guide
+Promises/A+ specification
+JavaScript Promises: an introduction on web.dev (2013)
+Callbacks, Promises, and Coroutines: Asynchronous Programming Patterns in JavaScript slide show by Domenic Denicola (2011)

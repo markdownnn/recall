@@ -1,0 +1,218 @@
+[
+  {
+    "id": "https://en.wikipedia.org/wiki/Bacteria",
+    "file": "wiki-bacteria.txt",
+    "url": "https://en.wikipedia.org/wiki/Bacteria",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy; S1 target"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Protein",
+    "file": "wiki-protein.txt",
+    "url": "https://en.wikipedia.org/wiki/Protein",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "contains a 'Protein digestion' reference chunk -> S2 false-positive risk; S5 target"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Deep_learning",
+    "file": "wiki-deep-learning.txt",
+    "url": "https://en.wikipedia.org/wiki/Deep_learning",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy; observed failure"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Photosynthesis",
+    "file": "wiki-photosynthesis.txt",
+    "url": "https://en.wikipedia.org/wiki/Photosynthesis",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "S3 cross-lingual target"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Cortisol",
+    "file": "wiki-cortisol.txt",
+    "url": "https://en.wikipedia.org/wiki/Cortisol",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "S4 paraphrase target (hormone that ruins sleep)"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Mitochondrion",
+    "file": "wiki-mitochondrion.txt",
+    "url": "https://en.wikipedia.org/wiki/Mitochondrion",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Sleep",
+    "file": "wiki-sleep.txt",
+    "url": "https://en.wikipedia.org/wiki/Sleep",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Immune_system",
+    "file": "wiki-immune-system.txt",
+    "url": "https://en.wikipedia.org/wiki/Immune_system",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/DNA",
+    "file": "wiki-dna.txt",
+    "url": "https://en.wikipedia.org/wiki/DNA",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy"
+  },
+  {
+    "id": "https://en.wikipedia.org/wiki/Cell_(biology)",
+    "file": "wiki-cell.txt",
+    "url": "https://en.wikipedia.org/wiki/Cell_(biology)",
+    "source": "Wikipedia",
+    "lang": "en",
+    "note": "reference-heavy"
+  },
+  {
+    "id": "https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5",
+    "file": "ko-ai.txt",
+    "url": "https://ko.wikipedia.org/wiki/인공지능",
+    "source": "Korean Wikipedia",
+    "lang": "ko",
+    "note": "Korean article: artificial intelligence"
+  },
+  {
+    "id": "https://ko.wikipedia.org/wiki/%EA%B9%80%EC%B9%98",
+    "file": "ko-kimchi.txt",
+    "url": "https://ko.wikipedia.org/wiki/김치",
+    "source": "Korean Wikipedia",
+    "lang": "ko",
+    "note": "Korean article: kimchi"
+  },
+  {
+    "id": "https://ko.wikipedia.org/wiki/%ED%95%9C%EA%B8%80",
+    "file": "ko-hangul.txt",
+    "url": "https://ko.wikipedia.org/wiki/한글",
+    "source": "Korean Wikipedia",
+    "lang": "ko",
+    "note": "Korean article: Hangul"
+  },
+  {
+    "id": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+    "file": "ko-sun.txt",
+    "url": "https://ko.wikipedia.org/wiki/태양",
+    "source": "Korean Wikipedia",
+    "lang": "ko",
+    "note": "Korean article: the Sun"
+  },
+  {
+    "id": "https://ko.wikipedia.org/wiki/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD",
+    "file": "ko-korea.txt",
+    "url": "https://ko.wikipedia.org/wiki/대한민국",
+    "source": "Korean Wikipedia",
+    "lang": "ko",
+    "note": "Korean article: Republic of Korea"
+  },
+  {
+    "id": "https://en.wikinews.org/wiki/Wikimedia_Foundation_closes_Wikinews_after_21_years",
+    "file": "news-wikinews.txt",
+    "url": "https://en.wikinews.org/wiki/Wikimedia_Foundation_closes_Wikinews_after_21_years",
+    "source": "Wikinews",
+    "lang": "en",
+    "note": "news article"
+  },
+  {
+    "id": "https://en.wikinews.org/wiki/Pope_Leo_XIV_visits_four_nations_in_Africa",
+    "file": "news-pope.txt",
+    "url": "https://en.wikinews.org/wiki/Pope_Leo_XIV_visits_four_nations_in_Africa",
+    "source": "Wikinews",
+    "lang": "en",
+    "note": "news article"
+  },
+  {
+    "id": "https://en.wikinews.org/wiki/United_States_announces_blockade_on_the_Strait_of_Hormuz",
+    "file": "news-hormuz.txt",
+    "url": "https://en.wikinews.org/wiki/United_States_announces_blockade_on_the_Strait_of_Hormuz",
+    "source": "Wikinews",
+    "lang": "en",
+    "note": "news article"
+  },
+  {
+    "id": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+    "file": "mdn-array.txt",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+    "source": "MDN",
+    "lang": "en",
+    "note": "docs page; non-wiki boilerplate shape"
+  },
+  {
+    "id": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
+    "file": "mdn-promise.txt",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
+    "source": "MDN",
+    "lang": "en",
+    "note": "docs page"
+  },
+  {
+    "id": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch",
+    "file": "mdn-fetch.txt",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch",
+    "source": "MDN",
+    "lang": "en",
+    "note": "docs page"
+  },
+  {
+    "id": "https://paulgraham.com/ds.html",
+    "file": "blog-ds.txt",
+    "url": "https://paulgraham.com/ds.html",
+    "source": "Blog (paulgraham.com)",
+    "lang": "en",
+    "note": "long-form blog"
+  },
+  {
+    "id": "https://paulgraham.com/startupideas.html",
+    "file": "blog-startupideas.txt",
+    "url": "https://paulgraham.com/startupideas.html",
+    "source": "Blog (paulgraham.com)",
+    "lang": "en",
+    "note": "long-form blog"
+  },
+  {
+    "id": "https://jvns.ca/blog/2021/04/03/what-problems-do-people-solve-with-strace/",
+    "file": "blog-strace.txt",
+    "url": "https://jvns.ca/blog/2021/04/03/what-problems-do-people-solve-with-strace/",
+    "source": "Blog (jvns.ca)",
+    "lang": "en",
+    "note": "tech blog"
+  },
+  {
+    "id": "https://jvns.ca/blog/2022/04/12/a-list-of-new-ish--command-line-tools/",
+    "file": "blog-cli-tools.txt",
+    "url": "https://jvns.ca/blog/2022/04/12/a-list-of-new-ish--command-line-tools/",
+    "source": "Blog (jvns.ca)",
+    "lang": "en",
+    "note": "tech blog"
+  },
+  {
+    "id": "https://github.com/hashicorp/terraform-provider-aws/issues/31364",
+    "file": "gh-ingestion.txt",
+    "url": "https://github.com/hashicorp/terraform-provider-aws/issues/31364",
+    "source": "GitHub",
+    "lang": "en",
+    "note": "REAL failing case: literally about 'ingestion' -> S2 target"
+  },
+  {
+    "id": "https://github.com/kubernetes/kubernetes/issues/135178",
+    "file": "gh-k8s-migration.txt",
+    "url": "https://github.com/kubernetes/kubernetes/issues/135178",
+    "source": "GitHub",
+    "lang": "en",
+    "note": "GitHub issue decoy (no ingestion term)"
+  }
+]

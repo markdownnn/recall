@@ -1,0 +1,12 @@
+[
+  { "scenario": "S1", "query": "bacteria",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"], "expectProseSnippet": true },
+  { "scenario": "S2", "query": "ingestion",
+    "expectTopPageIds": ["https://github.com/hashicorp/terraform-provider-aws/issues/31364"], "expectProseSnippet": true },
+  { "scenario": "S3", "query": "광합성 명반응",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Photosynthesis"], "expectProseSnippet": true },
+  { "scenario": "S4", "query": "hormone that ruins sleep",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"], "expectProseSnippet": true },
+  { "scenario": "S5", "query": "what is a protein",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"], "expectProseSnippet": true }
+]

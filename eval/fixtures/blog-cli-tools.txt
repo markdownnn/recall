@@ -1,0 +1,65 @@
+Hello! Today I asked on twitter about newer command line tools, like ripgrep and fd and fzf and exa and bat.
+I got a bunch of replies with tools I hadn’t heard of, so I thought I’d make a list here. A lot of people also pointed at the modern-unix list.
+replacements for standard tools
+ripgrep, ag, ack (grep)
+exa, lsd (ls)
+mosh (ssh)
+bat (cat)
+delta (a pager for git)
+fd (find)
+drill, dog (dig)
+duf (df)
+dust, ncdu (du)
+pgcli (psql)
+btm, btop, glances, gtop, zenith (top)
+tldr (man, sort of)
+sd (sed)
+difftastic (diff)
+mtr (traceroute)
+plocate (locate)
+xxd, hexyl (hexdump)
+new inventions
+Here are some tools that are not exactly replacements for standard tools:
+z, fasd, autojump, zoxide (tools to make it easier to find files / change directories)
+broot, nnn, ranger (file manager)
+direnv (load environment variables depending on the current directory)
+fzf, peco (“fuzzy finder”)
+croc and magic-wormhole (send files from one computer to another)
+hyperfine (benchmarking)
+httpie, curlie, xh (for making HTTP requests)
+entr (run arbitrary commands when files change)
+asdf (version manager for multiple languages)
+tig, lazygit (interactive interfaces for git)
+lazydocker (interactive interface for docker)
+choose (the basics of awk/cut)
+ctop (top for containers)
+fuck (autocorrect command line errors)
+tmate (share your terminal with a friend)
+lnav, angle-grinder (tools for managing logs)
+mdp, glow (ways to display markdown in the terminal)
+pbcopy/pbpaste (for clipboard <> stdin/stdout) maybe aren’t “new” but were mentioned a lot. You can use xclip to do the same thing on Linux.
+atuin (extremely fancy shell history)
+JSON/YAML/CSV things:
+jq (a great JSON-wrangling tool)
+jc (convert various tools’ output into JSON)
+jo (create JSON objects)
+yq (like jq, but for YAML). there’s also another yq
+fq (like jq, but for binary)
+htmlq (like jq, but for HTML)
+fx (interactive json tool)
+jless (json pager)
+xsv (a command line tool for csv files, from burntsushi)
+visidata (“an interactive multitool for tabular data”)
+miller (“like awk/sed/cut/join/sort for CSV/TSV/JSON/JSON lines”)
+grep things:
+pdfgrep (grep for PDF)
+gron (make JSON greppable)
+ripgrep-all (ripgrep, but also PDF, zip, ebooks, etc)
+less-new tools
+Here are a few of not-so-new tools folks mentioned aren’t that well known:
+pv (“pipe viewer”, gives you a progress bar for a pipe)
+vidir (from moreutils, lets you batch rename/delete files in vim)
+sponge, ts, parallel (also from moreutils)
+some of my favourites
+My favourites of these that I use already are entr, ripgrep, git-delta, httpie, plocate, and jq.
+I’m interested in trying out direnv, btm, z, xsv, and duf, but I think the most exciting tool I learned about is vidir.

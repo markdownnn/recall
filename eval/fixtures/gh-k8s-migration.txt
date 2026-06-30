@@ -1,0 +1,17 @@
+Live container migration from one node to another to support long-running AI/ML workloads
+### What would you like to be added?
+
+Building on the previous discussions in issue #3949, I'd like to propose adding ability to live migrate a container from one node to another. I believe this would be a valuable addition to those of us that use Kubernetes as a compute platform on which to run large scale batch jobs and model training. I have read the KEP by @adrianreber , but it only covers the "first part" of the required functionality - aka checkpointing the container for further analysis - and is more security oriented. The proposal here would be more geared AI/ML workloads that are expensive to restart, prone to exhausting resources on a single node and would benefit from being able to be transferred to another node and restarted from the current state. 
+
+There are two specific cases I am thinking about: 
+
+1. Move container from one node to a node with more resources if container is exhausting resources on original node
+2. Move container from one node to another is original node is a spot node and has been pre-empted
+
+### Why is this needed?
+
+There are two primary types of AI/ML workloads that run on Kubernetes - live services that run model inference and service requests from users and batch jobs/tasks that are launched by an orchestrator and usually make up a a part of a more involved ML pipeline. Examples of things that happen inside containers in these tasks are things like - extracting data from a data store, manipulating the data in a process inside the container, long-running ingestion process ( for example, embedding vectors and indexing them into a vector store) training a model either using some custom framework or an open source framework like scikit-learn or PyTorch, writing data back to a datastore or uploading a model file to object storage. 
+
+Due to their nature, these tasks are expensive to restart. For example, terminating and restarting a model training container might mean that you lose hours of work. Unfortunately, due to the nature of these tasks, it can be difficult to estimate up front how much resources these tasks take and very frequently, these containers exhaust the resources available on a node. Due to the computational requirements of these tasks and the cost of cloud computing, spot instances would offer a way to architect these platform more cost-effectively were it not for the potential interruptions that these tasks would incur were a spot instance to be pre-empted. 
+
+Thus an easy-to use functionality that allows containers to be moved from one node to another would be very helpful in addressing some of the issues that make Kubernetes hard-to-use for AI/ML teams.

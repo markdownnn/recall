@@ -1,0 +1,26 @@
+[
+  { "scenario": "S1", "query": "bacteria",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"], "expectProseSnippet": true },
+  { "scenario": "S1", "query": "박테리아",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"], "expectProseSnippet": true },
+  { "scenario": "S1", "query": "deep learning neural networks",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Deep_learning"], "expectProseSnippet": true },
+
+  { "scenario": "S2", "query": "ingestion",
+    "expectTopPageIds": ["https://github.com/hashicorp/terraform-provider-aws/issues/31364"], "expectProseSnippet": true },
+
+  { "scenario": "S3", "query": "광합성 명반응",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Photosynthesis"], "expectProseSnippet": true },
+  { "scenario": "S3", "query": "면역 체계와 항체",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Immune_system"], "expectProseSnippet": true },
+
+  { "scenario": "S4", "query": "hormone that ruins sleep",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"], "expectProseSnippet": true },
+  { "scenario": "S4", "query": "powerhouse of the cell",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Mitochondrion"], "expectProseSnippet": true },
+
+  { "scenario": "S5", "query": "what is a protein",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"], "expectProseSnippet": true },
+  { "scenario": "S5", "query": "genetic material in chromosomes",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/DNA"], "expectProseSnippet": true }
+]

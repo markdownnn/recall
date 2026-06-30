@@ -1,0 +1,34 @@
+[New Resource]: OpenSearch Ingestion Pipeline
+### Description
+
+Amazon OpenSearch Ingestion is a fully managed, serverless data collector that delivers real-time log, metric, and trace data to Amazon OpenSearch Service domains and OpenSearch Serverless collections.
+
+### Requested Resource(s) and/or Data Source(s)
+
+* aws_osis_pipeline
+
+### Potential Terraform Configuration
+
+```terraform
+resource "aws_osis_pipeline" "example" {
+  name                        = "example"
+  max_units                   = 5
+  min_units                   = 1
+  pipeline_configuration_body = file("${path.module}/pipeline.yaml")
+  log_publishing_options {
+    cloudwatch_log_destination {
+      log_group = "/aws/OpenSearchService/IngestionService/my-pipeline"
+    }
+    is_logging_enabled = true
+  }
+}
+```
+
+
+### References
+
+https://pkg.go.dev/github.com/aws/aws-sdk-go@v1.44.262/service/osis
+
+### Would you like to implement a fix?
+
+Yes
