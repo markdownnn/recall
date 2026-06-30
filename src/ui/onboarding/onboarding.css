@@ -123,9 +123,10 @@ body {
 .caption { margin-top: var(--space-3); font-size: 13px; color: var(--muted); }
 .tip { margin-top: var(--space-3); color: var(--muted); font-size: 13px; }
 
-/* Feature list (how it works) - compact, scannable. */
+/* Feature list (how it works) - compact, scannable. Tighter within-line leading than the
+   loose 1.6 body so each item reads as one tidy unit, even inter-item gap. */
 .features { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
-.features li { color: #374151; }
+.features li { color: #374151; line-height: 1.45; }
 .features strong { color: var(--text); font-weight: 650; }
 
 /* Keyboard shortcuts */
@@ -196,10 +197,18 @@ kbd {
 .results .card { padding: var(--space-4); }
 .results .card > a { display: block; color: var(--accent); font-weight: 600; text-decoration: none; }
 .results .card > a:hover { text-decoration: underline; }
-.results .card > p { margin: var(--space-2) 0 0; color: #374151; font-size: 14px; line-height: 1.5; }
+/* Clamp the snippet to 3 lines + ellipsis (the full text stays in the DOM, only visually
+   clamped - e2e toContainText still matches). Titles/meta are untouched. */
+.results .card > p {
+  margin: var(--space-2) 0 0; color: #374151; font-size: 14px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
 .results .meta { margin-top: var(--space-2); font-size: 12px; color: var(--faint); }
 .hint { margin-top: var(--space-3); color: var(--muted); font-size: 13px; }
 
-.sample-list { margin: var(--space-3) 0 0; padding-left: var(--space-5); color: #374151; }
+/* Bundled-sample bullet list - even rhythm: tighter leading + a small, consistent gap
+   between titles instead of the loose body line-height. */
+.sample-list { margin: var(--space-3) 0 0; padding-left: var(--space-5); color: #374151; line-height: 1.45; }
+.sample-list li + li { margin-top: var(--space-1); }
 .demo-status { display: block; margin-top: var(--space-3); color: var(--accent); font-weight: 550; }
 .linkbtn { display: inline-block; margin-top: var(--space-4); background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
