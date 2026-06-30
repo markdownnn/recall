@@ -92,7 +92,7 @@ for (const c of comboKeys) {
 writeFileSync(
   'eval/last-scorecard.json',
   JSON.stringify(
-    { model: process.env.EVAL_MODEL || 'Xenova/multilingual-e5-small', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
+    { model: process.env.EVAL_MODEL || 'granite', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
     null,
     2,
   ) + '\n',

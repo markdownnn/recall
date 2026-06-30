@@ -1,7 +1,7 @@
 // Real multilingual embedding model in Node, for the golden-set A/B harness.
 //
 // Model selection is env-driven so one harness can A/B several models cleanly:
-//   EVAL_MODEL   HuggingFace repo id (default Xenova/multilingual-e5-small, the bundled prod model)
+//   EVAL_MODEL   model id (default 'granite', the bundled prod model dir under public/models/)
 //   EVAL_DTYPE   quantization passed to the pipeline (default q8, to match the extension)
 //   EVAL_PREFIX  prefix convention: 'e5' => "query: "/"passage: " (e5 family),
 //                'none' => raw text (MiniLM / granite and most sentence-transformers),
@@ -17,17 +17,18 @@
 //                (e.g. granite R1's onnx/model_qint8_arm64.onnx). When set, dtype suffixing is
 //                bypassed and this file is loaded verbatim.
 //
-// The bundled e5-small is loaded OFFLINE from public/models (filled by scripts/fetch-model.mjs);
-// any OTHER model id is fetched remotely into eval/.cache (gitignored) on first run.
+// The bundled granite is loaded OFFLINE from public/models (committed + verified by
+// scripts/fetch-model.mjs); any OTHER model id is fetched remotely into eval/.cache
+// (gitignored) on first run.
 import { pipeline, env } from '@huggingface/transformers'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
-const BUNDLED = 'Xenova/multilingual-e5-small'
+const BUNDLED = 'granite' // bundled prod model dir under public/models/ (granite-107m R1)
 const MODEL = process.env.EVAL_MODEL || BUNDLED
 const DTYPE = process.env.EVAL_DTYPE || 'q8'
-const PREFIX = process.env.EVAL_PREFIX || 'e5' // 'e5' | 'none' | 'gemma'
+const PREFIX = process.env.EVAL_PREFIX || 'none' // granite takes raw text (no e5 prefix)
 const MODEL_FILE = process.env.EVAL_MODEL_FILE || '' // optional exact onnx base name
 const MRL_DIM = Number(process.env.EVAL_MRL_DIM || 0) || 0 // 0 => full native dim
 
