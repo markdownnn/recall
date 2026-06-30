@@ -1,6 +1,7 @@
 import { Readability } from '@mozilla/readability'
 import type { Msg, MsgResult } from '../messaging'
 import { DwellTracker } from './dwell-tracker'
+import { EngagementTracker } from './engagement-tracker'
 import { sanitizeUrl } from '../core/sanitize-url'
 
 const DWELL_MS = 10_000
@@ -51,24 +52,60 @@ function sendCapture(manual: boolean): void {
 //
 // urlKey() strips the hash so scroll-spy rewriting of location.hash on a single page
 // (MDN, docs, long articles) does NOT reset the dwell timer.
+//
+// Auto-capture now needs BOTH signals: 10s visible DWELL (DwellTracker) AND ENGAGEMENT
+// (EngagementTracker: short page, scrolled >= 50%, or text selected). Either can be
+// satisfied last, so maybeCapture() is re-checked from the poll, the scroll listener,
+// and the selection listener. A single `fired` flag, set SYNCHRONOUSLY before the async
+// sendCapture, makes capture happen exactly once per candidate even if several signals
+// arrive together. (Storage is idempotent - capture upserts by pageId - so a slipped
+// duplicate makes no duplicate page; `fired` just avoids the wasted re-embed.)
 {
   let currentUrlKey = urlKey(location.href)
+  let dwellMet = false
+  let fired = false
+  const engagement = new EngagementTracker()
+
+  const viewport = () => window.innerHeight
+  const fullHeight = () => document.documentElement.scrollHeight
+
+  const maybeCapture = () => {
+    if (fired || !dwellMet) return
+    if (!engagement.engaged(viewport(), fullHeight())) return
+    fired = true // set BEFORE the async send so concurrent signals cannot double-fire
+    sendCapture(false)
+  }
+
   const tracker = new DwellTracker(
     DWELL_MS,
     () => Date.now(),
     () => document.visibilityState === 'visible',
-    () => sendCapture(false),
+    () => { dwellMet = true; maybeCapture() },
   )
   tracker.reset()
+
   document.addEventListener('visibilitychange', () => tracker.onVisibilityChange())
+  window.addEventListener('scroll', () => {
+    engagement.onScroll(window.scrollY, viewport(), fullHeight())
+    maybeCapture()
+  }, { passive: true })
+  document.addEventListener('selectionchange', () => {
+    engagement.onSelection(window.getSelection()?.toString().trim().length ?? 0)
+    maybeCapture()
+  })
+
   setInterval(() => {
     const nextKey = urlKey(location.href)
     if (nextKey !== currentUrlKey) {
       currentUrlKey = nextKey // SPA navigation or bounce -> new candidate
       tracker.reset()
+      engagement.reset()
+      dwellMet = false
+      fired = false
       return
     }
     tracker.tick()
+    maybeCapture()
   }, POLL_MS)
 }
 
