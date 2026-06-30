@@ -7,6 +7,7 @@ export interface UIStrings {
   searchButtonLabel: string    // the accent Search button label
   searchButtonAria: string     // its aria-label
   historyTabLabel: string      // the 'History' tab label
+  settingsTabLabel: string     // the 'Settings' tab label
   historyEmpty: string         // empty-state line when nothing is captured yet
   loadMore: string             // the load-more button
   // Capture + status
@@ -42,6 +43,11 @@ export interface UIStrings {
   embedderSlow: string
   // Pause
   pauseLabel: string
+  // Settings tab (section headings + helper lines under each control)
+  settingsCaptureHeading: string  // "Capture" section heading
+  pauseHelp: string               // helper line under the pause toggle
+  denylistHelp: string            // helper line under the no-remember list
+  denylistEmpty: string           // empty-state line when the user has blocked no sites
   // Site controls (SITE-scoped)
   dontRememberSite: string
   alreadyOnListShort: string
@@ -77,6 +83,7 @@ export const EN: UIStrings = {
   searchButtonLabel: 'Search',
   searchButtonAria: 'Search',
   historyTabLabel: 'History',
+  settingsTabLabel: 'Settings',
   historyEmpty: 'Nothing captured yet - pages you save will show up here.',
   loadMore: 'Load more',
   captureButton: 'Capture this page',
@@ -106,6 +113,10 @@ export const EN: UIStrings = {
   embedderUnavailable: "On-device search isn't available on this device",
   embedderSlow: 'Running in slow mode',
   pauseLabel: 'Pause capturing',
+  settingsCaptureHeading: 'Capture',
+  pauseHelp: 'Recall stops saving new pages until you turn this back on.',
+  denylistHelp: 'Recall never saves pages from these sites. Remove one to start saving it again.',
+  denylistEmpty: "You haven't blocked any sites yet.",
   dontRememberSite: "Don't remember this site",
   alreadyOnListShort: 'Already on no-remember list',
   wonRemember: (host) => `Won't remember ${host}`,

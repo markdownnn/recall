@@ -22,12 +22,18 @@ test('pause blocks capture; unpausing restores it', async () => {
   await page.goto(articleUrl)
   const popup = await ctx.newPage()
   await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
+  // Pause now lives in the Settings tab (it is a GLOBAL setting, so it has one home there).
+  // Search lives in the Search tab. The Capture button is in the always-visible per-page bar,
+  // so it is reachable from any tab.
+  const settingsTab = popup.getByRole('tab', { name: 'Settings' })
+  const searchTab = popup.getByRole('tab', { name: 'Search' })
   const pauseBox = popup.getByLabel(/pause/i)
 
-  // The popup's mount effect loads settings asynchronously (get-settings) and can reset
+  // The Settings tab's mount effect loads settings asynchronously (get-settings) and can reset
   // the checkbox right after a click, so toggling is retried until the new state STICKS
-  // (condition-based, no fixed sleep).
+  // (condition-based, no fixed sleep). Open the Settings tab first so the toggle is mounted.
   const setPaused = async (on: boolean) => {
+    await settingsTab.click()
     await expect(async () => {
       if (on) await pauseBox.check()
       else await pauseBox.uncheck()
@@ -45,7 +51,9 @@ test('pause blocks capture; unpausing restores it', async () => {
   await popup.getByText('Capture this page').click()
   await popup.waitForTimeout(1_000)
 
-  // Search finds nothing while paused.
+  // Search finds nothing while paused. The searchbox lives in the Search tab, so switch back
+  // to it (setPaused left the Settings tab open).
+  await searchTab.click()
   await popup.getByRole('searchbox').fill('hormone that ruins sleep')
   await popup.getByRole('searchbox').press('Enter')
   await popup.waitForTimeout(2_000)
@@ -62,6 +70,8 @@ test('pause blocks capture; unpausing restores it', async () => {
   // "Update this page" if it embedded fast). Replaces the old "captured|indexing" status text.
   await expect(popup.locator('button.capture')).toHaveText(/Saving\.\.\.|Update this page/, { timeout: 30_000 })
   await page.goto('about:blank')
+  // Back to the Search tab (the last setPaused left Settings open) before searching.
+  await searchTab.click()
   await expect(async () => {
     await popup.getByRole('searchbox').fill('hormone that ruins sleep')
     await popup.getByRole('searchbox').press('Enter')
@@ -169,6 +179,10 @@ test('removing a no-remember site re-enables capture (real SQL path)', async () 
   await expect(popup.getByText(/won't remember remove-test\.example/i)).toBeVisible({ timeout: 10_000 })
   await popup.getByText('Capture this page').click()
   await expect(popup.getByText('not saved: this site is on the no-remember list')).toBeVisible({ timeout: 10_000 })
+
+  // The editable no-remember list now lives in the Settings tab. Open it; on mount it
+  // re-fetches get-settings, so the host just denied from the per-page bar is listed.
+  await popup.getByRole('tab', { name: 'Settings' }).click()
 
   // Remove it via the denylist editor's "remove" button (the only such button, since
   // exactly one host is denied) -> the user_denylist row must be deleted.

@@ -30,7 +30,6 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // "Saving..." button/badge state. Per-page: a background drain of OTHER pages re-queries
   // THIS tab, finds it not pending, and leaves the bar unchanged.
   const [pending, setPending] = useState(false)
-  const [paused, setPaused] = useState(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
   const [denyStatus, setDenyStatus] = useState('')
   // Tracks the url of the MOST RECENT refresh. On a rapid tab switch an older has-page
@@ -72,12 +71,11 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   }
 
   useEffect(() => {
-    // Seed pause + the no-remember list (moved here from the popup root, unchanged).
+    // Seed the no-remember list so the "Don't remember this site" button can show whether the
+    // CURRENT host is already blocked. The global Pause toggle and the full editable list now
+    // live in the Settings tab; this bar keeps only the per-page/per-site actions.
     chrome.runtime.sendMessage({ type: 'get-settings' }).then((res: MsgResult) => {
-      if (res?.type === 'settings') {
-        setPaused(res.paused)
-        setUserDenyHosts(res.userDenyHosts)
-      }
+      if (res?.type === 'settings') setUserDenyHosts(res.userDenyHosts)
     }).catch(() => {})
 
     // Active-tab reactivity: refresh on mount and whenever the user switches or reloads
@@ -110,12 +108,6 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     if (refreshSignal > 0) void refreshActiveTab()
   }, [refreshSignal])
 
-  const togglePause = async (e: Event) => {
-    const checked = (e.target as HTMLInputElement).checked
-    setPaused(checked)
-    await chrome.runtime.sendMessage({ type: 'set-paused', paused: checked }).catch(() => {})
-  }
-
   const denyHost = async () => {
     try {
       const [active] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -140,21 +132,6 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     } catch {
       setDenyStatus(t.restrictedTabAdd)
     }
-  }
-
-  const removeDeny = async (h: string) => {
-    let res: MsgResult
-    try {
-      res = await chrome.runtime.sendMessage({ type: 'remove-deny-host', host: h })
-    } catch {
-      setDenyStatus(t.couldNotRemove)
-      return
-    }
-    if (res?.type !== 'ok') {
-      setDenyStatus(t.couldNotRemove)
-      return
-    }
-    setUserDenyHosts((prev) => prev.filter((x) => x !== h))
   }
 
   const forgetHost = async () => {
@@ -231,17 +208,9 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
       </div>
       {pending && <div class="note">{t.savingHint}</div>}
 
-      {/* SITE-scoped: acts on the HOST. */}
+      {/* SITE-scoped: acts on the HOST. Per-page/per-site only - the global Pause toggle and
+          the editable no-remember list live in the Settings tab. */}
       <div class="site-actions">
-        <label class="toggle">
-          <span class="switch">
-            <input type="checkbox" checked={paused} onChange={togglePause} />
-            <span class="track" />
-          </span>
-          {t.pauseLabel}
-        </label>
-        {paused && <div class="note paused">{t.pausedNote}</div>}
-
         <div class="toolbar">
           <button class="linkbtn" onClick={denyHost}>
             {hostDenied ? t.alreadyOnListShort : t.dontRememberSite}
@@ -249,18 +218,6 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
           <button class="linkbtn danger" onClick={forgetHost}>{t.forgetSiteHistory}</button>
         </div>
         {denyStatus && <div class="note">{denyStatus}</div>}
-
-        {userDenyHosts.length > 0 && (
-          <div class="denylist">
-            <div class="denylist-head">{t.noRememberSitesHeader}</div>
-            {userDenyHosts.map((h) => (
-              <div class="denyrow" key={h}>
-                <span>{h}</span>
-                <button class="linkbtn" onClick={() => removeDeny(h)}>{t.removeLabel}</button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )

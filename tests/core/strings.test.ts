@@ -2,11 +2,12 @@ import { EN } from '../../src/ui/sidepanel/strings'
 
 const STATIC_KEYS = [
   'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
-  'historyTabLabel', 'historyEmpty', 'loadMore',
+  'historyTabLabel', 'settingsTabLabel', 'historyEmpty', 'loadMore',
   'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'cannotCapturePage', 'reloadToCapture',
   'modelReady', 'modelError', 'embedderUnavailable', 'embedderSlow', 'pauseLabel',
+  'settingsCaptureHeading', 'pauseHelp', 'denylistHelp', 'denylistEmpty',
   'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
   'noRememberSitesHeader', 'removeLabel',
   'couldNotAdd', 'couldNotRemove', 'couldNotForget', 'restrictedTabAdd', 'restrictedTabForget',
@@ -64,6 +65,10 @@ test('byte-identical e2e strings are preserved', () => {
   // Coverage: integration (real EN object).
   expect(EN.historyTabLabel).toBe('History')
   expect(EN.loadMore).toBe('Load more')
+  // Scenario: the Settings tab label is asserted verbatim by the e2e (it opens the tab by
+  // name to reach Pause + the no-remember list); a wording change here must fail loudly.
+  // Coverage: integration (real EN object).
+  expect(EN.settingsTabLabel).toBe('Settings')
   // Scenario: the two capture-guard lines are user-facing copy; pin them so a wording
   // drift is caught. ASCII apostrophes only.
   // Coverage: integration (real EN object).

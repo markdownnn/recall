@@ -1,13 +1,13 @@
 import { t } from './strings'
 
-// The single extension point for future tabs. Adding History/Settings later is a 3-line
-// change: extend the union, push a row into TABS, add one `{tab === 'x' && <X/>}` line in
-// SidePanel. No change to this presentational bar.
-export type TabKey = 'search' | 'history' // later: | 'settings'
+// The single extension point for tabs. Adding one is a 3-line change: extend the union, push a
+// row into TABS, add one `{tab === 'x' && <X/>}` line in SidePanel. No change to this bar.
+export type TabKey = 'search' | 'history' | 'settings'
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: 'search', label: t.searchTabLabel },
   { key: 'history', label: t.historyTabLabel },
+  { key: 'settings', label: t.settingsTabLabel },
 ]
 
 // Presentational tab bar. Renders even with a single tab so the scaffold is visible and

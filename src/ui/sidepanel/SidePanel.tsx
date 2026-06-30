@@ -7,6 +7,7 @@ import { t } from './strings'
 import { ThisPageBar } from './ThisPageBar'
 import { SearchTab } from './SearchTab'
 import { HistoryTab } from './HistoryTab'
+import { SettingsTab } from './SettingsTab'
 import { TabBar } from './Tabs'
 import type { TabKey } from './Tabs'
 
@@ -191,6 +192,7 @@ export function SidePanel() {
       <TabBar active={tab} onSelect={setTab} />
       {tab === 'search' && <SearchTab />}
       {tab === 'history' && <HistoryTab />}
+      {tab === 'settings' && <SettingsTab />}
     </div>
   )
 }
