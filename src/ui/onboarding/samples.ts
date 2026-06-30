@@ -84,3 +84,12 @@ export function isValidSample(d: SampleDoc): boolean {
     return false
   }
 }
+
+// Demo pages are STORED under DEMO_HOST (so "Remove demo data" is one forget-host call), but
+// their real source lives in `sourceUrl`. Every result renderer (search, history, try-it) must
+// link to the real page, not the fake demo host (which 404s). Returns the real source for a
+// known demo url, otherwise the url unchanged - so it is a safe no-op for real captured pages.
+const SOURCE_BY_URL = new Map(SAMPLES.map((s) => [s.url, s.sourceUrl]))
+export function demoLinkFor(url: string): string {
+  return SOURCE_BY_URL.get(url) ?? url
+}

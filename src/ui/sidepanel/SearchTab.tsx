@@ -3,6 +3,7 @@ import type { MsgResult } from '../../messaging'
 import type { RankedResult } from '../../core/model'
 import { t } from './strings'
 import { SUGGESTIONS, randomIndex } from './suggestions'
+import { demoLinkFor } from '../onboarding/samples'
 
 function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
@@ -60,9 +61,9 @@ export function SearchTab() {
         <div class="results">
           {results.map((r) => (
             <article class="card" key={r.chunk.id}>
-              <a href={r.page.url} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
+              <a href={demoLinkFor(r.page.url)} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
               <p>{r.chunk.text}</p>
-              <div class="meta">{hostOf(r.page.url)}</div>
+              <div class="meta">{hostOf(demoLinkFor(r.page.url))}</div>
             </article>
           ))}
         </div>

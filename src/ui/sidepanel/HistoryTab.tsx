@@ -3,6 +3,7 @@ import type { MsgResult } from '../../messaging'
 import type { CapturedPage } from '../../core/model'
 import { t } from './strings'
 import { relativeTime } from './relative-time'
+import { demoLinkFor } from '../onboarding/samples'
 
 // Bounded fetch: load ~150 most-recent pages up front, then "Load more" pulls the next 150
 // via the capturedAt keyset cursor (below). Never loads thousands at once, and never shifts
@@ -54,8 +55,8 @@ export function HistoryTab() {
         <div class="results">
           {pages.map((p) => (
             <article class="card" key={p.id}>
-              <a href={p.url} target="_blank" rel="noopener noreferrer">{p.title || p.url}</a>
-              <div class="meta">{hostOf(p.url)} &middot; {relativeTime(p.capturedAt, now)}</div>
+              <a href={demoLinkFor(p.url)} target="_blank" rel="noopener noreferrer">{p.title || p.url}</a>
+              <div class="meta">{hostOf(demoLinkFor(p.url))} &middot; {relativeTime(p.capturedAt, now)}</div>
             </article>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { OnboardingSection } from './sections'
-import { DEMO_HOST } from './samples'
+import { DEMO_HOST, demoLinkFor } from './samples'
 import type { MsgResult } from '../../messaging'
 import type { RankedResult } from '../../core/model'
 import { t } from '../sidepanel/strings'
@@ -69,11 +69,9 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
     setRemoved(true)
   }
 
-  // A result's page.url is the recall-demo storage url (a fake host that 404s on click). Map
-  // it back to the sample's REAL sourceUrl so the link opens a live page. Storage + "Remove
-  // demo data" still key on the demo url - only the link href is swapped.
-  const sourceByUrl = new Map(section.samples.map((s) => [s.url, s.sourceUrl]))
-  const linkFor = (url: string) => sourceByUrl.get(url) ?? url
+  // A result's page.url is the recall-demo storage url (a fake host that 404s on click).
+  // demoLinkFor maps it back to the sample's REAL sourceUrl so the link opens a live page
+  // (shared with the real search/history). Storage + "Remove demo data" still key on the demo url.
 
   return (
     <section class="card section">
@@ -120,9 +118,9 @@ export function TryItCard({ section }: { section: Extract<OnboardingSection, { k
             <div class="results">
               {results.map((r) => (
                 <article class="card" key={r.chunk.id}>
-                  <a href={linkFor(r.page.url)} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
+                  <a href={demoLinkFor(r.page.url)} target="_blank" rel="noopener noreferrer">{r.page.title}</a>
                   <p>{r.chunk.text}</p>
-                  <div class="meta">{hostOf(linkFor(r.page.url))}</div>
+                  <div class="meta">{hostOf(demoLinkFor(r.page.url))}</div>
                 </article>
               ))}
             </div>
