@@ -100,6 +100,33 @@ test('drain on empty store is a no-op', async () => {
   expect(spy.count).toBe(0)
 })
 
+// Scenario: while a model-swap migration runs, the keep-alive ping/auto-capture must NOT drain
+// (that would steal the migration's embed slot). drain() is suppressed during migration, but the
+// migration's own drainForMigration() still runs.
+// Coverage: integration (real IndexingService + MemoryVectorStore; spy counts embed calls).
+test('drain() is suppressed during migration; drainForMigration() still runs', async () => {
+  const store = new MemoryVectorStore()
+  await store.upsertPage({ id: 'p', url: 'u', title: 't', capturedAt: 0 })
+  await store.putChunks('p', [{ id: 'c0', pageId: 'p', index: 0, text: 'hello world' }])
+  const spy = { count: 0 }
+  const indexing = new IndexingService(store, makeEmbedder(spy))
+
+  indexing.beginMigration()
+  await indexing.drain() // capture/ping: suppressed
+  expect(spy.count).toBe(0)
+  expect((await store.pendingChunks(10)).length).toBe(1) // still pending; nothing embedded
+
+  await indexing.drainForMigration() // migration's own drain: runs
+  expect(spy.count).toBe(1)
+  expect((await store.pendingChunks(10)).length).toBe(0)
+
+  indexing.endMigration()
+  // After migration, the normal keep-alive drain works again.
+  await store.putChunks('p', [{ id: 'c1', pageId: 'p', index: 0, text: 'fresh chunk' }])
+  await indexing.drain()
+  expect((await store.pendingChunks(10)).length).toBe(0)
+})
+
 // --- New retry tests (TDD - written before implementation) ---
 
 const noSleep = async () => {}

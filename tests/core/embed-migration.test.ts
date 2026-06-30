@@ -82,6 +82,60 @@ test('stale version re-embeds every page gradually and records the new version',
   expect(spy.peakPending()).toBe(1) // never more than one page pending => gradual, not dark
 })
 
+// Scenario: a keep-alive/auto-capture drain fires REPEATEDLY during the model-swap migration
+// (the real keep-alive ping + alarms re-drain). If that concurrent drain could steal the embed
+// slot, the migration's per-page reembed would resolve instantly, nulling page after page (the
+// whole corpus goes dark) and stamping the new version while a background drain still crawls.
+// The migration guard must suppress those drains so the re-index stays gradual (peak 1 pending)
+// and the version is written ONLY after every page is re-embedded.
+// Coverage: integration (real MemoryVectorStore + real IndexingService + concurrent drain).
+test('concurrent keep-alive drain during migration stays gradual (peak 1) and stamps version only after all', async () => {
+  const store = await seededTwoPageStore()
+  const versions = fakeVersions('e5-small-q8-v1')
+
+  let peak = 0
+  const embedder: EmbeddingPort = {
+    async embed(texts) {
+      peak = Math.max(peak, (await store.pendingChunks(100)).length)
+      // A real (awaited) async hop so a concurrently-fired drain is genuinely in flight here.
+      await new Promise((r) => setTimeout(r, 1))
+      return texts.map(() => new Float32Array([9, 9]))
+    },
+  }
+  const indexing = new IndexingService(store, embedder)
+  const versionSeenPerPage: (string | null)[] = []
+
+  // The keep-alive/auto-capture drain hammering away throughout the migration.
+  let migrationDone = false
+  const keepAlive = (async () => {
+    while (!migrationDone) {
+      await indexing.drain() // suppressed by the migration guard; must NOT steal the slot
+      await new Promise((r) => setTimeout(r, 0))
+    }
+  })()
+
+  indexing.beginMigration()
+  const reindexed = await migrateEmbeddingModel(
+    store,
+    versions,
+    'granite-107m-r1-q8-v1',
+    async () => {
+      versionSeenPerPage.push(await versions.getEmbedVersion())
+      await indexing.drainForMigration()
+    },
+  )
+  indexing.endMigration()
+  migrationDone = true
+  await keepAlive
+
+  expect(reindexed).toBe(true)
+  expect(peak).toBe(1) // gradual: never two pages dark at once, even under a concurrent drain
+  expect((await store.pendingChunks(100)).length).toBe(0) // all re-embedded
+  expect(await versions.getEmbedVersion()).toBe('granite-107m-r1-q8-v1')
+  // The version stayed stale for EVERY page's re-embed => stamped only after all are done.
+  expect(versionSeenPerPage).toEqual(['e5-small-q8-v1', 'e5-small-q8-v1'])
+})
+
 // Scenario: a profile already on granite reopens the extension. The migration must be a no-op:
 // it must NOT clear durable vectors and force a needless re-embed every launch.
 // Coverage: integration (real MemoryVectorStore + fake version store).
