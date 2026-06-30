@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks'
-import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg } from '../../messaging'
+import type { MsgResult, ModelProgressMsg, IndexingProgressMsg, IndexingErrorMsg, EmbedderDegradedMsg } from '../../messaging'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
 import { isCapturableUrl } from '../../core/is-capturable-url'
@@ -25,6 +25,11 @@ export function SidePanel() {
   // the plain status line.
   const [indexing, setIndexing] = useState(false)
   const [indexedCount, setIndexedCount] = useState(0)
+  // Persistent degraded-embedder banner state. `degraded` is the embedder state (or null when
+  // healthy); `degradedDismissed` hides the banner until the next degraded event re-shows it
+  // (dismissible-but-recurring) so the user is never left unaware that search is broken/slow.
+  const [degraded, setDegraded] = useState<'unavailable' | 'wasm' | null>(null)
+  const [degradedDismissed, setDegradedDismissed] = useState(false)
   const [tab, setTab] = useState<TabKey>('search')
   // Bumped after a successful capture so ThisPageBar re-queries `has-page` and the SAVED
   // badge flips false->true without the user switching tabs.
@@ -36,10 +41,28 @@ export function SidePanel() {
       if (res?.type === 'model-status') setModelStatus(res.status)
     }).catch(() => {})
 
+    // DECLARATIVE seed: ask the offscreen for the current embed-queue snapshot. Opening the panel
+    // mid-drain (e.g. after an auto-capture happened while the panel was closed) would otherwise
+    // miss the indicator entirely, since the `indexing` phase is driven by FUTURE
+    // indexing-progress events. Seed it from STATE so the indicator derives from the queue, not
+    // from a manual capture() call.
+    chrome.runtime.sendMessage({ type: 'indexing-status' }).then((res: MsgResult) => {
+      if (res?.type === 'indexing-status' && res.pending > 0) {
+        setIndexing(true)
+        setIndexedCount(res.embedded)
+      }
+    }).catch(() => {})
+
     // Progress broadcasts from the background (moved from the popup, unchanged). These
     // write the SAME status line that capture() writes.
-    const listener = (msg: ModelProgressMsg | IndexingProgressMsg | IndexingErrorMsg) => {
+    const listener = (msg: ModelProgressMsg | IndexingProgressMsg | IndexingErrorMsg | EmbedderDegradedMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
+      if (msg?.type === 'embedder-degraded') {
+        // Persistent banner: the on-device embedder is unavailable (no search) or slow (WASM).
+        // A fresh event always re-shows the banner even if the user dismissed a prior one.
+        setDegraded(msg.state)
+        setDegradedDismissed(false)
+      }
       if (msg?.type === 'indexing-progress') {
         if (msg.pending === 0) {
           // pending=0 is the "drain finished" signal: leave the indexing phase and show
@@ -70,13 +93,28 @@ export function SidePanel() {
   useEffect(() => {
     let port: chrome.runtime.Port | null = null
     let cancelled = false
-    chrome.windows.getCurrent().then((win) => {
-      if (cancelled || win?.id == null) return
+
+    // Reconnect on disconnect: when the SW is reaped (sleep/memory pressure), the port drops and
+    // the SW forgets this panel is open, so the toggle shortcut would re-OPEN instead of closing.
+    // Re-announcing our windowId on every (re)connect keeps the SW's open-set accurate so close
+    // still works after an SW reap.
+    const connect = (winId: number): void => {
+      if (cancelled) return
       port = chrome.runtime.connect({ name: 'recall-panel' })
-      port.postMessage({ windowId: win.id })
+      port.postMessage({ windowId: winId })
       port.onMessage.addListener((m: { type?: string }) => {
         if (m?.type === 'close-panel') window.close()
       })
+      port.onDisconnect.addListener(() => {
+        if (cancelled) return
+        port = null
+        connect(winId) // SW went away; re-announce so the open-set stays correct
+      })
+    }
+
+    chrome.windows.getCurrent().then((win) => {
+      if (cancelled || win?.id == null) return
+      connect(win.id)
     }).catch(() => {})
     return () => {
       cancelled = true
@@ -132,6 +170,20 @@ export function SidePanel() {
         <span class="brand">{t.brand}</span>
         {renderModelStatus()}
       </div>
+
+      {degraded && !degradedDismissed && (
+        <div class={`banner ${degraded === 'unavailable' ? 'danger' : ''}`} role="status">
+          <span>{degraded === 'unavailable' ? t.embedderUnavailable : t.embedderSlow}</span>
+          <button
+            class="banner-dismiss"
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setDegradedDismissed(true)}
+          >
+            {'×'}
+          </button>
+        </div>
+      )}
 
       <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} />
       {indexing

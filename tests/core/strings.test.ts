@@ -6,7 +6,7 @@ const STATIC_KEYS = [
   'captureButton', 'updateButton', 'cannotCaptureButton', 'indexed', 'capturing', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
   'cannotCapturePage', 'reloadToCapture',
-  'modelReady', 'modelError', 'pauseLabel',
+  'modelReady', 'modelError', 'embedderUnavailable', 'embedderSlow', 'pauseLabel',
   'dontRememberSite', 'alreadyOnListShort', 'forgetSiteHistory',
   'noRememberSitesHeader', 'removeLabel',
   'couldNotAdd', 'couldNotRemove', 'couldNotForget', 'restrictedTabAdd', 'restrictedTabForget',
@@ -71,4 +71,9 @@ test('byte-identical e2e strings are preserved', () => {
   expect(EN.obSeeded).toBe('Sample pages added')
   expect(EN.obRemoveDemo).toBe('Remove demo data')
   expect(EN.obDemoRemoved).toBe('Demo data removed')
+  // Scenario: the degraded-embedder banners are user-facing copy that tell the user search is
+  // broken / slow; pin them so a wording drift is caught. ASCII apostrophes only.
+  // Coverage: integration (real EN object).
+  expect(EN.embedderUnavailable).toBe("On-device search isn't available on this device")
+  expect(EN.embedderSlow).toBe('Running in slow mode')
 })

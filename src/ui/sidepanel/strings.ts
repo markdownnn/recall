@@ -34,6 +34,10 @@ export interface UIStrings {
   loadingPercent: (pct: number) => string
   modelReady: string
   modelError: string
+  // Embedder degraded banners (persistent). unavailable = no on-device search on this hardware;
+  // slow = granite fell back to single-thread WASM.
+  embedderUnavailable: string
+  embedderSlow: string
   // Pause
   pauseLabel: string
   // Site controls (SITE-scoped)
@@ -95,6 +99,8 @@ export const EN: UIStrings = {
   loadingPercent: (pct) => `Loading ${pct}%`,
   modelReady: 'Ready',
   modelError: 'Model error',
+  embedderUnavailable: "On-device search isn't available on this device",
+  embedderSlow: 'Running in slow mode',
   pauseLabel: 'Pause capturing',
   dontRememberSite: "Don't remember this site",
   alreadyOnListShort: 'Already on no-remember list',
