@@ -21,6 +21,29 @@ test('auto: normal page captured', () => {
   expect(gate.decide({ url: 'https://site.com/post', text: long, manual: false }, open).capture).toBe(true)
 })
 
+// Scenario: a long Chinese/Japanese article has NO inter-word spaces, so a whitespace-split
+// "word" count collapses the whole page to 1 word and the thin gate silently rejects it -
+// auto-capture never fires even though the model is multilingual. The gate must measure
+// content size script-agnostically (Unicode letters), so a long spaceless CJK page passes.
+// Coverage: integration (real CaptureGate soft-gate path). CJK data via \u escapes so the
+// test source stays ASCII-only.
+test('auto: long spaceless CJK page is NOT thin (captured)', () => {
+  // 40 repetitions of U+6587 (a CJK ideograph) = 40 letters, one whitespace "word".
+  const cjk = '\u6587'.repeat(40)
+  const d = gate.decide({ url: 'https://site.com/post', text: cjk, manual: false }, open)
+  expect(d.capture).toBe(true)
+})
+
+// Scenario: a genuinely thin CJK page (a handful of characters) must still be rejected -
+// the script-agnostic measure must not over-accept tiny CJK snippets.
+// Coverage: integration (real CaptureGate soft-gate path).
+test('auto: very short CJK page is still thin', () => {
+  const cjk = '\u6587'.repeat(3) // 3 letters, well under the threshold
+  const d = gate.decide({ url: 'https://site.com/post', text: cjk, manual: false }, open)
+  expect(d.capture).toBe(false)
+  expect(d.reason).toBe('thin')
+})
+
 test('manual: thin page IS captured (soft gate skipped)', () => {
   expect(gate.decide({ url: 'https://site.com/post', text: short, manual: true }, open).capture).toBe(true)
 })
