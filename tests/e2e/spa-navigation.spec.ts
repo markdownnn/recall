@@ -24,9 +24,14 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
   const extId = sw.url().split('/')[2]
 
   // Page A is the existing article fixture (recallable via "hormone that ruins sleep"
-  // -> Cortisol). Served at a real http host so a real page id is recorded.
+  // -> Cortisol). Served at a real http host so a real page id is recorded. NOTE: the host
+  // must NOT be a reserved/internal TLD - this spec relies on AUTO-capture, and the internal-
+  // network skip gate (isInternalHost) treats `.example`/`.test`/`.local` as private and
+  // silently skips AUTO-capture there (manual capture would override, but this test is auto).
+  // So we use a routable public-looking host (.io). The route interception is at the CDP
+  // level before DNS, so the domain need not exist.
   const articleHtml = fs.readFileSync(path.resolve(dir, 'fixtures/article.html'), 'utf8')
-  const urlA = 'http://spa-test.example/a'
+  const urlA = 'http://spa-test.io/a'
   const page = await ctx.newPage()
   await page.route(urlA, (route) => route.fulfill({ contentType: 'text/html', body: articleHtml }))
   await page.goto(urlA)
@@ -36,13 +41,21 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
   await popup.goto(`chrome-extension://${extId}/src/ui/sidepanel/index.html`)
   await page.bringToFront()
 
-  // Wait out the 10s visible dwell -> page A auto-captures and becomes recallable.
+  // Deterministic auto-capture for page A. Auto-capture needs BOTH a 10s VISIBLE dwell and
+  // engagement (scrolled >=50% OR short page). We keep page A the visible foreground tab for
+  // a CONTINUOUS >DWELL_MS window and scroll it once - we must NOT flip to the panel during
+  // this window, because searching from the panel hides page A and STARVES the visible-dwell
+  // accumulation (the old, flaky interleaved pattern only ever scraped ~9s of visible time in
+  // the inter-retry gaps). Only AFTER capture has fired do we search (embedding may still be
+  // finishing, hence the toPass on just the search).
+  await page.bringToFront()
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await page.waitForTimeout(13_000) // > DWELL_MS (10s); page stays visible so dwell accrues continuously
   await expect(async () => {
     await popup.bringToFront()
     await popup.getByRole('searchbox').fill('hormone that ruins sleep')
     await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('Cortisol', { timeout: 5_000 })
-    await page.bringToFront()
   }).toPass({ timeout: 60_000 })
 
   // SPA navigation: change the URL via pushState (no reload) AND swap in new content,
@@ -65,16 +78,17 @@ test('SPA pushState navigation resets dwell and captures the new virtual page', 
     document.body.innerHTML = body
     history.pushState({}, '', '/b')
   })
+  // Same deterministic dwell for the NEW virtual page. The content script's 1s poll detects
+  // the urlKey change (/a -> /b), resets dwell+engagement, so a fresh continuous-visible
+  // window captures page B by its OWN content -> proves the dwell reset + new-page capture.
   await page.bringToFront()
-
-  // After a fresh 10s dwell on the new virtual page, page B auto-captures and is
-  // recallable by ITS content -> proves the dwell reset + new-page capture.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await page.waitForTimeout(13_000) // poll-detect (<=1s) + > DWELL_MS, all while visible
   await expect(async () => {
     await popup.bringToFront()
     await popup.getByRole('searchbox').fill('how do plants make food from sunlight')
     await popup.getByRole('searchbox').press('Enter')
     await expect(popup.locator('article').first()).toContainText('chlorophyll', { timeout: 5_000 })
-    await page.bringToFront()
   }).toPass({ timeout: 60_000 })
 
   // Page A is still recallable too -> the two virtual pages are stored separately.
