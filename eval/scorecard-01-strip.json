@@ -1,0 +1,103 @@
+{
+  "strip": true,
+  "minProse": 0,
+  "ci": false,
+  "agg": {
+    "precisionAt1": 0.4,
+    "recallAt5": 0.8,
+    "mrr": 0.5116666666666666
+  },
+  "refRate": 0.1,
+  "rows": [
+    {
+      "scenario": "S1",
+      "query": "bacteria",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S1",
+      "query": "박테리아",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%95%9C%EA%B8%80",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.2,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S1",
+      "query": "deep learning neural networks",
+      "topPage": "https://en.wikipedia.org/wiki/Deep_learning",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S2",
+      "query": "ingestion",
+      "topPage": "https://github.com/hashicorp/terraform-provider-aws/issues/31364",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "query": "광합성 명반응",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "query": "면역 체계와 항체",
+      "topPage": "https://en.wikipedia.org/wiki/Cortisol",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.3333333333333333,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S4",
+      "query": "hormone that ruins sleep",
+      "topPage": "https://en.wikipedia.org/wiki/Immune_system",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S4",
+      "query": "powerhouse of the cell",
+      "topPage": "https://en.wikipedia.org/wiki/Mitochondrion",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S5",
+      "query": "what is a protein",
+      "topPage": "https://en.wikipedia.org/wiki/Immune_system",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.3333333333333333,
+      "topIsProse": false
+    },
+    {
+      "scenario": "S5",
+      "query": "genetic material in chromosomes",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.25,
+      "topIsProse": true
+    }
+  ]
+}

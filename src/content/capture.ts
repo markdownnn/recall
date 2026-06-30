@@ -3,6 +3,7 @@ import type { Msg, MsgResult } from '../messaging'
 import { DwellTracker } from './dwell-tracker'
 import { EngagementTracker } from './engagement-tracker'
 import { sanitizeUrl } from '../core/sanitize-url'
+import { stripBoilerplate } from '../core/boilerplate-strip'
 
 const DWELL_MS = 10_000
 const POLL_MS = 1_000
@@ -20,11 +21,24 @@ function urlKey(href: string): string {
   }
 }
 
+// Fix 1: after Readability extracts the article, re-parse its cleaned HTML into block
+// elements joined by newlines so each heading (References, See also, External links, ...)
+// lands on its own line, then stripBoilerplate() removes those trailing citation sections
+// BEFORE chunking. Block-joining is what makes the heading detection reliable and matches
+// the eval-fixture format. DOMParser + querySelectorAll are native browser APIs (no new dep).
 function extract(): { title: string; text: string } | null {
   try {
     const docClone = document.cloneNode(true) as Document
     const article = new Readability(docClone).parse()
-    const text = (article?.textContent?.trim()) || (document.body?.innerText ?? '')
+    let text: string
+    if (article?.content) {
+      const doc = new DOMParser().parseFromString(article.content, 'text/html')
+      const blocks = [...doc.querySelectorAll('h1,h2,h3,h4,p,li,blockquote,pre')]
+      const joined = blocks.map((b) => b.textContent?.trim() ?? '').filter(Boolean).join('\n')
+      text = stripBoilerplate(joined).trim()
+    } else {
+      text = (article?.textContent?.trim()) || (document.body?.innerText ?? '')
+    }
     if (!text) return null
     return { title: article?.title ?? document.title, text }
   } catch {
