@@ -1,12 +1,14 @@
 [
-  { "scenario": "S1", "query": "bacteria",
+  { "scenario": "S1", "combo": "EN->EN", "query": "bacteria",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"], "expectProseSnippet": true },
-  { "scenario": "S2", "query": "ingestion",
+  { "scenario": "S2", "combo": "EN->EN", "query": "ingestion",
     "expectTopPageIds": ["https://github.com/hashicorp/terraform-provider-aws/issues/31364"], "expectProseSnippet": true },
-  { "scenario": "S3", "query": "광합성 명반응",
-    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Photosynthesis"], "expectProseSnippet": true },
-  { "scenario": "S4", "query": "hormone that ruins sleep",
+  { "scenario": "S4", "combo": "EN->EN", "query": "hormone that ruins sleep",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"], "expectProseSnippet": true },
-  { "scenario": "S5", "query": "what is a protein",
-    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"], "expectProseSnippet": true }
+  { "scenario": "S5", "combo": "EN->EN", "query": "what is a protein",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"], "expectProseSnippet": true },
+  { "scenario": "S3", "combo": "KO->EN", "query": "광합성 명반응",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Photosynthesis"], "expectProseSnippet": true },
+  { "scenario": "S7", "combo": "KO->KO", "query": "김치 담그는 법",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%EA%B9%80%EC%B9%98"], "expectProseSnippet": true }
 ]

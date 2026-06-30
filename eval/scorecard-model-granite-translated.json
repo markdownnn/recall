@@ -1,0 +1,129 @@
+{
+  "model": "gety-ai/granite-embedding-107m-multilingual-onnx",
+  "dtype": "q8",
+  "strip": true,
+  "minProse": 0.35,
+  "ci": false,
+  "agg": {
+    "precisionAt1": 0.6,
+    "recallAt5": 0.9,
+    "mrr": 0.7083333333333333
+  },
+  "comboAgg": {
+    "KO->EN": {
+      "n": 5,
+      "precisionAt1": 0.4,
+      "recallAt5": 0.8,
+      "mrr": 0.55
+    },
+    "EN->KO": {
+      "n": 5,
+      "precisionAt1": 0.8,
+      "recallAt5": 1,
+      "mrr": 0.8666666666666668
+    }
+  },
+  "refRate": 0,
+  "rows": [
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "bacteria",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "photosynthesis light reactions",
+      "topPage": "https://en.wikipedia.org/wiki/Sleep",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.25,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "immune system and antibodies",
+      "topPage": "https://en.wikipedia.org/wiki/Protein",
+      "p1": 0,
+      "r5": 0,
+      "rr": 0,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "deep learning neural networks",
+      "topPage": "https://en.wikipedia.org/wiki/Deep_learning",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S3",
+      "combo": "KO->EN",
+      "query": "what is a protein",
+      "topPage": "https://en.wikipedia.org/wiki/Bacteria",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.5,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "김치란 무엇인가",
+      "topPage": "https://ko.wikipedia.org/wiki/%EA%B9%80%EC%B9%98",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "세종대왕이 창제한 한글 알파벳",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%95%9C%EA%B8%80",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "대한민국 국가 개요",
+      "topPage": "https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5",
+      "p1": 0,
+      "r5": 1,
+      "rr": 0.3333333333333333,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "태양계 중심에 있는 항성 태양",
+      "topPage": "https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    },
+    {
+      "scenario": "S6",
+      "combo": "EN->KO",
+      "query": "인공지능과 기계 학습",
+      "topPage": "https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5",
+      "p1": 1,
+      "r5": 1,
+      "rr": 1,
+      "topIsProse": true
+    }
+  ]
+}

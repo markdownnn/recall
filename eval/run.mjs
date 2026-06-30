@@ -20,7 +20,11 @@ const TAU = 0.35 // prose threshold for "is this snippet a citation list?"
 const K = 5
 
 const manifest = JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
-const golden = JSON.parse(readFileSync(ci ? 'eval/ci-golden.json' : 'eval/golden.json', 'utf8'))
+// --golden=<path> overrides the default set (used by the translation-footnote run).
+const goldenPath =
+  args.find((a) => a.startsWith('--golden='))?.split('=')[1] ??
+  (ci ? 'eval/ci-golden.json' : 'eval/golden.json')
+const golden = JSON.parse(readFileSync(goldenPath, 'utf8'))
 
 console.log(
   `[eval] corpus=${manifest.length} pages  queries=${golden.length}  ` +
@@ -38,6 +42,7 @@ for (const g of golden) {
   const topIsProse = results.length > 0 && proseScore(topSnippet) >= TAU
   rows.push({
     scenario: g.scenario,
+    combo: g.combo ?? '(untagged)',
     query: g.query,
     topPage: rankedPageIds[0] ?? '(none)',
     p1: precisionAt1(rankedPageIds, g.expectTopPageIds),
@@ -49,6 +54,18 @@ for (const g of golden) {
 
 const agg = aggregate(rows)
 const refRate = referenceSnippetRate(rows)
+
+// Per-combo breakdown (KO->KO / EN->EN / KO->EN / EN->KO). The two CROSS combos
+// (KO->EN, EN->KO) are the weak spot the A/B is trying to fix, so they get their own line.
+const COMBO_ORDER = ['EN->EN', 'KO->KO', 'KO->EN', 'EN->KO']
+const byCombo = {}
+for (const r of rows) (byCombo[r.combo] ??= []).push(r)
+const comboKeys = [
+  ...COMBO_ORDER.filter((c) => byCombo[c]),
+  ...Object.keys(byCombo).filter((c) => !COMBO_ORDER.includes(c)),
+]
+const comboAgg = {}
+for (const c of comboKeys) comboAgg[c] = { n: byCombo[c].length, ...aggregate(byCombo[c]) }
 
 console.log('SCEN  P@1  R@5  RR    refProse  query -> topPage')
 for (const r of rows) {
@@ -63,9 +80,22 @@ console.log(
     `MRR=${agg.mrr.toFixed(2)}  reference-snippet-rate=${refRate.toFixed(2)}`,
 )
 
+console.log('\nPER-COMBO  n   P@1   R@5   MRR')
+for (const c of comboKeys) {
+  const a = comboAgg[c]
+  console.log(
+    `${c.padEnd(8)}  ${String(a.n).padStart(2)}  ${a.precisionAt1.toFixed(2)}  ` +
+      `${a.recallAt5.toFixed(2)}  ${a.mrr.toFixed(2)}`,
+  )
+}
+
 writeFileSync(
   'eval/last-scorecard.json',
-  JSON.stringify({ strip, minProse, ci, agg, refRate, rows }, null, 2) + '\n',
+  JSON.stringify(
+    { model: process.env.EVAL_MODEL || 'Xenova/multilingual-e5-small', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
+    null,
+    2,
+  ) + '\n',
 )
 
 if (ci) {

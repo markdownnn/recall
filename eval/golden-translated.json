@@ -1,0 +1,23 @@
+[
+  { "scenario": "S3", "combo": "KO->EN", "query": "bacteria",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"], "expectProseSnippet": true },
+  { "scenario": "S3", "combo": "KO->EN", "query": "photosynthesis light reactions",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Photosynthesis"], "expectProseSnippet": true },
+  { "scenario": "S3", "combo": "KO->EN", "query": "immune system and antibodies",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Immune_system"], "expectProseSnippet": true },
+  { "scenario": "S3", "combo": "KO->EN", "query": "deep learning neural networks",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Deep_learning"], "expectProseSnippet": true },
+  { "scenario": "S3", "combo": "KO->EN", "query": "what is a protein",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"], "expectProseSnippet": true },
+
+  { "scenario": "S6", "combo": "EN->KO", "query": "김치란 무엇인가",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%EA%B9%80%EC%B9%98"], "expectProseSnippet": true },
+  { "scenario": "S6", "combo": "EN->KO", "query": "세종대왕이 창제한 한글 알파벳",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%ED%95%9C%EA%B8%80"], "expectProseSnippet": true },
+  { "scenario": "S6", "combo": "EN->KO", "query": "대한민국 국가 개요",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD"], "expectProseSnippet": true },
+  { "scenario": "S6", "combo": "EN->KO", "query": "태양계 중심에 있는 항성 태양",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%ED%83%9C%EC%96%91"], "expectProseSnippet": true },
+  { "scenario": "S6", "combo": "EN->KO", "query": "인공지능과 기계 학습",
+    "expectTopPageIds": ["https://ko.wikipedia.org/wiki/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5"], "expectProseSnippet": true }
+]
