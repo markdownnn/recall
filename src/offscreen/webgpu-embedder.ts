@@ -1,8 +1,10 @@
-// Real embedder that runs the multilingual-e5-small model inside the offscreen
-// document.  Tries WebGPU first (fast) and falls back to single-thread WASM if
-// WebGPU is unsupported.  Returns embeddings as number[][] (NOT Float32Array[])
-// because Float32Array does not survive chrome.runtime messaging — the SW-side
-// proxy reconstructs Float32Array from these plain arrays.
+// Real embedder that runs the granite-107m-multilingual model (raw text, NO
+// query:/passage: prefix) inside the offscreen document.  Tries WebGPU first
+// (fast) and falls back to single-thread WASM if WebGPU is unsupported; if BOTH
+// fail, the load REJECTS so the offscreen can surface an "unavailable" state
+// (this device can't run the on-device model).  Returns embeddings as number[][]
+// (NOT Float32Array[]) because Float32Array does not survive chrome.runtime
+// messaging — the SW-side proxy reconstructs Float32Array from these plain arrays.
 //
 // This is the REAL embedder of the hexagonal architecture; the SW holds only a
 // proxy (OffscreenEmbedderProxy) that forwards here over RPC.
@@ -26,7 +28,10 @@ export type PipelineFactory = (
   options?: unknown,
 ) => Promise<FeatureExtractionPipeline>
 
-const MODEL_ID = 'Xenova/multilingual-e5-small'
+// granite-107m-multilingual, committed under public/models/granite/ and loaded by its bare
+// dir name. dtype:'q8' requests onnx/model_quantized.onnx - our FIRST-PARTY re-quantized
+// artifact (Task 5/6). Granite takes RAW text (no e5-style query:/passage: prefix). 384-dim.
+const MODEL_ID = 'granite'
 // Small batches + a yield between them keep indexing GPU-gentle: a big single
 // submission monopolizes the GPU and makes the page the user is currently reading
 // stutter. Smaller submissions with gaps let the foreground keep rendering. A single
@@ -53,6 +58,9 @@ function configureEnv(): void {
     env.allowLocalModels = true
     env.localModelPath = chrome.runtime.getURL('models/')
     env.allowRemoteModels = false
+    // We bundle the model locally, so transformers.js's browser cache is pointless and, in a
+    // chrome-extension context, warns "Cache 'put' ... unsupported". Turn it off.
+    env.useBrowserCache = false
   }
 }
 
@@ -76,6 +84,7 @@ export class WebGpuEmbedder {
   // triggers getPipe() without an explicit onProgress) so the popup still sees
   // model-load progress instead of a silent wait.
   private progressSink?: ProgressCb
+  private degradedSink?: (info: { device: 'wasm' }) => void
 
   // pipelineFactory defaults to the real transformers pipeline(); tests inject a fake.
   constructor(private readonly pipelineFactory: PipelineFactory = pipeline as unknown as PipelineFactory) {}
@@ -90,6 +99,15 @@ export class WebGpuEmbedder {
   // rpc-events so lazy loads show progress too.
   setProgressSink(cb: ProgressCb): void {
     this.progressSink = cb
+  }
+
+  // The offscreen wires this to an 'embedder-degraded' rpc-event with state:'wasm'. Called once
+  // granite loaded on WASM (slower than the WebGPU ideal). The side panel turns it into a
+  // "running slow" notice instead of a buried console.warn. (The harder "unavailable" state -
+  // granite failed on BOTH providers - is surfaced by the offscreen from ensureLoaded's
+  // rejection, not from here.)
+  setDegradedSink(cb: (info: { device: 'wasm' }) => void): void {
+    this.degradedSink = cb
   }
 
   // Create the pipeline (triggers the model download), wiring v4 progress events
@@ -135,7 +153,7 @@ export class WebGpuEmbedder {
         dtype: 'q8',
         progress_callback: onProgress,
       })) as FeatureExtractionPipeline
-      await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
+      await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix
       this._device = 'webgpu'
       console.log('[recall] embedder ready on WebGPU')
       return pipe
@@ -143,16 +161,19 @@ export class WebGpuEmbedder {
       console.warn('[recall] WebGPU unavailable, falling back to WASM:', String(e))
     }
 
-    // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. ---
+    // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. If THIS also
+    //     throws there is no further fallback (granite-only): the rejection propagates, getPipe
+    //     nulls pipeP, and ensureLoaded rejects so the offscreen can surface "unavailable". ---
     ;(env.backends.onnx as any).wasm.numThreads = 1
     const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
       device: 'wasm',
-      // dtype:'q8' requests model_quantized.onnx — the same bundled file used by WebGPU path.
-      dtype: 'q8',
+      dtype: 'q8', // model_quantized.onnx - the same bundled file used by the WebGPU path.
       progress_callback: onProgress,
     })) as FeatureExtractionPipeline
-    await pipe(['query: warmup'], { pooling: 'mean', normalize: true })
+    await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix
     this._device = 'wasm'
+    console.warn('[recall] DEGRADED embedder: granite on WASM single-thread (slow)')
+    this.degradedSink?.({ device: 'wasm' })
     console.log('[recall] embedder ready on WASM (single-thread)')
     return pipe
   }
@@ -186,13 +207,14 @@ export class WebGpuEmbedder {
     const out: number[][] = []
     try {
       for (let i = 0; i < texts.length; i += BATCH) {
+        // granite takes raw text in both lanes (no e5-style prefix). `kind` still drives the
+        // two-lane scheduler priority; it no longer alters the text.
         const slice = texts.slice(i, i + BATCH)
-        const prefixed = slice.map((t) => `${kind}: ${t}`)
         // [Recall:perf] per-batch embed cost. Summed over a drain this shows whether the
         // ~30s is the model inference itself vs the load/yields around it. Removable.
         const b0 = performance.now()
-        const output = await pipe(prefixed, { pooling: 'mean', normalize: true })
-        console.log(`[Recall:perf] embed batch=${prefixed.length} ${Math.round(performance.now() - b0)}ms`)
+        const output = await pipe(slice, { pooling: 'mean', normalize: true })
+        console.log(`[Recall:perf] embed batch=${slice.length} ${Math.round(performance.now() - b0)}ms`)
         for (const arr of output.tolist() as number[][]) out.push(arr)
         // Yield the GPU between batches (not after the last) so the foreground page
         // the user is reading keeps rendering smoothly during background indexing.

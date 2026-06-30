@@ -97,10 +97,10 @@ test('single-flight: concurrent embed calls never overlap in the model', async (
   expect(fake.maxActive).toBe(1)
 })
 
-// Scenario: e5 requires "query: " / "passage: " prefixes; dropping them silently
-// wrecks retrieval quality.
+// Scenario: granite takes raw input_ids+attention_mask and must NOT receive the old e5
+// "query: "/"passage: " prefixes; leaking them poisons every embedding.
 // Coverage: integration (fake records the exact strings the model receives).
-test('kind prefix: query/passage prefixes reach the model', async () => {
+test('granite: raw text (no prefix) reaches the model for both lanes', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
 
@@ -108,8 +108,36 @@ test('kind prefix: query/passage prefixes reach the model', async () => {
   await embedder.embed(['bar'], 'passage')
 
   const flat = fake.calls.flat()
-  expect(flat).toContain('query: foo')
-  expect(flat).toContain('passage: bar')
+  expect(flat).toContain('foo')
+  expect(flat).toContain('bar')
+  expect(flat).not.toContain('query: foo')
+  expect(flat).not.toContain('passage: bar')
+})
+
+// Scenario: WebGPU is unavailable so granite loads on WASM single-thread (slower). The
+// embedder must record device='wasm' AND fire the degraded sink so the side panel can show a
+// "running slow" notice instead of a buried console.warn.
+// Coverage: integration (fake fails webgpu once; wasm succeeds; asserts device + sink).
+test('wasm fallback records device=wasm and fires the degraded sink', async () => {
+  const fake = makeFake({ failTimes: 1 }) // fail granite on webgpu; wasm (2nd call) succeeds
+  const embedder = new WebGpuEmbedder(fake.factory)
+  const seen: { device: string }[] = []
+  embedder.setDegradedSink((info) => seen.push(info))
+
+  await embedder.embed(['foo'], 'query')
+
+  expect(embedder.device).toBe('wasm')
+  expect(seen).toEqual([{ device: 'wasm' }])
+})
+
+// Scenario: granite cannot be created on EITHER WebGPU or WASM - this device can't run the
+// on-device model at all. ensureLoaded()/embed() MUST reject (the offscreen turns that into a
+// user-visible "search unavailable on this hardware" notice) rather than hang or fake success.
+// Coverage: integration (fake fails both granite attempts; asserts the load rejects).
+test('granite unavailable on both providers rejects (offscreen surfaces unavailable)', async () => {
+  const fake = makeFake({ failTimes: 2 }) // fail granite on webgpu AND wasm
+  const embedder = new WebGpuEmbedder(fake.factory)
+  await expect(embedder.embed(['foo'], 'query')).rejects.toBeTruthy()
 })
 
 // Scenario: a background indexing batch is mid-flight when the user hits Enter on a
@@ -127,7 +155,7 @@ test('priority: a query embed jumps ahead of queued passage embeds', async () =>
   const q = embedder.embed(['q1'], 'query') // arrives while p1 in flight -> overtakes p2
   await Promise.all([p1, p2, q])
 
-  expect(fake.calls.flat()).toEqual(['passage: p1', 'query: q1', 'passage: p2'])
+  expect(fake.calls.flat()).toEqual(['p1', 'q1', 'p2'])
 })
 
 // Scenario: a large capture (20 chunks) must be embedded in small GPU-gentle batches
@@ -142,6 +170,6 @@ test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () 
 
   expect(vecs.length).toBe(20)
   expect(vecs[0].length).toBe(4)
-  const batchSizes = fake.calls.filter((c) => c[0].startsWith('passage: ')).map((c) => c.length)
+  const batchSizes = fake.calls.filter((c) => c[0] !== 'warmup').map((c) => c.length)
   expect(batchSizes).toEqual([8, 8, 4])
 })
