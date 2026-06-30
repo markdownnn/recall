@@ -17,6 +17,7 @@ export interface UIStrings {
   pausedNote: string
   notSavedDenylisted: string
   indexingProgress: (embedded: number) => string
+  indexingAria: string          // aria-label for the indeterminate indexing indicator (NEW; additive)
   indexingFailed: (err: string) => string
   captureFailed: (err: string) => string
   searchFailed: (err: string) => string
@@ -65,6 +66,7 @@ export const EN: UIStrings = {
   pausedNote: 'Paused - nothing is being saved',
   notSavedDenylisted: 'not saved: this site is on the no-remember list',
   indexingProgress: (embedded) => `indexing... ${embedded} done`,
+  indexingAria: 'Indexing in progress',
   indexingFailed: (err) => `indexing failed: ${err}`,
   captureFailed: (err) => `capture failed: ${err}`,
   searchFailed: (err) => `search failed: ${err}`,
