@@ -20,6 +20,11 @@ function hostOf(url: string | undefined): string {
 // <article> element (that tag is reserved for SearchTab result cards).
 export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => void; refreshSignal: number }) {
   const [tab, setTab] = useState<ActiveTab>({ url: '', host: '', title: '' })
+  // False until the FIRST active-tab query resolves. The seed url is '' (isCapturableUrl('')
+  // is false), so without this gate the button would flash the disabled "Can't save this page"
+  // error state for a beat before the real tab loads. While unresolved we show a NEUTRAL
+  // disabled "Capture this page" instead of the wrong error.
+  const [resolved, setResolved] = useState(false)
   const [saved, setSaved] = useState(false)
   const [paused, setPaused] = useState(false)
   const [userDenyHosts, setUserDenyHosts] = useState<string[]>([])
@@ -35,6 +40,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
     latestUrlRef.current = url
     const next: ActiveTab = { url, host: hostOf(url), title: active?.title ?? '' }
     setTab(next)
+    setResolved(true) // the real tab is known now; the button can leave its neutral loading state
 
     // Badge READ: send the RAW tab url; the offscreen applies sanitizeUrl+pageIdFromUrl so
     // the id can never drift from what capture stored. Skip non-http(s) tabs.
@@ -178,11 +184,11 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
           already-saved -> "Update" + faded style; else the prominent "Capture this page". */}
       <div class="page-actions">
         <button
-          class={!capturable ? 'capture disabled' : saved ? 'capture saved' : 'capture'}
-          disabled={!capturable}
+          class={!resolved ? 'capture' : !capturable ? 'capture disabled' : saved ? 'capture saved' : 'capture'}
+          disabled={!resolved || !capturable}
           onClick={onCapture}
         >
-          {!capturable ? t.cannotCaptureButton : saved ? t.updateButton : t.captureButton}
+          {!resolved ? t.captureButton : !capturable ? t.cannotCaptureButton : saved ? t.updateButton : t.captureButton}
         </button>
       </div>
 
