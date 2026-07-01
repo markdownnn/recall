@@ -2,6 +2,10 @@
 
 **Re-find anything you've read on the web — by meaning, not by keyword — fully on your own device.**
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Recall — semantic search of everything you read, on-device" width="440">
+</p>
+
 Recall is a local-first, privacy-first Chrome extension (Manifest V3) that quietly remembers the
 pages you actually read and lets you search them later by *what they were about*. You don't need
 to remember the title or the exact words. Ask "that article about mitochondria as the cell's power
