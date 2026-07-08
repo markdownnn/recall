@@ -6,7 +6,7 @@ test('bge candidate runner script and package command exist', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> }
   expect(pkg.scripts['eval:bge']).toBe('vite-node eval/run-candidates.mjs')
   expect(pkg.scripts['eval:english']).toBe(
-    'vite-node eval/run.mjs -- --strip --min-prose=0.35 --golden=eval/english-golden.json',
+    'npm run eval:fetch-model && vite-node eval/run.mjs -- --strip --min-prose=0.35 --golden=eval/english-golden.json',
   )
   expect(existsSync('eval/run-candidates.mjs')).toBe(true)
 })

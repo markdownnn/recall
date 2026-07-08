@@ -92,7 +92,7 @@ for (const c of comboKeys) {
 writeFileSync(
   'eval/last-scorecard.json',
   JSON.stringify(
-    { model: process.env.EVAL_MODEL || 'granite', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
+    { model: process.env.EVAL_MODEL || 'bge-base-en-v1.5', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
     null,
     2,
   ) + '\n',

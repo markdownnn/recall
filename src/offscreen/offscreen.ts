@@ -71,7 +71,7 @@ const recall = new RecallService(localEmbedder, store)
 const localAnswerGenerator: AnswerGeneratorPort = {
   answer: async ({ chunks }) => ({
     text: chunks[0]?.chunk.text ?? 'I could not find that in your saved pages.',
-    citedChunkIds: chunks.slice(0, 3).map((r) => r.chunk.id),
+    citedChunkIds: chunks.slice(0, 1).map((r) => r.chunk.id),
   }),
 }
 const ask = new AskService(localEmbedder, store, localAnswerGenerator)
