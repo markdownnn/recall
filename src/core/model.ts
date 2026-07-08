@@ -22,3 +22,14 @@ export interface RecallQuery {
   text: string
   k: number
 }
+
+export interface AskQuery {
+  text: string
+  retrieveK: number
+  contextK: number
+}
+
+export interface AskAnswer {
+  text: string
+  sources: RankedResult[]
+}
