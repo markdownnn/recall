@@ -19,6 +19,14 @@ export function buildArtifactCacheKey(manifest: ModelManifest, file: ModelArtifa
 }
 
 export function fileUrl(manifest: ModelManifest, file: ModelArtifactFile): string {
+  if (
+    file.path.startsWith('/') ||
+    file.path.startsWith('//') ||
+    file.path.includes('://') ||
+    file.path.split('/').includes('..')
+  ) {
+    throw new Error(`expected relative artifact path under manifest baseUrl: ${file.path}`)
+  }
   return new URL(file.path, manifest.baseUrl).toString()
 }
 
