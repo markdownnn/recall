@@ -45,16 +45,28 @@ env.cacheDir = resolve('eval/.cache') // remote model weights land here (gitigno
 const CACHE_DIR = resolve('eval/.cache/embeds')
 mkdirSync(CACHE_DIR, { recursive: true })
 
-function cachePath(kind, text) {
-  const h = createHash('sha256')
-    .update(MODEL).update('\0')
-    .update(DTYPE).update('\0')
-    .update(MODEL_FILE).update('\0')
-    .update(PREFIX).update('\0')
-    .update(String(MRL_DIM)).update('\0')
+export function embedCacheKey({ model, dtype, modelFile, prefix, mrlDim, kind, text }) {
+  return createHash('sha256')
+    .update(model).update('\0')
+    .update(dtype).update('\0')
+    .update(modelFile).update('\0')
+    .update(prefix).update('\0')
+    .update(String(mrlDim)).update('\0')
     .update(kind).update('\n')
     .update(text)
     .digest('hex')
+}
+
+function cachePath(kind, text) {
+  const h = embedCacheKey({
+    model: MODEL,
+    dtype: DTYPE,
+    modelFile: MODEL_FILE,
+    prefix: PREFIX,
+    mrlDim: MRL_DIM,
+    kind,
+    text,
+  })
   return resolve(CACHE_DIR, `${h}.f32`)
 }
 
