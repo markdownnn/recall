@@ -63,7 +63,6 @@
 
 - Modify: `manifest.config.ts`
 - Modify: `src/ui/sidepanel/strings.ts`
-- Modify: `public/_locales/en/messages.json`
 - Delete: `public/_locales/ko/messages.json`
 - Modify: `tests/core/messages-ko.test.ts`
 - Modify: `tests/core/messages-ko-render.test.ts`
