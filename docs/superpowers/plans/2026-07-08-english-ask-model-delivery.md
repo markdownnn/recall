@@ -66,6 +66,7 @@
 - Delete: `public/_locales/ko/messages.json`
 - Modify: `tests/core/messages-ko.test.ts`
 - Modify: `tests/core/messages-ko-render.test.ts`
+- Delete: `tests/e2e/ko-locale.spec.ts`
 - Create: `tests/core/english-only.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -109,6 +110,7 @@ Delete these files:
 public/_locales/ko/messages.json
 tests/core/messages-ko.test.ts
 tests/core/messages-ko-render.test.ts
+tests/e2e/ko-locale.spec.ts
 ```
 
 Update the top comment in `src/ui/sidepanel/strings.ts` to this:
