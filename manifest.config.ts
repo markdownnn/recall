@@ -4,9 +4,8 @@ export default defineManifest({
   manifest_version: 3,
   name: '__MSG_appName__',
   version: '1.0.0',
-  // Localized description. The strings live in public/_locales/{en,ko}/messages.json;
-  // Chrome resolves __MSG_appDesc__ at load from the user's UI language, falling back to
-  // default_locale ('en').
+  // English-only description. The strings live in public/_locales/en/messages.json.
+  // Chrome resolves __MSG_appDesc__ from default_locale ('en').
   default_locale: 'en',
   description: '__MSG_appDesc__',
   icons: {

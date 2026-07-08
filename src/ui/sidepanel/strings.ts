@@ -1,7 +1,5 @@
-// UI strings facade. Source of truth: public/_locales/{en,ko}/messages.json (standard MV3
-// chrome.i18n). Chrome resolves the right locale from the browser's UI language at load
-// (Korean Chrome -> ko, everything else -> en via default_locale). Call sites stay clean:
-// `t.captureButton`, `t.captureFailed(err)` - they never touch chrome.i18n directly.
+// UI strings facade. Source of truth: public/_locales/en/messages.json.
+// Recall is English-only, so call sites use this facade instead of branching on locale.
 //
 // In a real extension page (side panel, onboarding) chrome.i18n.getMessage is synchronous and
 // always available. In a plain Node context (vitest) there is no `chrome`, so we fall back to
