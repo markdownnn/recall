@@ -29,14 +29,10 @@ export default defineManifest({
   content_scripts: [
     { matches: ['<all_urls>'], js: ['src/content/capture.ts'], run_at: 'document_idle' },
   ],
-  // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm (background) and
-  // @huggingface/transformers ONNX runtime (embedder worker).  Without it Chrome's
-  // default CSP blocks WebAssembly compilation and the background hangs forever.
-  // connect-src is 'self' only: the ONNX WASM runtime is bundled under public/onnx-hf/,
-  // and the embedding model (granite-107m-multilingual R1, int8 quantized) is COMMITTED
-  // under public/models/granite/ and VERIFIED at build by scripts/fetch-model.mjs (SHA-256,
-  // no remote fetch).  Nothing is fetched from a remote host at build OR runtime — literally
-  // nothing leaves the device.
+  // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm, Transformers ONNX, and WebLLM.
+  // connect-src is 'self' only: runtime model loads must use extension-hosted URLs.
+  // BGE is prepared under public/models/bge-base-en-v1.5, and WebLLM uses an appConfig
+  // that points at public/models/webllm instead of the WebLLM Hugging Face/GitHub defaults.
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
   },

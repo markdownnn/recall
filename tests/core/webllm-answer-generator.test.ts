@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { buildAskMessages, WebLlmAnswerGenerator } from '../../src/offscreen/webllm-answer-generator'
+import {
+  buildAskMessages,
+  buildLlamaAppConfig,
+  LLAMA_ASK_MODEL,
+  LLAMA_ASK_MODEL_LIB,
+  WebLlmAnswerGenerator,
+} from '../../src/offscreen/webllm-answer-generator'
 import type { RankedResult } from '../../src/core/model'
 
 const result: RankedResult = {
@@ -19,6 +25,24 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('I could not find that in your saved pages.')
     expect(joined).toContain('[p1#0]')
     expect(joined).toContain('Cortisol can disrupt REM sleep.')
+  })
+
+  // Scenario: WebLLM 기본 설정이 Hugging Face나 GitHub에서 모델을 받으면 확장 프로그램 CSP에 막힌다.
+  // Coverage: ✅ integration
+  test('llama app config uses only self-hosted model urls', () => {
+    const baseUrl =
+      'chrome-extension://recall/models/webllm/llama-3.2-1b-instruct/q4f16_1/resolve/main/'
+    const modelLibUrl = `${baseUrl}${LLAMA_ASK_MODEL_LIB}`
+    const config = buildLlamaAppConfig(baseUrl, modelLibUrl)
+    const record = config.model_list[0]
+    const serialized = JSON.stringify(config)
+
+    expect(record.model_id).toBe(LLAMA_ASK_MODEL)
+    expect(record.model).toBe(baseUrl)
+    expect(record.model_lib).toBe(modelLibUrl)
+    expect(record.model).toContain('/resolve/main/')
+    expect(serialized).not.toContain('huggingface.co')
+    expect(serialized).not.toContain('raw.githubusercontent.com')
   })
 
   // Scenario: WebLLM이 없는 Chunk id를 인용하면 사용자에게 가짜 출처가 보일 수 있다.
