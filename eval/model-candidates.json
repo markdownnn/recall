@@ -1,0 +1,23 @@
+[
+  {
+    "id": "BAAI/bge-small-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 34
+  },
+  {
+    "id": "BAAI/bge-base-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 110
+  },
+  {
+    "id": "BAAI/bge-large-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 330
+  }
+]

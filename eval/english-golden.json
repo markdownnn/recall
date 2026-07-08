@@ -1,0 +1,86 @@
+[
+  {
+    "scenario": "EN1",
+    "combo": "EN->EN",
+    "query": "bacteria",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN2",
+    "combo": "EN->EN",
+    "query": "deep learning neural networks",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Deep_learning"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN3",
+    "combo": "EN->EN",
+    "query": "ingestion",
+    "expectTopPageIds": ["https://github.com/hashicorp/terraform-provider-aws/issues/31364"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN4",
+    "combo": "EN->EN",
+    "query": "hormone that ruins sleep",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN5",
+    "combo": "EN->EN",
+    "query": "powerhouse of the cell",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Mitochondrion"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN6",
+    "combo": "EN->EN",
+    "query": "what is a protein",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN7",
+    "combo": "EN->EN",
+    "query": "genetic material in chromosomes",
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/DNA"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN8",
+    "combo": "EN->EN",
+    "query": "javascript array methods",
+    "expectTopPageIds": ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN9",
+    "combo": "EN->EN",
+    "query": "javascript promises asynchronous operations",
+    "expectTopPageIds": ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN10",
+    "combo": "EN->EN",
+    "query": "fetch api streaming response body",
+    "expectTopPageIds": ["https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN11",
+    "combo": "EN->EN",
+    "query": "using strace to debug system calls",
+    "expectTopPageIds": ["https://jvns.ca/blog/2021/04/03/what-problems-do-people-solve-with-strace/"],
+    "expectProseSnippet": true
+  },
+  {
+    "scenario": "EN12",
+    "combo": "EN->EN",
+    "query": "startup ideas solve your own problems",
+    "expectTopPageIds": ["https://paulgraham.com/startupideas.html"],
+    "expectProseSnippet": true
+  }
+]
