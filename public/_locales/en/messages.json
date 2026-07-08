@@ -8,10 +8,15 @@
   "brand": { "message": "Recall" },
 
   "searching": { "message": "searching..." },
+  "answering": { "message": "answering..." },
   "noResults": { "message": "no results" },
   "searchTabLabel": { "message": "Search" },
   "searchButtonLabel": { "message": "Search" },
   "searchButtonAria": { "message": "Search" },
+  "askModeLabel": { "message": "Ask" },
+  "askButtonLabel": { "message": "Ask" },
+  "askButtonAria": { "message": "Ask saved pages" },
+  "askPlaceholder": { "message": "Ask about saved pages..." },
   "historyTabLabel": { "message": "History" },
   "settingsTabLabel": { "message": "Settings" },
   "historyEmpty": { "message": "Nothing captured yet - pages you save will show up here." },
@@ -35,6 +40,10 @@
   "reloadToCapture": { "message": "Reload this page, then save it" },
   "searchFailed": {
     "message": "search failed: $error$",
+    "placeholders": { "error": { "content": "$1" } }
+  },
+  "askFailed": {
+    "message": "ask failed: $error$",
     "placeholders": { "error": { "content": "$1" } }
   },
 

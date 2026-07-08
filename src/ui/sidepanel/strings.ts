@@ -42,10 +42,15 @@ export interface UIStrings {
   brand: string
   // Search
   searching: string
+  answering: string
   noResults: string
   searchTabLabel: string
   searchButtonLabel: string
   searchButtonAria: string
+  askModeLabel: string
+  askButtonLabel: string
+  askButtonAria: string
+  askPlaceholder: string
   historyTabLabel: string
   settingsTabLabel: string
   historyEmpty: string
@@ -65,6 +70,7 @@ export interface UIStrings {
   cannotCapturePage: string
   reloadToCapture: string
   searchFailed: (err: string) => string
+  askFailed: (err: string) => string
   // SAVED badge (PAGE-scoped)
   savedBadge: string
   notSavedBadge: string
@@ -135,10 +141,15 @@ export interface UIStrings {
 export const t: UIStrings = {
   brand: msg('brand'),
   searching: msg('searching'),
+  answering: msg('answering'),
   noResults: msg('noResults'),
   searchTabLabel: msg('searchTabLabel'),
   searchButtonLabel: msg('searchButtonLabel'),
   searchButtonAria: msg('searchButtonAria'),
+  askModeLabel: msg('askModeLabel'),
+  askButtonLabel: msg('askButtonLabel'),
+  askButtonAria: msg('askButtonAria'),
+  askPlaceholder: msg('askPlaceholder'),
   historyTabLabel: msg('historyTabLabel'),
   settingsTabLabel: msg('settingsTabLabel'),
   historyEmpty: msg('historyEmpty'),
@@ -157,6 +168,7 @@ export const t: UIStrings = {
   cannotCapturePage: msg('cannotCapturePage'),
   reloadToCapture: msg('reloadToCapture'),
   searchFailed: (err) => msg('searchFailed', [err]),
+  askFailed: (err) => msg('askFailed', [err]),
   savedBadge: msg('savedBadge'),
   notSavedBadge: msg('notSavedBadge'),
   loadingPercent: (pct) => msg('loadingPercent', [String(pct)]),

@@ -4,6 +4,7 @@ import {
   buildLlamaAppConfig,
   LLAMA_ASK_MODEL,
   LLAMA_ASK_MODEL_LIB,
+  webLlmProgressToModelProgress,
   WebLlmAnswerGenerator,
 } from '../../src/offscreen/webllm-answer-generator'
 import type { RankedResult } from '../../src/core/model'
@@ -43,6 +44,15 @@ describe('webllm answer generator', () => {
     expect(record.model).toContain('/resolve/main/')
     expect(serialized).not.toContain('huggingface.co')
     expect(serialized).not.toContain('raw.githubusercontent.com')
+  })
+
+  // Scenario: 라마 모델이 처음 켜질 때 오래 걸리는데 진행률이 없으면 사용자는 멈춘 줄 안다.
+  // Coverage: ✅ integration
+  test('webllm progress reports become model loading percentages', () => {
+    expect(webLlmProgressToModelProgress({ progress: 0.42, text: 'loading', timeElapsed: 1 }))
+      .toEqual({ status: 'progress', progress: 42 })
+    expect(webLlmProgressToModelProgress({ progress: 42, text: 'loading', timeElapsed: 1 }))
+      .toEqual({ status: 'progress', progress: 42 })
   })
 
   // Scenario: WebLLM이 없는 Chunk id를 인용하면 사용자에게 가짜 출처가 보일 수 있다.

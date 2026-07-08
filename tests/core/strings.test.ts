@@ -5,7 +5,8 @@
 import { t } from '../../src/ui/sidepanel/strings'
 
 const STATIC_KEYS = [
-  'brand', 'searching', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
+  'brand', 'searching', 'answering', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
+  'askModeLabel', 'askButtonLabel', 'askButtonAria', 'askPlaceholder',
   'historyTabLabel', 'settingsTabLabel', 'historyEmpty', 'loadMore',
   'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'saveRetry', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
@@ -25,7 +26,7 @@ const STATIC_KEYS = [
   'obShortcutsTitle', 'obMacTip', 'obTryTitle', 'obTryText',
 ] as const
 const FUNCTION_KEYS = [
-  'captureFailed', 'searchFailed',
+  'captureFailed', 'searchFailed', 'askFailed',
   'loadingPercent', 'wonRemember', 'alreadyOnListHost', 'forgotEverythingFrom', 'forgetConfirm',
 ] as const
 
@@ -78,6 +79,9 @@ test('byte-identical e2e strings are preserved', () => {
   expect(t.loadMore).toBe('Load more')
   expect(t.settingsTabLabel).toBe('Settings')
   expect(t.searchTabLabel).toBe('Search')
+  expect(t.askModeLabel).toBe('Ask')
+  expect(t.askButtonLabel).toBe('Ask')
+  expect(t.askPlaceholder).toBe('Ask about saved pages...')
   expect(t.cannotCapturePage).toBe("This page can't be saved")
   expect(t.reloadToCapture).toBe('Reload this page, then save it')
   expect(t.obSeedButton).toBe('Add 3 sample pages')

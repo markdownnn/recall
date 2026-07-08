@@ -72,7 +72,7 @@ const recall = new RecallService(localEmbedder, store)
 let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
 function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
   if (!answerGeneratorP) {
-    answerGeneratorP = createLlamaAskEngine()
+    answerGeneratorP = createLlamaAskEngine(emitModelProgress)
       .then((engine) => new WebLlmAnswerGenerator(engine))
       .catch((err) => {
         answerGeneratorP = null
