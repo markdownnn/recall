@@ -21,6 +21,7 @@ import { migrateEmbeddingModel } from '../core/embed-migration'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
 import type { EmbeddingPort } from '../core/ports'
 import type { AnswerGeneratorPort } from '../core/answer-generator'
+import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'
 
 // ---------------------------------------------------------------------------
 // Core services
@@ -68,13 +69,18 @@ const chunker = new ParagraphChunker(220)
 const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
-const localAnswerGenerator: AnswerGeneratorPort = {
-  answer: async ({ chunks }) => ({
-    text: chunks[0]?.chunk.text ?? 'I could not find that in your saved pages.',
-    citedChunkIds: chunks.slice(0, 1).map((r) => r.chunk.id),
-  }),
+let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
+function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
+  if (!answerGeneratorP) {
+    answerGeneratorP = createLlamaAskEngine()
+      .then((engine) => new WebLlmAnswerGenerator(engine))
+      .catch((err) => {
+        answerGeneratorP = null
+        throw err
+      })
+  }
+  return answerGeneratorP
 }
-const ask = new AskService(localEmbedder, store, localAnswerGenerator)
 const gate = new CaptureGate()
 
 // ---------------------------------------------------------------------------
@@ -308,6 +314,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
+    const ask = new AskService(localEmbedder, store, await getAnswerGenerator())
     const answer = await ask.ask({ text, retrieveK, contextK })
     return { answer }
   }

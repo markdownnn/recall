@@ -19,7 +19,9 @@ test('offscreen handles ask op with the core AskService', () => {
   const offscreen = readFileSync('src/offscreen/offscreen.ts', 'utf8')
 
   expect(offscreen).toContain("import { AskService } from '../core/ask-service'")
-  expect(offscreen).toContain('const localAnswerGenerator')
+  expect(offscreen).toContain("import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'")
+  expect(offscreen).toContain('function getAnswerGenerator()')
   expect(offscreen).toContain("if (op === 'ask')")
+  expect(offscreen).toContain('await getAnswerGenerator()')
   expect(offscreen).toContain('await ask.ask({ text, retrieveK, contextK })')
 })
