@@ -39,6 +39,10 @@ describe('model artifacts', () => {
       /relative artifact path/,
     )
     expect(() => fileUrl(manifest, { ...manifest.files[0], path: '../model.onnx' })).toThrow(/relative artifact path/)
+    expect(() => fileUrl(manifest, { ...manifest.files[0], path: '..\\model.onnx' })).toThrow(/relative artifact path/)
+    expect(() => fileUrl(manifest, { ...manifest.files[0], path: '%2e%2e/model.onnx' })).toThrow(
+      /relative artifact path/,
+    )
     expect(() => fileUrl(manifest, { ...manifest.files[0], path: '/model.onnx' })).toThrow(/relative artifact path/)
   })
 

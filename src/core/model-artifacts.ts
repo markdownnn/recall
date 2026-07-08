@@ -19,15 +19,30 @@ export function buildArtifactCacheKey(manifest: ModelManifest, file: ModelArtifa
 }
 
 export function fileUrl(manifest: ModelManifest, file: ModelArtifactFile): string {
+  const unsafePath = () => new Error(`expected relative artifact path under manifest baseUrl: ${file.path}`)
+  let decodedPath: string
+  try {
+    decodedPath = decodeURIComponent(file.path)
+  } catch {
+    throw unsafePath()
+  }
+
   if (
     file.path.startsWith('/') ||
-    file.path.startsWith('//') ||
     file.path.includes('://') ||
-    file.path.split('/').includes('..')
+    file.path.includes('\\') ||
+    decodedPath.includes('\\') ||
+    decodedPath.split('/').includes('..')
   ) {
-    throw new Error(`expected relative artifact path under manifest baseUrl: ${file.path}`)
+    throw unsafePath()
   }
-  return new URL(file.path, manifest.baseUrl).toString()
+
+  const baseHref = manifest.baseUrl.endsWith('/') ? manifest.baseUrl : `${manifest.baseUrl}/`
+  const url = new URL(file.path, baseHref)
+  if (!url.href.startsWith(baseHref)) {
+    throw unsafePath()
+  }
+  return url.toString()
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
