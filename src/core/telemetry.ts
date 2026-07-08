@@ -95,9 +95,9 @@ export interface TelemetryPort {
 }
 
 // ---------------------------------------------------------------------------
-// Default adapter: does nothing. This is what is wired by default, so the
-// zero-egress guarantee (connect-src 'self') holds literally. Swapping in a
-// real network adapter is an explicit, opt-in, separately-reviewed change.
+// Default adapter: does nothing. This is what is wired by default, so telemetry has
+// no network path. Swapping in a real network adapter is an explicit, opt-in,
+// separately-reviewed change.
 // ---------------------------------------------------------------------------
 
 export class NullTelemetry implements TelemetryPort {

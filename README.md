@@ -7,13 +7,14 @@
 </p>
 
 Recall is a local-first, privacy-first Chrome extension (Manifest V3) that quietly remembers the
-pages you actually read and lets you search them later by *what they were about*. You don't need
-to remember the title or the exact words. Ask "that article about mitochondria as the cell's power
-plant" and Recall finds it — in Korean **and** English — using on-device semantic search.
+pages you actually read and lets you search or ask about them later by *what they were about*. You
+don't need to remember the title or the exact words. Ask "that article about mitochondria as the
+cell's power plant" and Recall finds it using on-device English semantic search.
 
-Everything runs on your machine. The ~107MB IBM Granite embedding model and a SQLite database live
-inside the extension. **Nothing you read ever leaves your computer.** No servers, no accounts, no
-telemetry, no ads.
+Your reading data stays on your machine. The BGE English embedding model, the WebLLM answer model,
+and a SQLite database run in the browser. Model files may be loaded from the extension package or
+from a configured Cloudflare R2 model bucket, but **the pages you read and the questions you ask do
+not leave your computer**. No accounts, no telemetry, no ads.
 
 ---
 
@@ -30,12 +31,12 @@ recall **without** the privacy cost, by doing the embedding and the search local
 
 This is the differentiator, so it's worth stating plainly:
 
-- **Zero network egress.** The extension's Content Security Policy pins `connect-src 'self'`
-  (see `manifest.config.ts`). The page can't open a socket to anywhere but the extension's own
-  bundled assets. There is no analytics endpoint to disable because there is no endpoint at all.
-- **The model is local.** The IBM Granite `granite-embedding-107m-multilingual` model (int8
-  quantized to ~107MB) and the ONNX runtime are bundled under `public/`. Embeddings are computed
-  in the browser via WebGPU (or WASM fallback).
+- **No reading-data egress.** Captured page text, page URLs, search queries, and Ask questions are
+  processed locally. Model artifact downloads are separate: they contain public model files, not
+  user data.
+- **The models run locally.** The selected BGE English embedding model runs through Transformers
+  ONNX in the browser. Ask answers use WebLLM, starting with Llama and keeping Gemma as the next
+  candidate.
 - **The database is local.** Captured text and vectors live in a `@sqlite.org/sqlite-wasm`
   database backed by `unlimitedStorage`, inside the extension's own origin.
 - **No accounts, no telemetry, no ads.** Nothing to sign up for. Nothing phones home.
@@ -57,8 +58,9 @@ This is the differentiator, so it's worth stating plainly:
   beats an irrelevant high-cosine hit.
 - **Document-level results.** Pages are chunked into paragraphs for embedding, but results are
   rolled up to the *document* so you see one entry per article, ranked by its best passage.
-- **Bilingual (Korean + English).** The multilingual Granite model handles mixed KO/EN reading
-  habits; the UI is localized (`public/_locales/{en,ko}`).
+- **English-only quality target.** Recall optimizes for English retrieval quality.
+- **Ask your saved pages.** Ask mode retrieves the best saved chunks, then WebLLM writes a short
+  cited answer from those chunks.
 - **Side panel UI.** A single Chrome side-panel surface for Search, History, and Settings — no
   popup. Toggle it with `Ctrl/Cmd+Shift+K`.
 - **Onboarding.** An interactive first-run page that explains capture and lets you try a search
@@ -91,6 +93,7 @@ The runtime is split across MV3's three contexts:
   ┌───────────────────────────────▼─────────────────────────────────┐
   │  Offscreen document (src/offscreen)  — the engine                │
   │    • @huggingface/transformers embedder (WebGPU / WASM)          │
+  │    • @mlc-ai/web-llm answer model (WebGPU)                       │
   │    • @sqlite.org/sqlite-wasm  (vectors + FTS5, in a Worker)      │
   └───────────────────────────────┬─────────────────────────────────┘
                                   │
@@ -118,7 +121,8 @@ after the worker sleeps).
 | Build | Vite + `@crxjs/vite-plugin` (MV3) |
 | Database | `@sqlite.org/sqlite-wasm` (vectors + FTS5) |
 | Embeddings | `@huggingface/transformers` (ONNX, WebGPU/WASM) |
-| Model | IBM `granite-embedding-107m-multilingual`, self-quantized to int8 |
+| Embedding model | `Xenova/bge-base-en-v1.5` q8 |
+| Ask model | WebLLM Llama first, Gemma candidate next |
 | Readability | `@mozilla/readability` |
 | Unit tests | Vitest |
 | E2E | Playwright |
@@ -138,33 +142,28 @@ after the worker sleeps).
 npm install
 ```
 
-### 2. Get the model
+### 2. Get the embedding model
 
-**The embedding model is not in the repo** — its ~107MB ONNX file exceeds GitHub's 100MB-per-file
-limit. The build's `prebuild` step (`scripts/fetch-model.mjs`) checks for it and SHA-256-verifies
-whatever is on disk against pinned hashes. If the model is missing, get it one of two ways:
+**The embedding model is not in the repo** because the ONNX file is large. The build's `prebuild`
+step (`scripts/fetch-model.mjs`) checks for it and SHA-256-verifies whatever is on disk against
+pinned hashes. If the model is missing, prepare it with:
 
-- **Download it** from HuggingFace (default repo `markdownnn/recall-granite-q8`):
-
-  ```bash
-  npm run fetch-model
-  # or point at a different repo/mirror:
-  RECALL_MODEL_HF_REPO=<owner>/<repo> npm run fetch-model
-  ```
-
-- **Build it yourself** from IBM's official weights (reproducible, no trust required):
-
-  ```bash
-  pip install "optimum[onnxruntime]" "transformers"
-  python scripts/quantize-granite.py
-  # copy its outputs into public/models/granite/
-  ```
+```bash
+npm run eval:fetch-model
+```
 
 Either way the four files (`onnx/model_quantized.onnx`, `tokenizer.json`, `config.json`,
 `tokenizer_config.json`) must match the pinned SHA-256 hashes, which is the integrity guarantee.
 
 > Note: `npm run build` also runs `fetch-model` automatically via `prebuild`. If you already have
 > the model on disk, it just verifies and proceeds — no download.
+
+To prepare model folders for Cloudflare R2, generate a manifest and upload the folder:
+
+```bash
+npm run models:manifest -- public/models/bge-base-en-v1.5 bge-base-en-v1.5 embedding v1 https://example.com/models/bge-base-en-v1.5/
+npm run models:upload-r2 -- recall-models public/models/bge-base-en-v1.5 models/bge-base-en-v1.5 --dry-run
+```
 
 ### 3. Build and load
 
@@ -197,20 +196,14 @@ A few things I cared about while building this, for the curious:
   a hand-labeled corpus (`eval/`) — real fixtures, expected hits per query, and scorecards — so a
   ranking change is measured (recall@k, prose filtering, lexical weighting), not guessed. The
   many `eval/scorecard-*.json` files are the receipts of that tuning.
-- **A self-quantized model.** Rather than trusting a random community quant, the int8 model is
-  built from IBM's official fp32 weights at a pinned revision (`scripts/quantize-granite.py`) and
-  integrity-pinned by SHA-256 at build time.
+- **Pinned model artifacts.** Model folders are verified with SHA-256 manifests before they are
+  used or uploaded, so a changed model file is caught early.
 
 ---
 
-## Known limitation: cross-lingual ceiling
+## Known limitation: English only
 
-Recall runs a small (~107M parameter) model entirely on your device, and that trade-off has a real
-edge. **Same-language recall is strong** (KO→KO, EN→EN). **Korean-query → English-document** recall
-is weaker — a query in Korean won't always pull back the most relevant English article. This is the
-honest cost of staying fully local instead of calling a large cloud model. The hybrid FTS5 lane
-softens it when a shared exact term exists, but the cross-lingual semantic ceiling is a known limit,
-not a bug.
+Recall is tuned for English. Other languages are out of scope for this version.
 
 ---
 
@@ -218,6 +211,5 @@ not a bug.
 
 [MIT](./LICENSE) © 2026 Minhyeok Kim — [github.com/markdownnn](https://github.com/markdownnn)
 
-The bundled embedding model is derived from IBM's
-[`granite-embedding-107m-multilingual`](https://huggingface.co/ibm-granite/granite-embedding-107m-multilingual)
-(Apache-2.0).
+The embedding model is derived from
+[`BAAI/bge-base-en-v1.5`](https://huggingface.co/BAAI/bge-base-en-v1.5).

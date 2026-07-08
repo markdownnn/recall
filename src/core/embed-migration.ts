@@ -8,7 +8,7 @@ export interface EmbedVersionStore {
 }
 
 // If the stored embedding-model version differs from `current`, re-embed the corpus with
-// granite - but ONE PAGE AT A TIME so search stays mostly alive. For each page we null its
+// the current BGE model - but ONE PAGE AT A TIME so search stays mostly alive. For each page we null its
 // vectors (only that page leaves search) and immediately re-embed the now-pending chunks via
 // `reembedPending` (the offscreen passes the real drain), so the page is searchable again
 // before we touch the next one. `onProgress` reports {done,total} pages for the UI bar.
