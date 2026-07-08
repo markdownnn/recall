@@ -4,7 +4,7 @@
 // No core services, no store, no embedder here.
 
 import type { Msg, MsgResult } from '../messaging'
-import type { RankedResult } from '../core/model'
+import type { AskAnswer, RankedResult } from '../core/model'
 import { INITIAL_MODEL_STATUS, reduceModelProgress } from '../core/model-progress'
 import type { ModelStatus } from '../core/model-progress'
 import {
@@ -193,6 +193,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'capture' &&
     msg.type !== 'capture-text' &&
     msg.type !== 'recall' &&
+    msg.type !== 'ask' &&
     msg.type !== 'get-settings' &&
     msg.type !== 'set-paused' &&
     msg.type !== 'deny-host' &&
@@ -238,6 +239,16 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
         modelStatus = { state: 'ready', percent: 100 }
         broadcastModelStatus(modelStatus)
         sendResponse({ type: 'recalled', results: r.results } satisfies MsgResult)
+      } else if (msg.type === 'ask') {
+        const r = await callOffscreen<{ answer: AskAnswer }>({
+          op: 'ask',
+          text: msg.text,
+          retrieveK: msg.retrieveK,
+          contextK: msg.contextK,
+        })
+        modelStatus = { state: 'ready', percent: 100 }
+        broadcastModelStatus(modelStatus)
+        sendResponse({ type: 'asked', answer: r.answer } satisfies MsgResult)
       } else if (msg.type === 'get-settings') {
         const r = await callOffscreen<{ paused: boolean; userDenyHosts: string[] }>({ op: 'get-settings' })
         sendResponse({ type: 'settings', paused: r.paused, userDenyHosts: r.userDenyHosts } satisfies MsgResult)
@@ -366,4 +377,3 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
     }
   })()
 })
-

@@ -1,9 +1,10 @@
-import type { CapturedPage, RankedResult } from './core/model'
+import type { AskAnswer, CapturedPage, RankedResult } from './core/model'
 
 export type Msg =
   | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
   | { type: 'capture-text'; url: string; title: string; text: string }
   | { type: 'recall'; text: string; k: number }
+  | { type: 'ask'; text: string; retrieveK: number; contextK: number }
   | { type: 'model-status' }
   | { type: 'get-settings' }
   | { type: 'set-paused'; paused: boolean }
@@ -17,6 +18,7 @@ export type Msg =
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
   | { type: 'recalled'; results: RankedResult[] }
+  | { type: 'asked'; answer: AskAnswer }
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
   | { type: 'settings'; paused: boolean; userDenyHosts: string[] }

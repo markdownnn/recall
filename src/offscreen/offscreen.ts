@@ -14,11 +14,13 @@ import { CaptureService, pageIdFromUrl } from '../core/capture-service'
 import { sanitizeUrl } from '../core/sanitize-url'
 import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
+import { AskService } from '../core/ask-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
 import { migrateEmbeddingModel } from '../core/embed-migration'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
 import type { EmbeddingPort } from '../core/ports'
+import type { AnswerGeneratorPort } from '../core/answer-generator'
 
 // ---------------------------------------------------------------------------
 // Core services
@@ -66,6 +68,13 @@ const chunker = new ParagraphChunker(220)
 const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
+const localAnswerGenerator: AnswerGeneratorPort = {
+  answer: async ({ chunks }) => ({
+    text: chunks[0]?.chunk.text ?? 'I could not find that in your saved pages.',
+    citedChunkIds: chunks.slice(0, 3).map((r) => r.chunk.id),
+  }),
+}
+const ask = new AskService(localEmbedder, store, localAnswerGenerator)
 const gate = new CaptureGate()
 
 // ---------------------------------------------------------------------------
@@ -292,6 +301,15 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const results = await recall.recall({ text, k })
     console.log(`[recall] recalled ${results.length} results`)
     return { results }
+  }
+
+  // --- ask: retrieve more context, then turn the best chunks into a cited answer ---
+  if (op === 'ask') {
+    const text = String(p.text ?? '')
+    const retrieveK = Number(p.retrieveK ?? 12)
+    const contextK = Number(p.contextK ?? 8)
+    const answer = await ask.ask({ text, retrieveK, contextK })
+    return { answer }
   }
 
   // --- ensureLoaded: warm up the model, push progress events ---
