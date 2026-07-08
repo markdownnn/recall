@@ -13,6 +13,7 @@
     "eval": "npm run eval:fetch-model && vite-node eval/run.mjs --",
     "eval:bge": "vite-node eval/run-candidates.mjs",
     "eval:english": "vite-node eval/run.mjs -- --strip --min-prose=0.35 --golden=eval/english-golden.json",
+    "models:manifest": "node scripts/r2-model-manifest.mjs",
     "eval:ci": "npm run eval:fetch-model && vite-node eval/run.mjs -- --ci --strip --min-prose=0.35",
     "e2e": "playwright test",
     "package": "rm -rf dist-ext recall-extension.zip && npm run build && (cd dist-ext && zip -qr -X ../recall-extension.zip . -x '*.map') && echo \"packaged -> recall-extension.zip\""
