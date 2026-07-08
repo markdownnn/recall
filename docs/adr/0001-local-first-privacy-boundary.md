@@ -1,5 +1,7 @@
 # Local-first as an absolute privacy boundary for v1
 
+Status: superseded in part by ADR 0022. The original v1 shipped with no runtime network egress. The next model-delivery direction allows remote model artifacts from R2, while keeping captured content, questions, vectors, and answers on device.
+
 v1에서는 캡처·저장·임베딩·검색이 전부 기기 안에서 일어나며, 어떤 본문 텍스트도 서버로 나가지 않는다. 임베딩은 로컬 MiniLM(transformers.js)으로 생성한다. 이 절대 약속("아무것도 기기 밖으로 나가지 않는다")이 곧 마케팅 메시지이자 NotebookLM·Atlas 같은 클라우드 업로드 모델과의 핵심 차별점이기 때문이다.
 
 ## Considered Options
