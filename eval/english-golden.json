@@ -1,48 +1,48 @@
 [
   {
-    "scenario": "EN1",
+    "scenario": "S1",
     "combo": "EN->EN",
     "query": "bacteria",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN2",
+    "scenario": "S1",
     "combo": "EN->EN",
     "query": "deep learning neural networks",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Deep_learning"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN3",
+    "scenario": "S2",
     "combo": "EN->EN",
     "query": "ingestion",
     "expectTopPageIds": ["https://github.com/hashicorp/terraform-provider-aws/issues/31364"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN4",
+    "scenario": "S4",
     "combo": "EN->EN",
     "query": "hormone that ruins sleep",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN5",
+    "scenario": "S4",
     "combo": "EN->EN",
     "query": "powerhouse of the cell",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Mitochondrion"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN6",
+    "scenario": "S5",
     "combo": "EN->EN",
     "query": "what is a protein",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"],
     "expectProseSnippet": true
   },
   {
-    "scenario": "EN7",
+    "scenario": "S5",
     "combo": "EN->EN",
     "query": "genetic material in chromosomes",
     "expectTopPageIds": ["https://en.wikipedia.org/wiki/DNA"],
