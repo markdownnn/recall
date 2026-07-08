@@ -4,11 +4,12 @@ import { pipeline, env } from '@huggingface/transformers'
 import { resolve } from 'node:path'
 import { cosineSimilarity } from '../../src/core/cosine'
 
-env.allowRemoteModels = true
-env.cacheDir = resolve('eval/.cache')
+env.allowLocalModels = true
+env.allowRemoteModels = false
+env.localModelPath = resolve('public/models')
 
 async function loadEmbed() {
-  const extractor = await pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5', { dtype: 'q8' })
+  const extractor = await pipeline('feature-extraction', 'bge-base-en-v1.5', { dtype: 'q8' })
   return async (t: string) => {
     const out = await extractor([t], { pooling: 'mean', normalize: true })
     return new Float32Array((out.tolist() as number[][])[0])

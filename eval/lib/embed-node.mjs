@@ -1,10 +1,10 @@
 // Real multilingual embedding model in Node, for the golden-set A/B harness.
 //
 // Model selection is env-driven so one harness can A/B several models cleanly:
-//   EVAL_MODEL   model id (default 'granite', the bundled prod model dir under public/models/)
+//   EVAL_MODEL   model id (default 'bge-base-en-v1.5', the selected prod model dir under public/models/)
 //   EVAL_DTYPE   quantization passed to the pipeline (default q8, to match the extension)
 //   EVAL_PREFIX  prefix convention: 'e5' => "query: "/"passage: " (e5 family),
-//                'none' => raw text (MiniLM / granite and most sentence-transformers),
+//                'none' => raw text (MiniLM / most sentence-transformers),
 //                'gemma' => EmbeddingGemma task prompts
 //                  query   => "task: search result | query: <text>"
 //                  passage => "title: none | text: <text>"
@@ -15,10 +15,10 @@
 //   EVAL_MODEL_FILE  optional: exact onnx base name under onnx/ (no .onnx), for A/B'ing repos
 //                whose quantized file does not follow the transformers.js dtype suffix
 //                convention. When set, dtype suffixing is bypassed and this file is loaded
-//                verbatim. (Unused by the bundled granite default, which ships a standard
+//                verbatim. (Unused by the selected BGE default, which ships a standard
 //                onnx/model_quantized.onnx loaded via dtype:'q8'.)
 //
-// The bundled granite is loaded OFFLINE from public/models (committed + verified by
+// The selected BGE model is loaded OFFLINE from public/models (verified by
 // scripts/fetch-model.mjs); any OTHER model id is fetched remotely into eval/.cache
 // (gitignored) on first run.
 import { pipeline, env } from '@huggingface/transformers'
@@ -26,10 +26,10 @@ import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
-const BUNDLED = 'granite' // bundled prod model dir under public/models/ (granite-107m R1)
+const BUNDLED = 'bge-base-en-v1.5' // selected prod model dir under public/models/
 const MODEL = process.env.EVAL_MODEL || BUNDLED
 const DTYPE = process.env.EVAL_DTYPE || 'q8'
-const PREFIX = process.env.EVAL_PREFIX || 'none' // granite takes raw text (no e5 prefix)
+const PREFIX = process.env.EVAL_PREFIX || 'bge'
 const MODEL_FILE = process.env.EVAL_MODEL_FILE || '' // optional exact onnx base name
 const MRL_DIM = Number(process.env.EVAL_MRL_DIM || 0) || 0 // 0 => full native dim
 

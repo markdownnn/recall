@@ -98,7 +98,7 @@ test('single-flight: concurrent embed calls never overlap in the model', async (
 })
 
 // Scenario: BGE query text needs a search instruction, while saved passages must stay raw.
-// Coverage: ✅ integration
+// Coverage: ⚠️ mock - fake pipeline으로 입력 문자열만 확인한다.
 test('bge: search instruction reaches query lane only', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
@@ -117,7 +117,7 @@ test('bge: search instruction reaches query lane only', async () => {
 // Scenario: WebGPU is unavailable so BGE loads on WASM single-thread (slower). The
 // embedder must record device='wasm' AND fire the degraded sink so the side panel can show a
 // "running slow" notice instead of a buried console.warn.
-// Coverage: ✅ integration
+// Coverage: ⚠️ mock - fake pipeline으로 WebGPU 실패와 WASM 성공을 흉내 낸다.
 test('wasm fallback records device=wasm and fires the degraded sink', async () => {
   const fake = makeFake({ failTimes: 1 }) // fail BGE on webgpu; wasm (2nd call) succeeds
   const embedder = new WebGpuEmbedder(fake.factory)
@@ -133,7 +133,7 @@ test('wasm fallback records device=wasm and fires the degraded sink', async () =
 // Scenario: BGE cannot be created on EITHER WebGPU or WASM - this device can't run the
 // on-device model at all. ensureLoaded()/embed() MUST reject (the offscreen turns that into a
 // user-visible "search unavailable on this hardware" notice) rather than hang or fake success.
-// Coverage: ✅ integration
+// Coverage: ⚠️ mock - fake pipeline으로 두 번의 모델 로드 실패를 흉내 낸다.
 test('bge unavailable on both providers rejects (offscreen surfaces unavailable)', async () => {
   const fake = makeFake({ failTimes: 2 }) // fail BGE on webgpu AND wasm
   const embedder = new WebGpuEmbedder(fake.factory)
