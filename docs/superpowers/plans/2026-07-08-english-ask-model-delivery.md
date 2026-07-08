@@ -378,8 +378,38 @@ git commit -m "test(eval): lock model-specific embedding cache keys"
 
 - Modify: `package.json`
 - Create: `eval/run-candidates.mjs`
+- Create: `tests/core/run-candidates-script.test.ts`
 
-- [ ] **Step 1: Create `eval/run-candidates.mjs`**
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/core/run-candidates-script.test.ts`.
+
+```typescript
+import { existsSync, readFileSync } from 'node:fs'
+
+// Scenario: 후보 모델 평가를 사람이 손으로 하나씩 돌리면 빠뜨린 모델이 생길 수 있다.
+// Coverage: ✅ integration
+test('bge candidate runner script and package command exist', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> }
+  expect(pkg.scripts['eval:bge']).toBe('vite-node eval/run-candidates.mjs')
+  expect(pkg.scripts['eval:english']).toBe(
+    'vite-node eval/run.mjs -- --strip --min-prose=0.35 --golden=eval/english-golden.json',
+  )
+  expect(existsSync('eval/run-candidates.mjs')).toBe(true)
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+npx vitest run tests/core/run-candidates-script.test.ts
+```
+
+Expected: FAIL because `eval:bge` and `eval/run-candidates.mjs` do not exist yet.
+
+- [ ] **Step 3: Create `eval/run-candidates.mjs`**
 
 ```javascript
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -414,7 +444,7 @@ writeFileSync('eval/scorecards/summary.json', JSON.stringify(results, null, 2) +
 console.log('\n[eval] wrote eval/scorecards/summary.json')
 ```
 
-- [ ] **Step 2: Add package scripts**
+- [ ] **Step 4: Add package scripts**
 
 In `package.json`, add:
 
@@ -423,23 +453,24 @@ In `package.json`, add:
 "eval:english": "vite-node eval/run.mjs -- --strip --min-prose=0.35 --golden=eval/english-golden.json"
 ```
 
-- [ ] **Step 3: Run candidate eval once**
+- [ ] **Step 5: Verify without running candidate eval**
 
 Run:
 
 ```bash
-npm run eval:bge
+npx vitest run tests/core/run-candidates-script.test.ts
+node --check eval/run-candidates.mjs
 ```
 
-Expected: PASS. The first run may download models into `eval/.cache`. Later runs must reuse the cache.
+Expected: PASS.
 
-- [ ] **Step 4: Commit scorecards**
+- [ ] **Step 6: Commit script and guard**
 
-Commit only scorecards and config. Do not commit `eval/.cache`.
+Do not run `npm run eval:bge` in this task. That command may download large models and belongs to the explicit evaluation step.
 
 ```bash
-git add package.json eval/run-candidates.mjs eval/scorecards eval/model-candidates.json eval/english-golden.json
-git commit -m "eval: compare bge embedding candidates"
+git add package.json eval/run-candidates.mjs tests/core/run-candidates-script.test.ts
+git commit -m "eval: add bge candidate runner"
 ```
 
 ---
