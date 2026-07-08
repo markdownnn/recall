@@ -30,6 +30,7 @@ function buildWebLlmAppConfig(
   modelLibUrl: string,
   vramRequiredMB: number,
   lowResourceRequired: boolean,
+  overrides: Record<string, number> = {},
 ): AppConfig {
   return {
     model_list: [
@@ -39,7 +40,7 @@ function buildWebLlmAppConfig(
         model_lib: modelLibUrl,
         vram_required_MB: vramRequiredMB,
         low_resource_required: lowResourceRequired,
-        overrides: { context_window_size: 4096 },
+        overrides: { context_window_size: 4096, ...overrides },
       },
     ],
   }
@@ -50,7 +51,14 @@ export function buildLlamaAppConfig(modelBaseUrl: string, modelLibUrl: string): 
 }
 
 export function buildGemmaAppConfig(modelBaseUrl: string, modelLibUrl: string): AppConfig {
-  return buildWebLlmAppConfig(GEMMA_ASK_MODEL, modelBaseUrl, modelLibUrl, 711.07, true)
+  return buildWebLlmAppConfig(
+    GEMMA_ASK_MODEL,
+    modelBaseUrl,
+    modelLibUrl,
+    711.07,
+    true,
+    { sliding_window_size: -1 },
+  )
 }
 
 export function webLlmProgressToModelProgress(report: InitProgressReport): ModelProgressEvent {

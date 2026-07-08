@@ -29,6 +29,7 @@ describe('webllm ask model options', () => {
     expect(record.model_id).toBe(GEMMA_ASK_MODEL)
     expect(record.model).toBe(baseUrl)
     expect(record.model_lib).toBe(modelLibUrl)
+    expect(record.overrides).toMatchObject({ context_window_size: 4096, sliding_window_size: -1 })
     expect(record.model).toContain('/resolve/main/')
     expect(serialized).not.toContain('huggingface.co')
     expect(serialized).not.toContain('raw.githubusercontent.com')
