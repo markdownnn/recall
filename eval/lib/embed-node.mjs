@@ -83,14 +83,23 @@ function writeCache(kind, text, vec) {
 
 // 'e5' => prepend "query: " / "passage: "; 'gemma' => EmbeddingGemma task prompts;
 // 'none' => raw text (no prefix convention).
-function withPrefix(kind, text) {
-  if (PREFIX === 'e5') return `${kind}: ${text}`
-  if (PREFIX === 'gemma') {
+export function formatInputForEmbedding(kind, text, prefix) {
+  if (prefix === 'bge') {
+    return kind === 'query'
+      ? `Represent this sentence for searching relevant passages: ${text}`
+      : text
+  }
+  if (prefix === 'e5') return `${kind}: ${text}`
+  if (prefix === 'gemma') {
     return kind === 'query'
       ? `task: search result | query: ${text}`
       : `title: none | text: ${text}`
   }
   return text
+}
+
+function withPrefix(kind, text) {
+  return formatInputForEmbedding(kind, text, PREFIX)
 }
 
 // Matryoshka truncation: slice a normalized vector to the first MRL_DIM dims and re-normalize.

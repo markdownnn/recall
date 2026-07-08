@@ -23,25 +23,25 @@ test('bge candidate list includes small base and large', () => {
   const candidates = JSON.parse(readFileSync('eval/model-candidates.json', 'utf8'))
   expect(candidates).toEqual([
     {
-      id: 'BAAI/bge-small-en-v1.5',
+      id: 'Xenova/bge-small-en-v1.5',
       dtype: 'q8',
       prefix: 'bge',
       modelFile: '',
       expectedSizeMB: 34,
     },
     {
-      id: 'BAAI/bge-base-en-v1.5',
+      id: 'Xenova/bge-base-en-v1.5',
       dtype: 'q8',
       prefix: 'bge',
       modelFile: '',
       expectedSizeMB: 110,
     },
     {
-      id: 'BAAI/bge-large-en-v1.5',
+      id: 'Xenova/bge-large-en-v1.5',
       dtype: 'q8',
       prefix: 'bge',
       modelFile: '',
-      expectedSizeMB: 330,
+      expectedSizeMB: 337,
     },
   ])
 })

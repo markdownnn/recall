@@ -1,5 +1,5 @@
-// Real embedder that runs the granite-107m-multilingual model (raw text, NO
-// query:/passage: prefix) inside the offscreen document.  Tries WebGPU first
+// Real embedder that runs the selected BGE English model inside the offscreen document.
+// Query text gets BGE's search instruction; passage text stays raw. Tries WebGPU first
 // (fast) and falls back to single-thread WASM if WebGPU is unsupported; if BOTH
 // fail, the load REJECTS so the offscreen can surface an "unavailable" state
 // (this device can't run the on-device model).  Returns embeddings as number[][]
@@ -28,10 +28,7 @@ export type PipelineFactory = (
   options?: unknown,
 ) => Promise<FeatureExtractionPipeline>
 
-// granite-107m-multilingual, committed under public/models/granite/ and loaded by its bare
-// dir name. dtype:'q8' requests onnx/model_quantized.onnx - our FIRST-PARTY re-quantized
-// artifact (Task 5/6). Granite takes RAW text (no e5-style query:/passage: prefix). 384-dim.
-const MODEL_ID = 'granite'
+const MODEL_ID = 'bge-base-en-v1.5'
 // Small batches + a yield between them keep indexing GPU-gentle: a big single
 // submission monopolizes the GPU and makes the page the user is currently reading
 // stutter. Smaller submissions with gaps let the foreground keep rendering. A single
@@ -106,9 +103,9 @@ export class WebGpuEmbedder {
   }
 
   // The offscreen wires this to an 'embedder-degraded' rpc-event with state:'wasm'. Called once
-  // granite loaded on WASM (slower than the WebGPU ideal). The side panel turns it into a
+  // BGE loaded on WASM (slower than the WebGPU ideal). The side panel turns it into a
   // "running slow" notice instead of a buried console.warn. (The harder "unavailable" state -
-  // granite failed on BOTH providers - is surfaced by the offscreen from ensureLoaded's
+  // BGE failed on BOTH providers - is surfaced by the offscreen from ensureLoaded's
   // rejection, not from here.)
   setDegradedSink(cb: (info: { device: 'wasm' }) => void): void {
     this.degradedSink = cb
@@ -166,7 +163,7 @@ export class WebGpuEmbedder {
     }
 
     // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. If THIS also
-    //     throws there is no further fallback (granite-only): the rejection propagates, getPipe
+    //     throws there is no further fallback: the rejection propagates, getPipe
     //     nulls pipeP, and ensureLoaded rejects so the offscreen can surface "unavailable". ---
     ;(env.backends.onnx as any).wasm.numThreads = 1
     const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
@@ -176,7 +173,7 @@ export class WebGpuEmbedder {
     })) as FeatureExtractionPipeline
     await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix
     this._device = 'wasm'
-    console.warn('[recall] DEGRADED embedder: granite on WASM single-thread (slow)')
+    console.warn('[recall] DEGRADED embedder: BGE on WASM single-thread (slow)')
     if (!this.degradedEmitted) {
       this.degradedEmitted = true
       this.degradedSink?.({ device: 'wasm' })
@@ -214,13 +211,15 @@ export class WebGpuEmbedder {
     const out: number[][] = []
     try {
       for (let i = 0; i < texts.length; i += BATCH) {
-        // granite takes raw text in both lanes (no e5-style prefix). `kind` still drives the
-        // two-lane scheduler priority; it no longer alters the text.
         const slice = texts.slice(i, i + BATCH)
+        const inputs =
+          kind === 'query'
+            ? slice.map((text) => `Represent this sentence for searching relevant passages: ${text}`)
+            : slice
         // [Recall:perf] per-batch embed cost. Summed over a drain this shows whether the
         // ~30s is the model inference itself vs the load/yields around it. Removable.
         const b0 = performance.now()
-        const output = await pipe(slice, { pooling: 'mean', normalize: true })
+        const output = await pipe(inputs, { pooling: 'mean', normalize: true })
         console.log(`[Recall:perf] embed batch=${slice.length} ${Math.round(performance.now() - b0)}ms`)
         for (const arr of output.tolist() as number[][]) out.push(arr)
         // Yield the GPU between batches (not after the last) so the foreground page

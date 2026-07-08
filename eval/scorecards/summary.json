@@ -1,0 +1,29 @@
+[
+  {
+    "id": "Xenova/bge-small-en-v1.5",
+    "scorecard": "eval/scorecards/Xenova__bge-small-en-v1.5.json",
+    "agg": {
+      "precisionAt1": 0.5,
+      "recallAt5": 0.9166666666666666,
+      "mrr": 0.6736111111111112
+    }
+  },
+  {
+    "id": "Xenova/bge-base-en-v1.5",
+    "scorecard": "eval/scorecards/Xenova__bge-base-en-v1.5.json",
+    "agg": {
+      "precisionAt1": 0.5833333333333334,
+      "recallAt5": 0.9166666666666666,
+      "mrr": 0.7013888888888888
+    }
+  },
+  {
+    "id": "Xenova/bge-large-en-v1.5",
+    "scorecard": "eval/scorecards/Xenova__bge-large-en-v1.5.json",
+    "agg": {
+      "precisionAt1": 0.3333333333333333,
+      "recallAt5": 0.9166666666666666,
+      "mrr": 0.5166666666666667
+    }
+  }
+]

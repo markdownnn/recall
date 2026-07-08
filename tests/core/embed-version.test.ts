@@ -1,18 +1,15 @@
 import { needsReindex, EMBED_MODEL_VERSION } from '../../src/core/embed-version'
 
-// Scenario: a profile that last embedded with a different (or no) model must trigger a
-// re-index; a profile already on granite must not. The "same version" check is what keeps a
-// granite device from re-indexing on every launch.
-// Coverage: integration (the real pure decision function).
+// Scenario: 모델이 Granite에서 BGE로 바뀌면 기존 벡터는 새 모델과 비교할 수 없다.
+// Coverage: ✅ integration
 test('needsReindex is true for a null or legacy stored version, false when equal', () => {
   expect(needsReindex(null, EMBED_MODEL_VERSION)).toBe(true)
-  expect(needsReindex('e5-small-q8-v1', EMBED_MODEL_VERSION)).toBe(true)
+  expect(needsReindex('granite-107m-r1-q8-v1', EMBED_MODEL_VERSION)).toBe(true)
   expect(needsReindex(EMBED_MODEL_VERSION, EMBED_MODEL_VERSION)).toBe(false)
 })
 
-// Scenario: the version string is the single source of truth shared by the migration and the
-// eval default. A typo silently disables the migration.
-// Coverage: integration (locks the literal value).
-test('version id is the granite r1 q8 identifier', () => {
-  expect(EMBED_MODEL_VERSION).toBe('granite-107m-r1-q8-v1')
+// Scenario: 버전 문자열 오타는 재색인을 건너뛰게 만들 수 있다.
+// Coverage: ✅ integration
+test('version id is the selected bge base q8 identifier', () => {
+  expect(EMBED_MODEL_VERSION).toBe('bge-base-en-v1.5-q8-v1')
 })

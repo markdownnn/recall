@@ -37,7 +37,7 @@ function emitModelProgress(e: { status: string; progress?: number }): void {
 }
 embedder.setProgressSink(emitModelProgress)
 
-// Surface a WASM fallback (granite runs but slow) to the SW -> side panel as a "running slow"
+// Surface a WASM fallback (BGE runs but slow) to the SW -> side panel as a "running slow"
 // notice. The side panel renders it as the persistent degraded-embedder banner.
 embedder.setDegradedSink((info) => {
   chrome.runtime
@@ -124,7 +124,7 @@ function emitReindexTotal(p: { done: number; total: number }): void {
     .catch(() => {})
 }
 
-// On load: (1) load granite; (2) if this profile's stored version differs from granite's
+// On load: (1) load BGE; (2) if this profile's stored version differs from BGE's
 // (e5-era profiles have none, or a legacy id), re-embed the corpus PAGE BY PAGE - so search
 // degrades gradually (already-re-embedded pages keep serving) instead of going blank; (3) run
 // the normal drain afterward to finish any chunks left pending (a fresh capture or an
@@ -162,11 +162,11 @@ embedder
     await runDrainWithProgress() // finish any freshly-captured chunks
   })
   .catch((e) => {
-    // ensureLoaded rejects ONLY when granite failed on BOTH WebGPU and WASM: this device cannot
+    // ensureLoaded rejects ONLY when BGE failed on BOTH WebGPU and WASM: this device cannot
     // run the on-device model. Surface an explicit "search unavailable on this hardware" state
     // so the user isn't left with capture silently piling up NULL-vector chunks that never
     // become searchable. Do NOT spin the drain - every embed would just fail.
-    console.error('[recall/offscreen] granite unavailable on this device:', e)
+    console.error('[recall/offscreen] BGE unavailable on this device:', e)
     embedderUnavailable = true
     chrome.runtime
       .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'unavailable' })

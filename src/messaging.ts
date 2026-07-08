@@ -38,7 +38,7 @@ export type IndexingProgressMsg = { type: 'indexing-progress'; pending: number; 
 export type IndexingErrorMsg = { type: 'indexing-error'; error: string }
 
 // Push message sent from background to the side panel when the on-device embedder is degraded:
-// state:'unavailable' = granite failed on BOTH WebGPU and WASM, so search can't work on this
-// device; state:'wasm' = granite runs but on slow single-thread WASM. The panel renders a
+// state:'unavailable' = BGE failed on BOTH WebGPU and WASM, so search can't work on this
+// device; state:'wasm' = BGE runs but on slow single-thread WASM. The panel renders a
 // persistent banner so the user knows search is broken / slow instead of silently unsearchable.
 export type EmbedderDegradedMsg = { type: 'embedder-degraded'; state: 'unavailable' | 'wasm' }
