@@ -14,11 +14,16 @@ import { CaptureService, pageIdFromUrl } from '../core/capture-service'
 import { sanitizeUrl } from '../core/sanitize-url'
 import { IndexingService } from '../core/indexing-service'
 import { RecallService } from '../core/recall-service'
+import { AskService } from '../core/ask-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
 import { migrateEmbeddingModel } from '../core/embed-migration'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
+import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-model-status'
+import type { AskModelStatus } from '../core/ask-model-status'
 import type { EmbeddingPort } from '../core/ports'
+import type { AnswerGeneratorPort } from '../core/answer-generator'
+import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'
 
 // ---------------------------------------------------------------------------
 // Core services
@@ -37,7 +42,7 @@ function emitModelProgress(e: { status: string; progress?: number }): void {
 }
 embedder.setProgressSink(emitModelProgress)
 
-// Surface a WASM fallback (granite runs but slow) to the SW -> side panel as a "running slow"
+// Surface a WASM fallback (BGE runs but slow) to the SW -> side panel as a "running slow"
 // notice. The side panel renders it as the persistent degraded-embedder banner.
 embedder.setDegradedSink((info) => {
   chrome.runtime
@@ -66,6 +71,42 @@ const chunker = new ParagraphChunker(220)
 const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
+let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
+let answerGeneratorReady = false
+let askModelStatus: AskModelStatus = INITIAL_ASK_MODEL_STATUS
+
+function emitAskModelProgress(e: { status: string; progress?: number; error?: string }): void {
+  askModelStatus = reduceAskModelProgress(askModelStatus, e)
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'ask-model-progress', status: e })
+    .catch(() => {})
+}
+
+function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
+  if (!answerGeneratorP) {
+    answerGeneratorReady = false
+    answerGeneratorP = createLlamaAskEngine(emitAskModelProgress)
+      .then((engine) => {
+        answerGeneratorReady = true
+        askModelStatus = { state: 'ready', percent: 100 }
+        return new WebLlmAnswerGenerator(engine)
+      })
+      .catch((err) => {
+        answerGeneratorP = null
+        answerGeneratorReady = false
+        emitAskModelProgress({ status: 'error', error: String(err) })
+        throw err
+      })
+  }
+  return answerGeneratorP
+}
+
+function getReadyAnswerGenerator(): AnswerGeneratorPort | Promise<AnswerGeneratorPort> {
+  if (!answerGeneratorReady || !answerGeneratorP) {
+    throw new Error('WebLLM is not ready yet.')
+  }
+  return answerGeneratorP
+}
 const gate = new CaptureGate()
 
 // ---------------------------------------------------------------------------
@@ -81,6 +122,8 @@ function runDrainWithProgress(): void {
       chrome.runtime
         .sendMessage({ channel: 'rpc-event', kind: 'indexing-progress', embedded: totalEmbedded })
         .catch(() => {})
+    }, ({ chunks, ms }) => {
+      console.log(`[Recall:perf] capture-indexed chunks=${chunks} ms=${ms}`)
     })
     .then(() => {
       // Signal "drain complete" so the popup shows "indexed".
@@ -124,7 +167,7 @@ function emitReindexTotal(p: { done: number; total: number }): void {
     .catch(() => {})
 }
 
-// On load: (1) load granite; (2) if this profile's stored version differs from granite's
+// On load: (1) load BGE; (2) if this profile's stored version differs from BGE's
 // (e5-era profiles have none, or a legacy id), re-embed the corpus PAGE BY PAGE - so search
 // degrades gradually (already-re-embedded pages keep serving) instead of going blank; (3) run
 // the normal drain afterward to finish any chunks left pending (a fresh capture or an
@@ -162,11 +205,11 @@ embedder
     await runDrainWithProgress() // finish any freshly-captured chunks
   })
   .catch((e) => {
-    // ensureLoaded rejects ONLY when granite failed on BOTH WebGPU and WASM: this device cannot
+    // ensureLoaded rejects ONLY when BGE failed on BOTH WebGPU and WASM: this device cannot
     // run the on-device model. Surface an explicit "search unavailable on this hardware" state
     // so the user isn't left with capture silently piling up NULL-vector chunks that never
     // become searchable. Do NOT spin the drain - every embed would just fail.
-    console.error('[recall/offscreen] granite unavailable on this device:', e)
+    console.error('[recall/offscreen] BGE unavailable on this device:', e)
     embedderUnavailable = true
     chrome.runtime
       .sendMessage({ channel: 'rpc-event', kind: 'embedder-degraded', state: 'unavailable' })
@@ -292,6 +335,48 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const results = await recall.recall({ text, k })
     console.log(`[recall] recalled ${results.length} results`)
     return { results }
+  }
+
+  // --- ask: retrieve more context, then turn the best chunks into a cited answer ---
+  if (op === 'ask') {
+    const text = String(p.text ?? '')
+    const retrieveK = Number(p.retrieveK ?? 12)
+    const contextK = Number(p.contextK ?? 8)
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const answer = await ask.ask({ text, retrieveK, contextK })
+    return { answer }
+  }
+
+  if (op === 'ask-stream') {
+    const requestId = String(p.requestId ?? '')
+    const text = String(p.text ?? '')
+    const retrieveK = Number(p.retrieveK ?? 12)
+    const contextK = Number(p.contextK ?? 8)
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const answer = await ask.askStream({ text, retrieveK, contextK }, (delta) => {
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-delta', requestId, text: delta })
+        .catch(() => {})
+    }, (event) => {
+      if (event.type === 'expanded-queries') {
+        chrome.runtime
+          .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-queries', requestId, queries: event.queries })
+          .catch(() => {})
+      }
+    })
+    chrome.runtime
+      .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-done', requestId, answer })
+      .catch(() => {})
+    return { ok: true }
+  }
+
+  if (op === 'prepare-ask-model') {
+    await getAnswerGenerator()
+    return { status: askModelStatus }
+  }
+
+  if (op === 'ask-model-status') {
+    return { status: askModelStatus }
   }
 
   // --- ensureLoaded: warm up the model, push progress events ---

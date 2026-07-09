@@ -1,9 +1,13 @@
-import type { CapturedPage, RankedResult } from './core/model'
+import type { AskAnswer, CapturedPage, RankedResult } from './core/model'
 
 export type Msg =
   | { type: 'capture'; url: string; title: string; text: string; manual: boolean }
   | { type: 'capture-text'; url: string; title: string; text: string }
   | { type: 'recall'; text: string; k: number }
+  | { type: 'ask'; text: string; retrieveK: number; contextK: number }
+  | { type: 'ask-stream'; requestId: string; text: string; retrieveK: number; contextK: number }
+  | { type: 'prepare-ask-model' }
+  | { type: 'ask-model-status' }
   | { type: 'model-status' }
   | { type: 'get-settings' }
   | { type: 'set-paused'; paused: boolean }
@@ -17,6 +21,8 @@ export type Msg =
 export type MsgResult =
   | { type: 'captured'; captured: boolean; chunkCount: number; reason?: 'paused' | 'denylisted' | 'thin' }
   | { type: 'recalled'; results: RankedResult[] }
+  | { type: 'asked'; answer: AskAnswer }
+  | { type: 'ask-model-status'; status: import('./core/ask-model-status').AskModelStatus }
   | { type: 'error'; error: string }
   | { type: 'model-status'; status: import('./core/model-progress').ModelStatus }
   | { type: 'settings'; paused: boolean; userDenyHosts: string[] }
@@ -28,6 +34,11 @@ export type MsgResult =
 // Push message sent from background to popup (not a request/response pair).
 export type ModelProgressMsg = { type: 'model-progress'; status: import('./core/model-progress').ModelStatus }
 
+export type AskModelProgressMsg = {
+  type: 'ask-model-progress'
+  status: import('./core/ask-model-status').AskModelStatus
+}
+
 // Push message sent from background to popup for indexing progress.
 // pending = chunks still waiting for a vector; embedded = done so far this drain.
 export type IndexingProgressMsg = { type: 'indexing-progress'; pending: number; embedded: number }
@@ -38,7 +49,12 @@ export type IndexingProgressMsg = { type: 'indexing-progress'; pending: number; 
 export type IndexingErrorMsg = { type: 'indexing-error'; error: string }
 
 // Push message sent from background to the side panel when the on-device embedder is degraded:
-// state:'unavailable' = granite failed on BOTH WebGPU and WASM, so search can't work on this
-// device; state:'wasm' = granite runs but on slow single-thread WASM. The panel renders a
+// state:'unavailable' = BGE failed on BOTH WebGPU and WASM, so search can't work on this
+// device; state:'wasm' = BGE runs but on slow single-thread WASM. The panel renders a
 // persistent banner so the user knows search is broken / slow instead of silently unsearchable.
 export type EmbedderDegradedMsg = { type: 'embedder-degraded'; state: 'unavailable' | 'wasm' }
+
+export type AskAnswerDeltaMsg = { type: 'ask-answer-delta'; requestId: string; text: string }
+export type AskAnswerDoneMsg = { type: 'ask-answer-done'; requestId: string; answer: AskAnswer }
+export type AskAnswerErrorMsg = { type: 'ask-answer-error'; requestId: string; error: string }
+export type AskAnswerQueriesMsg = { type: 'ask-answer-queries'; requestId: string; queries: string[] }

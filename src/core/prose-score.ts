@@ -2,8 +2,7 @@
 // boilerplate list? 1 = clean prose, 0 = dense citation list. Pure + deterministic so it
 // can drive the eval metric, the index-time filter (Fix 2), and the snippet swap (Fix 3).
 //
-// Signals (cheap, language-agnostic - works for English AND Korean prose because the
-// alpha-word test accepts any Unicode LETTER, not just A-Z):
+// Signals (cheap, Unicode-aware; the alpha-word test accepts any Unicode LETTER, not just A-Z):
 //   digitDensity   = digit chars / total chars        (citation lists are year/page-number heavy)
 //   alphaWordRatio = words starting with a letter / words  (citations are number/punctuation heavy)
 //   citeMarkers    = count of doi|PMID|PMC|ISSN|ISBN|Bibcode|arXiv|S2CID  (smoking gun)
@@ -22,7 +21,7 @@ export function proseScore(text: string): number {
   const digitDensity = digitCount / chars.length
 
   const words = t.split(/\s+/).filter((w) => w.length > 0)
-  // A "word" starts with a Unicode letter (English, Korean, etc.) - not a digit/quote/paren.
+  // A "word" starts with a Unicode letter - not a digit/quote/paren.
   const alphaWords = words.filter((w) => /^[\p{L}]/u.test(w)).length
   const alphaWordRatio = words.length === 0 ? 0 : alphaWords / words.length
 

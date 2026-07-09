@@ -4,9 +4,8 @@ export default defineManifest({
   manifest_version: 3,
   name: '__MSG_appName__',
   version: '1.0.0',
-  // Localized description. The strings live in public/_locales/{en,ko}/messages.json;
-  // Chrome resolves __MSG_appDesc__ at load from the user's UI language, falling back to
-  // default_locale ('en').
+  // English-only description. The strings live in public/_locales/en/messages.json.
+  // Chrome resolves __MSG_appDesc__ from default_locale ('en').
   default_locale: 'en',
   description: '__MSG_appDesc__',
   icons: {
@@ -30,16 +29,11 @@ export default defineManifest({
   content_scripts: [
     { matches: ['<all_urls>'], js: ['src/content/capture.ts'], run_at: 'document_idle' },
   ],
-  // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm (background) and
-  // @huggingface/transformers ONNX runtime (embedder worker).  Without it Chrome's
-  // default CSP blocks WebAssembly compilation and the background hangs forever.
-  // connect-src is 'self' only: the ONNX WASM runtime is bundled under public/onnx-hf/,
-  // and the embedding model (granite-107m-multilingual R1, int8 quantized) is COMMITTED
-  // under public/models/granite/ and VERIFIED at build by scripts/fetch-model.mjs (SHA-256,
-  // no remote fetch).  Nothing is fetched from a remote host at build OR runtime — literally
-  // nothing leaves the device.
+  // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm, Transformers ONNX, and WebLLM.
+  // BGE and WebLLM model files are served from our R2-backed model CDN.
   content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
+    extension_pages:
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn.teamnyongs.com",
   },
   // 'alarms': an SW-independent re-drain. The 20s setInterval keep-alive ping does NOT survive
   // an SW reap (sleep/memory pressure/reload), so a chrome.alarms alarm (>=1min) re-creates the

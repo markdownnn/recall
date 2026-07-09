@@ -1,5 +1,5 @@
-// Recall - Chrome Web Store HERO MOCKUPS (designed, not real captures), EN + KO sets.
-// Renders polished 1280x800 marketing images via Playwright into en/ and ko/ subfolders.
+// Recall - Chrome Web Store HERO MOCKUPS (designed, not real captures), English only.
+// Renders polished 1280x800 marketing images via Playwright into the en/ subfolder.
 // Run: node scripts/store-mockups.mjs
 
 import { chromium } from 'playwright'
@@ -9,14 +9,12 @@ import path from 'node:path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.resolve(__dirname, '..', 'assets/store/screenshots')
-const FONT = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif`
+const FONT = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
 
-// Localized side-panel chrome labels (the KO mockups show the Korean UI).
+// Side-panel chrome labels.
 const L = {
   en: { ready: 'ready', saved: 'saved', search: 'Search', update: 'Update this page', recent: 'Recently saved',
-        pill: '100% on your device - nothing ever leaves it' },
-  ko: { ready: '준비됨', saved: '저장됨', search: '검색', update: '이 페이지 업데이트', recent: '최근 저장',
-        pill: '100% 내 기기 안에서 - 아무것도 밖으로 안 나갑니다' },
+        pill: 'Your reading data stays on your device' },
 }
 
 function panel(inner) {
@@ -78,7 +76,7 @@ function render(headline, sub, pill, inner, from, to) {
   </div></body></html>`
 }
 
-// Each scene defines both languages. inner is built from the localized panel helpers.
+// Each scene defines the English store image. inner is built from the panel helpers.
 const SCENES = [
   {
     id: '01-search', from: '#eef1ff', to: '#dbe0ff',
@@ -89,13 +87,6 @@ const SCENES = [
         result('Sleep, cortisol, and the body clock', 'Cortisol follows a daily rhythm, low at night so melatonin can rise. High evening cortisol blocks melatonin &#8212; the hormone problem that ruins sleep&#8230;', 'en.wikipedia.org', true) +
         result('Why your brain wakes at 3am', 'Light exposure late in the evening keeps the body clock from settling, so sleep pressure never fully&#8230;', 'sleepfoundation.org', false),
     },
-    ko: {
-      headline: '읽은 건, 다시 찾는다.',
-      sub: '정확한 단어가 기억 안 나도 괜찮아요. 의미로 검색하면 Recall이 그 페이지를 찾아줍니다.',
-      inner: head(dotReady(L.ko.ready)) + searchbar('밤에 잠 안 오는 이유', L.ko.search) +
-        result('수면, 코르티솔, 그리고 생체시계', '코르티솔은 하루 주기로 움직여 밤에는 낮아지고 멜라토닌이 올라옵니다. 저녁에 코르티솔이 높으면 멜라토닌을 막아 잠을 망칩니다&#8230;', 'ko.wikipedia.org', true) +
-        result('뇌가 새벽 3시에 깨는 이유', '늦은 저녁의 빛 노출이 생체시계를 흔들어, 잠을 부르는 압력이 끝까지 쌓이지 못하고&#8230;', 'ko.wikipedia.org', false),
-    },
   },
   {
     id: '02-auto-capture', from: '#eafaf1', to: '#d6f0ff',
@@ -105,28 +96,15 @@ const SCENES = [
       inner: capturePanel(L.en, 'Attention Is All You Need', 'arxiv.org',
         ['The Illustrated Transformer', 'React useEffect, explained', 'How HTTP caching works']),
     },
-    ko: {
-      headline: '기억은 Recall이 대신.',
-      sub: '실제로 읽은 페이지를 기기 안에서 자동으로 저장해요. 필요할 때 의미로 다시 찾으세요.',
-      inner: capturePanel(L.ko, 'Attention Is All You Need', 'arxiv.org',
-        ['트랜스포머 쉽게 이해하기', 'React useEffect 완벽 정리', 'HTTP 캐싱 동작 원리']),
-    },
   },
   {
     id: '03-private', from: '#f1edff', to: '#e7e0ff',
     en: {
       headline: 'Private by design.',
-      sub: 'No servers. No tracking. No accounts. The AI model and your entire reading history live on your computer &#8212; and stay there.',
+      sub: 'No tracking. No accounts. Your reading history lives on your computer &#8212; and stays there.',
       inner: privatePanel(L.en, 'On-device AI search',
-        'A 107&#8201;MB model runs locally in your browser. Your pages are never uploaded, indexed in the cloud, or shared.',
-        ['Zero network requests', 'Korean &amp; English search', 'Pause or forget anytime']),
-    },
-    ko: {
-      headline: '처음부터, 프라이버시.',
-      sub: '서버도, 추적도, 계정도 없어요. AI 모델과 읽은 기록 전부가 내 컴퓨터 안에만 있고, 그대로 머뭅니다.',
-      inner: privatePanel(L.ko, '기기 내 AI 검색',
-        '107&#8201;MB 모델이 브라우저에서 로컬로 실행돼요. 페이지는 업로드되거나 클라우드에 색인되거나 공유되지 않습니다.',
-        ['네트워크 요청 0', '한국어·영어 검색', '언제든 일시중지·삭제']),
+        'AI models run locally in your browser. Your saved pages and questions are never uploaded, indexed in the cloud, or shared.',
+        ['English search and Ask', 'No accounts or telemetry', 'Pause or forget anytime']),
     },
   },
 ]
@@ -134,15 +112,14 @@ const SCENES = [
 async function main() {
   const browser = await chromium.launch()
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
-  for (const lang of ['en', 'ko']) {
-    const dir = path.join(OUT, lang)
-    mkdirSync(dir, { recursive: true })
-    for (const s of SCENES) {
-      const c = s[lang]
-      await page.setContent(render(c.headline, c.sub, L[lang].pill, c.inner, s.from, s.to), { waitUntil: 'load' })
-      await page.screenshot({ path: path.join(dir, `${s.id}.png`) })
-      console.log('rendered', `${lang}/${s.id}.png`)
-    }
+  const lang = 'en'
+  const dir = path.join(OUT, lang)
+  mkdirSync(dir, { recursive: true })
+  for (const s of SCENES) {
+    const c = s[lang]
+    await page.setContent(render(c.headline, c.sub, L[lang].pill, c.inner, s.from, s.to), { waitUntil: 'load' })
+    await page.screenshot({ path: path.join(dir, `${s.id}.png`) })
+    console.log('rendered', `${lang}/${s.id}.png`)
   }
   await browser.close()
   console.log('done -> ' + OUT)

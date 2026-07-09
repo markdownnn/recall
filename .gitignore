@@ -7,10 +7,11 @@ playwright-report/
 recall-extension.zip
 .DS_Store
 src/.DS_Store
-# The granite embedding model is NOT tracked in git (the ~107MB ONNX file exceeds GitHub's
-# 100MB-per-file limit). It lives under public/models/granite/ locally and is either
-# downloaded from HuggingFace by `npm run fetch-model` or built with
-# scripts/quantize-granite.py. The prebuild SHA-256-verifies whatever is on disk.
+# The selected BGE embedding model is NOT tracked in git (the ~110MB ONNX file exceeds
+# GitHub's 100MB-per-file limit). It lives under public/models/bge-base-en-v1.5/ locally
+# and is downloaded by `npm run eval:fetch-model`. The prebuild SHA-256-verifies it.
+public/models/bge-base-en-v1.5/
+# Ignore stale local granite copies too; fetch-model removes them before build.
 public/models/granite/
 # The old e5 model is removed; ignore any stale local copy so it can't be re-committed.
 public/models/Xenova/

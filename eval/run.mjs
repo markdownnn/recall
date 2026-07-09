@@ -23,7 +23,7 @@ const manifest = JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
 // --golden=<path> overrides the default set (used by the translation-footnote run).
 const goldenPath =
   args.find((a) => a.startsWith('--golden='))?.split('=')[1] ??
-  (ci ? 'eval/ci-golden.json' : 'eval/golden.json')
+  (ci ? 'eval/ci-golden.json' : 'eval/english-golden.json')
 const golden = JSON.parse(readFileSync(goldenPath, 'utf8'))
 
 console.log(
@@ -92,7 +92,7 @@ for (const c of comboKeys) {
 writeFileSync(
   'eval/last-scorecard.json',
   JSON.stringify(
-    { model: process.env.EVAL_MODEL || 'granite', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
+    { model: process.env.EVAL_MODEL || 'bge-base-en-v1.5', dtype: process.env.EVAL_DTYPE || 'q8', strip, minProse, ci, agg, comboAgg, refRate, rows },
     null,
     2,
   ) + '\n',

@@ -4,9 +4,11 @@
 // No core services, no store, no embedder here.
 
 import type { Msg, MsgResult } from '../messaging'
-import type { RankedResult } from '../core/model'
+import type { AskAnswer, RankedResult } from '../core/model'
 import { INITIAL_MODEL_STATUS, reduceModelProgress } from '../core/model-progress'
 import type { ModelStatus } from '../core/model-progress'
+import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-model-status'
+import type { AskModelStatus } from '../core/ask-model-status'
 import {
   callOffscreen,
   installSwRpcListener,
@@ -111,9 +113,14 @@ chrome.commands?.onCommand.addListener((command, tab) => {
 // ---------------------------------------------------------------------------
 
 let modelStatus: ModelStatus = INITIAL_MODEL_STATUS
+let askModelStatus: AskModelStatus = INITIAL_ASK_MODEL_STATUS
 
 function broadcastModelStatus(status: ModelStatus): void {
   chrome.runtime.sendMessage({ type: 'model-progress', status }).catch(() => {})
+}
+
+function broadcastAskModelStatus(status: AskModelStatus): void {
+  chrome.runtime.sendMessage({ type: 'ask-model-progress', status }).catch(() => {})
 }
 
 function broadcastIndexingProgress(pending: number, embedded: number, total?: number): void {
@@ -131,6 +138,10 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
     const e = msg.status as { status: string; progress?: number }
     modelStatus = reduceModelProgress(modelStatus, e)
     broadcastModelStatus(modelStatus)
+  } else if (msg?.kind === 'ask-model-progress') {
+    const e = msg.status as { status: string; progress?: number; error?: string }
+    askModelStatus = reduceAskModelProgress(askModelStatus, e)
+    broadcastAskModelStatus(askModelStatus)
   } else if (msg?.kind === 'indexing-progress') {
     // pending=1 means "still going"; embedded is the running total. `total` (page count) is
     // present only during the model-swap re-index, letting the panel show a real "N of M" bar.
@@ -157,6 +168,26 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
     chrome.runtime
       .sendMessage({ type: 'embedder-degraded', state: msg.state })
       .catch(() => {})
+  } else if (msg?.kind === 'ask-answer-delta') {
+    chrome.runtime
+      .sendMessage({ type: 'ask-answer-delta', requestId: String(msg.requestId), text: String(msg.text ?? '') })
+      .catch(() => {})
+  } else if (msg?.kind === 'ask-answer-queries') {
+    chrome.runtime
+      .sendMessage({
+        type: 'ask-answer-queries',
+        requestId: String(msg.requestId),
+        queries: Array.isArray(msg.queries) ? msg.queries.map(String) : [],
+      })
+      .catch(() => {})
+  } else if (msg?.kind === 'ask-answer-done') {
+    chrome.runtime
+      .sendMessage({ type: 'ask-answer-done', requestId: String(msg.requestId), answer: msg.answer })
+      .catch(() => {})
+  } else if (msg?.kind === 'ask-answer-error') {
+    chrome.runtime
+      .sendMessage({ type: 'ask-answer-error', requestId: String(msg.requestId), error: String(msg.error ?? 'unknown') })
+      .catch(() => {})
   }
 
   return false
@@ -167,6 +198,24 @@ chrome.runtime.onMessage.addListener((msg: any): boolean => {
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
+  if (msg.type === 'ask-model-status') {
+    ;(async () => {
+      if (askModelStatus.state !== 'ready' && askModelStatus.state !== 'loading') {
+        try {
+          const r = await callOffscreen<{ status: AskModelStatus }>(
+            { op: 'ask-model-status' },
+            { timeoutMs: 5_000 },
+          )
+          askModelStatus = r.status
+        } catch {
+          // offscreen not reachable yet; keep the local status.
+        }
+      }
+      sendResponse({ type: 'ask-model-status', status: askModelStatus } satisfies MsgResult)
+    })()
+    return true
+  }
+
   if (msg.type === 'model-status') {
     // A freshly-woken SW has modelStatus = INITIAL even when the model is
     // actually loaded in the (surviving) offscreen. Ask the offscreen for the
@@ -193,6 +242,9 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     msg.type !== 'capture' &&
     msg.type !== 'capture-text' &&
     msg.type !== 'recall' &&
+    msg.type !== 'ask' &&
+    msg.type !== 'ask-stream' &&
+    msg.type !== 'prepare-ask-model' &&
     msg.type !== 'get-settings' &&
     msg.type !== 'set-paused' &&
     msg.type !== 'deny-host' &&
@@ -238,6 +290,61 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
         modelStatus = { state: 'ready', percent: 100 }
         broadcastModelStatus(modelStatus)
         sendResponse({ type: 'recalled', results: r.results } satisfies MsgResult)
+      } else if (msg.type === 'ask') {
+        if (askModelStatus.state !== 'ready') {
+          sendResponse({ type: 'error', error: 'WebLLM is not ready yet.' } satisfies MsgResult)
+          return
+        }
+        const r = await callOffscreen<{ answer: AskAnswer }>({
+          op: 'ask',
+          text: msg.text,
+          retrieveK: msg.retrieveK,
+          contextK: msg.contextK,
+        })
+        modelStatus = { state: 'ready', percent: 100 }
+        broadcastModelStatus(modelStatus)
+        sendResponse({ type: 'asked', answer: r.answer } satisfies MsgResult)
+      } else if (msg.type === 'ask-stream') {
+        if (askModelStatus.state !== 'ready') {
+          sendResponse({ type: 'error', error: 'WebLLM is not ready yet.' } satisfies MsgResult)
+          return
+        }
+        callOffscreen<{ ok: boolean }>({
+          op: 'ask-stream',
+          requestId: msg.requestId,
+          text: msg.text,
+          retrieveK: msg.retrieveK,
+          contextK: msg.contextK,
+        }, { timeoutMs: 300_000 })
+          .then(() => {
+            modelStatus = { state: 'ready', percent: 100 }
+            broadcastModelStatus(modelStatus)
+          })
+          .catch((err) => {
+            chrome.runtime
+              .sendMessage({ type: 'ask-answer-error', requestId: msg.requestId, error: String(err) })
+              .catch(() => {})
+          })
+        sendResponse({ type: 'ok' } satisfies MsgResult)
+      } else if (msg.type === 'prepare-ask-model') {
+        askModelStatus = { state: 'loading', percent: askModelStatus.percent }
+        broadcastAskModelStatus(askModelStatus)
+        try {
+          const r = await callOffscreen<{ status: AskModelStatus }>({
+            op: 'prepare-ask-model',
+          })
+          askModelStatus = r.status
+          broadcastAskModelStatus(askModelStatus)
+          sendResponse({ type: 'ask-model-status', status: askModelStatus } satisfies MsgResult)
+        } catch (err) {
+          askModelStatus = {
+            state: 'error',
+            percent: askModelStatus.percent,
+            message: String(err),
+          }
+          broadcastAskModelStatus(askModelStatus)
+          sendResponse({ type: 'ask-model-status', status: askModelStatus } satisfies MsgResult)
+        }
       } else if (msg.type === 'get-settings') {
         const r = await callOffscreen<{ paused: boolean; userDenyHosts: string[] }>({ op: 'get-settings' })
         sendResponse({ type: 'settings', paused: r.paused, userDenyHosts: r.userDenyHosts } satisfies MsgResult)
@@ -366,4 +473,3 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
     }
   })()
 })
-

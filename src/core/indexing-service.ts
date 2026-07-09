@@ -2,8 +2,9 @@ import type { EmbeddingPort, VectorSearchPort } from './ports'
 
 // GPU-gentle gap between indexing batches: lets the foreground page render AND lets an
 // interactive query (which the embedder runs ahead of queued passages) start during the
-// gap. Mirrors the embedder's own 120ms inter-batch yield, which goes dormant at batch=8.
-const YIELD_MS = 120
+// gap. Smaller batches reduce the longest single GPU hold while the user keeps browsing.
+export const INDEXING_BATCH_SIZE = 4
+export const INDEXING_YIELD_MS = 120
 
 export class IndexingService {
   private running = false
@@ -22,7 +23,7 @@ export class IndexingService {
     // Small batches bound the worst-case wait an interactive query pays: the embedder runs
     // a 'query' ahead of queued passages but cannot interrupt the batch already in flight,
     // so a smaller batch = a shorter query stall.
-    private readonly batch = 8,
+    private readonly batch = INDEXING_BATCH_SIZE,
     private readonly maxRetries = 3,
     private readonly sleep: (ms: number) => Promise<void> = (ms) =>
       new Promise((r) => setTimeout(r, ms)),
@@ -78,7 +79,7 @@ export class IndexingService {
         if (!ok) break // persistent failure: leave the rest pending for a later re-drain
         chunks += pending.length
         onBatch?.(pending.length)
-        await this.sleep(YIELD_MS)
+        await this.sleep(INDEXING_YIELD_MS)
       }
     } finally {
       this.running = false

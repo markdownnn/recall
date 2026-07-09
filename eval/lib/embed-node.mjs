@@ -1,10 +1,10 @@
 // Real multilingual embedding model in Node, for the golden-set A/B harness.
 //
 // Model selection is env-driven so one harness can A/B several models cleanly:
-//   EVAL_MODEL   model id (default 'granite', the bundled prod model dir under public/models/)
+//   EVAL_MODEL   model id (default 'bge-base-en-v1.5', the selected prod model dir under public/models/)
 //   EVAL_DTYPE   quantization passed to the pipeline (default q8, to match the extension)
 //   EVAL_PREFIX  prefix convention: 'e5' => "query: "/"passage: " (e5 family),
-//                'none' => raw text (MiniLM / granite and most sentence-transformers),
+//                'none' => raw text (MiniLM / most sentence-transformers),
 //                'gemma' => EmbeddingGemma task prompts
 //                  query   => "task: search result | query: <text>"
 //                  passage => "title: none | text: <text>"
@@ -15,10 +15,10 @@
 //   EVAL_MODEL_FILE  optional: exact onnx base name under onnx/ (no .onnx), for A/B'ing repos
 //                whose quantized file does not follow the transformers.js dtype suffix
 //                convention. When set, dtype suffixing is bypassed and this file is loaded
-//                verbatim. (Unused by the bundled granite default, which ships a standard
+//                verbatim. (Unused by the selected BGE default, which ships a standard
 //                onnx/model_quantized.onnx loaded via dtype:'q8'.)
 //
-// The bundled granite is loaded OFFLINE from public/models (committed + verified by
+// The selected BGE model is loaded OFFLINE from public/models (verified by
 // scripts/fetch-model.mjs); any OTHER model id is fetched remotely into eval/.cache
 // (gitignored) on first run.
 import { pipeline, env } from '@huggingface/transformers'
@@ -26,10 +26,10 @@ import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
-const BUNDLED = 'granite' // bundled prod model dir under public/models/ (granite-107m R1)
+const BUNDLED = 'bge-base-en-v1.5' // selected prod model dir under public/models/
 const MODEL = process.env.EVAL_MODEL || BUNDLED
 const DTYPE = process.env.EVAL_DTYPE || 'q8'
-const PREFIX = process.env.EVAL_PREFIX || 'none' // granite takes raw text (no e5 prefix)
+const PREFIX = process.env.EVAL_PREFIX || 'bge'
 const MODEL_FILE = process.env.EVAL_MODEL_FILE || '' // optional exact onnx base name
 const MRL_DIM = Number(process.env.EVAL_MRL_DIM || 0) || 0 // 0 => full native dim
 
@@ -45,16 +45,28 @@ env.cacheDir = resolve('eval/.cache') // remote model weights land here (gitigno
 const CACHE_DIR = resolve('eval/.cache/embeds')
 mkdirSync(CACHE_DIR, { recursive: true })
 
-function cachePath(kind, text) {
-  const h = createHash('sha256')
-    .update(MODEL).update('\0')
-    .update(DTYPE).update('\0')
-    .update(MODEL_FILE).update('\0')
-    .update(PREFIX).update('\0')
-    .update(String(MRL_DIM)).update('\0')
+export function embedCacheKey({ model, dtype, modelFile, prefix, mrlDim, kind, text }) {
+  return createHash('sha256')
+    .update(model).update('\0')
+    .update(dtype).update('\0')
+    .update(modelFile).update('\0')
+    .update(prefix).update('\0')
+    .update(String(mrlDim)).update('\0')
     .update(kind).update('\n')
     .update(text)
     .digest('hex')
+}
+
+function cachePath(kind, text) {
+  const h = embedCacheKey({
+    model: MODEL,
+    dtype: DTYPE,
+    modelFile: MODEL_FILE,
+    prefix: PREFIX,
+    mrlDim: MRL_DIM,
+    kind,
+    text,
+  })
   return resolve(CACHE_DIR, `${h}.f32`)
 }
 
@@ -71,14 +83,23 @@ function writeCache(kind, text, vec) {
 
 // 'e5' => prepend "query: " / "passage: "; 'gemma' => EmbeddingGemma task prompts;
 // 'none' => raw text (no prefix convention).
-function withPrefix(kind, text) {
-  if (PREFIX === 'e5') return `${kind}: ${text}`
-  if (PREFIX === 'gemma') {
+export function formatInputForEmbedding(kind, text, prefix) {
+  if (prefix === 'bge') {
+    return kind === 'query'
+      ? `Represent this sentence for searching relevant passages: ${text}`
+      : text
+  }
+  if (prefix === 'e5') return `${kind}: ${text}`
+  if (prefix === 'gemma') {
     return kind === 'query'
       ? `task: search result | query: ${text}`
       : `title: none | text: ${text}`
   }
   return text
+}
+
+function withPrefix(kind, text) {
+  return formatInputForEmbedding(kind, text, PREFIX)
 }
 
 // Matryoshka truncation: slice a normalized vector to the first MRL_DIM dims and re-normalize.

@@ -1,0 +1,253 @@
+import type {
+  AppConfig,
+  ChatCompletionMessageParam,
+  InitProgressReport,
+  MLCEngineInterface,
+} from '@mlc-ai/web-llm'
+import type { AnswerDraft, AnswerGeneratorPort, AnswerRequest } from '../core/answer-generator'
+import type { RankedResult } from '../core/model'
+import { modelCdnUrl } from '../core/model-cdn'
+
+export const LLAMA_ASK_MODEL = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
+export const LLAMA_ASK_MODEL_DIR = 'webllm/llama-3.2-1b-instruct/q4f16_1/resolve/main/'
+export const LLAMA_ASK_MODEL_LIB = 'Llama-3.2-1B-Instruct-q4f16_1_cs1k-webgpu.wasm'
+export const GEMMA_ASK_MODEL = 'gemma3-1b-it-q4f16_1-MLC'
+export const GEMMA_ASK_MODEL_DIR = 'webllm/gemma3-1b-it/q4f16_1/resolve/main/'
+export const GEMMA_ASK_MODEL_LIB = 'gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm'
+export const ASK_MODEL_CANDIDATES = [LLAMA_ASK_MODEL, GEMMA_ASK_MODEL] as const
+export const NOT_FOUND_ANSWER = "I couldn't find that in your saved pages."
+export const MAX_QUERY_EXPANSIONS = 4
+export const MAX_EVIDENCE_PROMPT_CHUNKS = 4
+export const MAX_ASK_PROMPT_CHUNKS = 5
+export const MAX_CHARS_PER_PROMPT_CHUNK = 800
+export const MAX_EVIDENCE_TOKENS = 220
+export const MAX_ANSWER_TOKENS = 640
+export type ModelProgressEvent = { status: string; progress?: number; error?: string }
+
+function buildWebLlmAppConfig(
+  modelId: string,
+  modelBaseUrl: string,
+  modelLibUrl: string,
+  vramRequiredMB: number,
+  lowResourceRequired: boolean,
+  overrides: Record<string, number> = {},
+): AppConfig {
+  return {
+    model_list: [
+      {
+        model: modelBaseUrl,
+        model_id: modelId,
+        model_lib: modelLibUrl,
+        vram_required_MB: vramRequiredMB,
+        low_resource_required: lowResourceRequired,
+        overrides: { context_window_size: 4096, ...overrides },
+      },
+    ],
+  }
+}
+
+export function buildLlamaAppConfig(modelBaseUrl: string, modelLibUrl: string): AppConfig {
+  return buildWebLlmAppConfig(LLAMA_ASK_MODEL, modelBaseUrl, modelLibUrl, 879.04, true)
+}
+
+export function buildGemmaAppConfig(modelBaseUrl: string, modelLibUrl: string): AppConfig {
+  return buildWebLlmAppConfig(
+    GEMMA_ASK_MODEL,
+    modelBaseUrl,
+    modelLibUrl,
+    711.07,
+    true,
+    { sliding_window_size: -1 },
+  )
+}
+
+export function webLlmProgressToModelProgress(report: InitProgressReport): ModelProgressEvent {
+  const raw = report.progress <= 1 ? report.progress * 100 : report.progress
+  return { status: 'progress', progress: Math.max(0, Math.min(100, Math.round(raw))) }
+}
+
+function promptSafeChunkText(text: string): string {
+  if (text.length <= MAX_CHARS_PER_PROMPT_CHUNK) return text
+  return `${text.slice(0, MAX_CHARS_PER_PROMPT_CHUNK).trimEnd()}...`
+}
+
+function formatSavedExcerpts(chunks: RankedResult[], maxChunks: number): string {
+  return chunks
+    .slice(0, maxChunks)
+    .map((r) => `Page title: ${r.page.title}\nSaved text: ${promptSafeChunkText(r.chunk.text)}`)
+    .join('\n\n')
+}
+
+export function buildEvidenceMessages(question: string, chunks: RankedResult[]): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: 'user',
+      content:
+        [
+          'Read the saved excerpts and the user question.',
+          '',
+          'Return short working notes for the final answer.',
+          '- Which excerpts directly answer the question?',
+          '- What exact facts are supported?',
+          '- What should be ignored as unrelated?',
+          '- If the answer is not present, say that clearly.',
+          '',
+          'Do not answer the user yet.',
+          'Keep it short. Use only the saved excerpts.',
+          '',
+          `Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_EVIDENCE_PROMPT_CHUNKS)}`,
+          '',
+          `Question: ${question}`,
+        ].join('\n'),
+    },
+  ]
+}
+
+export function buildAskMessages(
+  question: string,
+  chunks: RankedResult[],
+  workingNotes = '',
+): ChatCompletionMessageParam[] {
+  const notes = workingNotes.trim()
+  return [
+    {
+      role: 'system',
+      content:
+        [
+          "You are Recall, a search assistant for the user's saved pages.",
+          "Answer the user's question using only the saved page excerpts below.",
+          'Rules:',
+          '- Use ONLY information found in the saved excerpts. Never invent facts, numbers, names, or dates.',
+          `- If the saved excerpts don't contain the answer, say exactly: "${NOT_FOUND_ANSWER}"`,
+          "- Synthesize across excerpts into one coherent answer. Don't list excerpts one by one or copy snippets verbatim.",
+          '- Lead with the direct answer first, then add supporting detail only if useful.',
+          '- Write in natural, conversational prose. Keep it to 2-3 short paragraphs. No bullet points unless the question explicitly asks for a list.',
+          "- Match the language of the user's question.",
+          '- Stay neutral and factual. Don\'t add opinions or filler like "Great question!"',
+          'Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".',
+          'Do not include a sources section; Recall shows sources below the answer.',
+          notes ? 'Use the working notes as a relevance guide, but the saved excerpts are the source of truth. Do not mention the working notes.' : '',
+        ].join(' '),
+    },
+    {
+      role: 'user',
+      content:
+        [
+          `Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_ASK_PROMPT_CHUNKS)}`,
+          notes ? `Working notes:\n${notes}` : '',
+          `Question: ${question}`,
+        ].filter(Boolean).join('\n\n'),
+    },
+  ]
+}
+
+export function buildQueryExpansionMessages(question: string): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: 'user',
+      content:
+        [
+          "You rewrite a user's search query into multiple search queries to improve retrieval coverage.",
+          '',
+          "Given the user's question, output 3-4 alternative search queries that:",
+          '- Rephrase the question using different keywords or synonyms',
+          '- Break a complex question into sub-queries if needed',
+          '- Include both broad and specific versions',
+          '',
+          'Output ONLY a JSON array of strings. No explanation, no markdown.',
+          '',
+          `User question: ${question}`,
+        ].join('\n'),
+    },
+  ]
+}
+
+export function parseExpandedQueries(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw.trim())
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, MAX_QUERY_EXPANSIONS)
+  } catch {
+    return []
+  }
+}
+
+export async function createLlamaAskEngine(
+  onProgress?: (e: ModelProgressEvent) => void,
+): Promise<MLCEngineInterface> {
+  const { CreateMLCEngine } = await import('@mlc-ai/web-llm')
+  const modelBaseUrl = modelCdnUrl(LLAMA_ASK_MODEL_DIR)
+  const modelLibUrl = modelCdnUrl(`${LLAMA_ASK_MODEL_DIR}${LLAMA_ASK_MODEL_LIB}`)
+  onProgress?.({ status: 'initiate', progress: 0 })
+  const engine = await CreateMLCEngine(LLAMA_ASK_MODEL, {
+    appConfig: buildLlamaAppConfig(modelBaseUrl, modelLibUrl),
+    initProgressCallback: (report) => onProgress?.(webLlmProgressToModelProgress(report)),
+  })
+  onProgress?.({ status: 'ready' })
+  return engine
+}
+
+export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
+  constructor(private readonly engine: MLCEngineInterface) {}
+
+  async expandQueries(question: string): Promise<string[]> {
+    const completion = await this.engine.chat.completions.create({
+      messages: buildQueryExpansionMessages(question),
+      temperature: 0.7,
+      max_tokens: 120,
+    })
+    return parseExpandedQueries(completion.choices[0]?.message.content ?? '')
+  }
+
+  private async createEvidenceNotes(request: AnswerRequest): Promise<string> {
+    const completion = await this.engine.chat.completions.create({
+      messages: buildEvidenceMessages(request.question, request.chunks),
+      temperature: 0,
+      max_tokens: MAX_EVIDENCE_TOKENS,
+    })
+    return completion.choices?.[0]?.message.content?.trim() ?? ''
+  }
+
+  private async createAnswerText(request: AnswerRequest, workingNotes: string): Promise<string> {
+    const completion = await this.engine.chat.completions.create({
+      messages: buildAskMessages(request.question, request.chunks, workingNotes),
+      temperature: 0,
+      max_tokens: MAX_ANSWER_TOKENS,
+    })
+    return completion.choices[0]?.message.content?.trim() || NOT_FOUND_ANSWER
+  }
+
+  async answerStream(request: AnswerRequest, onDelta: (delta: string) => void): Promise<AnswerDraft> {
+    const workingNotes = await this.createEvidenceNotes(request)
+    const stream = await this.engine.chat.completions.create({
+      messages: buildAskMessages(request.question, request.chunks, workingNotes),
+      temperature: 0,
+      max_tokens: MAX_ANSWER_TOKENS,
+      stream: true,
+    })
+    let text = ''
+    for await (const chunk of stream as AsyncIterable<{ choices?: Array<{ delta?: { content?: string } }> }>) {
+      const delta = chunk.choices?.[0]?.delta?.content ?? ''
+      if (!delta) continue
+      text += delta
+      onDelta(delta)
+    }
+    return {
+      text: text.trim() || NOT_FOUND_ANSWER,
+      citedChunkIds: request.chunks.slice(0, 3).map((r) => r.chunk.id),
+    }
+  }
+
+  async answer(request: AnswerRequest): Promise<AnswerDraft> {
+    const workingNotes = await this.createEvidenceNotes(request)
+    const raw = await this.createAnswerText(request, workingNotes)
+    return {
+      text: raw,
+      citedChunkIds: request.chunks.slice(0, 3).map((r) => r.chunk.id),
+    }
+  }
+}

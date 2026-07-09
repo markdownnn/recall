@@ -8,16 +8,17 @@ A literal do-this-then-that checklist. Files referenced here live in `docs/store
 ## Part A — Already DONE in the repo (verify, don't redo)
 
 - [x] **MV3 manifest** with name "Recall", side panel UI, no popup. (`manifest.config.ts`)
-- [x] **No remote code.** Embedding model (~107 MB) + ONNX runtime are bundled; CSP is
-      `connect-src 'self'`. Nothing is fetched at runtime. (PASS for "remote code = no".)
+- [x] **No remote code.** JavaScript/WASM are bundled. Model artifact files may be loaded
+      from the extension package or a configured Cloudflare R2 bucket; those files are data,
+      not executable extension code.
 - [x] **No telemetry / analytics.** `src/core/telemetry.ts` is a never-wired `NullTelemetry`.
 - [x] **Icons** at 16/32/48/128. (`public/icons/`, also in `dist-ext/icons/`)
-- [x] **Localized** EN + KO (`public/_locales/{en,ko}/messages.json`).
+- [x] **English-only locale** (`public/_locales/en/messages.json`).
 - [x] **Privacy gate** in code: dwell+engagement, denylist, SERP/internal skip, tracking-param strip.
 - [x] **Promo tiles** generated: `assets/store/promo-small-440x280.png`,
-      `assets/store/promo-marquee-1400x560.png` (+ KO variants).
-- [x] **Store copy drafted:** `listing-en.md`, `listing-ko.md`, `privacy-policy.md`,
-      `permissions.md`, `data-safety.md`.
+      `assets/store/promo-marquee-1400x560.png`.
+- [x] **Store copy drafted:** `listing-en.md`, `privacy-policy.md`, `permissions.md`,
+      `data-safety.md`.
 
 ---
 
@@ -32,10 +33,10 @@ This produces `recall-extension.zip` (runs `prebuild` model fetch/verify + `vite
 then zips `dist-ext` without source maps). Upload **this** zip.
 
 ### 2. Screenshots (designed hero mockups - already generated)
-Four polished 1280x800 marketing hero images are ready in `assets/store/screenshots/`:
-`01-search-results.png` (search by meaning), `02-auto-capture.png`, `04-private.png`
-(on-device privacy), and `03-search-ko.png` (Korean). They are designed mockups (clean
-HTML/CSS, not raw captures). To tweak copy/colors/content and regenerate:
+Three polished 1280x800 marketing hero images are ready in `assets/store/screenshots/en/`:
+`01-search.png` (search by meaning), `02-auto-capture.png`, and `03-private.png`
+(on-device privacy). They are designed mockups (clean HTML/CSS, not raw captures).
+To tweak copy/colors/content and regenerate:
 ```
 node scripts/store-mockups.mjs
 ```
@@ -52,14 +53,12 @@ Upload at least one (3-5 is better). Lead with `01-search-results.png`.
 
 ### 5. Fill the Store listing tab
 - **Category:** Productivity.
-- **Language:** add English and Korean.
+- **Language:** add English.
 - **Short description (EN):** paste from `listing-en.md`.
 - **Detailed description (EN):** paste from `listing-en.md`.
-- (Korean fields:) paste the matching blocks from `listing-ko.md`.
 - **Screenshots:** upload the PNGs from step 2 (1280x800).
 - **Promo tiles:** upload `assets/store/promo-small-440x280.png` (small) and
-  `assets/store/promo-marquee-1400x560.png` (marquee). Use the KO variants for the
-  Korean listing if you localize promos.
+  `assets/store/promo-marquee-1400x560.png` (marquee).
 - **Icon:** the 128px icon is taken from the package; no separate upload needed.
 
 ### 6. Fill the Privacy practices tab
@@ -90,7 +89,6 @@ only adopt it deliberately).
 | Dashboard field | Source file |
 | --- | --- |
 | Short + detailed description (EN) | `listing-en.md` |
-| Short + detailed description (KO) | `listing-ko.md` |
 | Single-purpose statement | `listing-en.md` / `data-safety.md` |
 | Privacy policy URL | hosted `privacy-policy.md` |
 | Permission justifications | `permissions.md` |

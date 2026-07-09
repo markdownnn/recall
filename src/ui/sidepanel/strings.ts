@@ -1,7 +1,5 @@
-// UI strings facade. Source of truth: public/_locales/{en,ko}/messages.json (standard MV3
-// chrome.i18n). Chrome resolves the right locale from the browser's UI language at load
-// (Korean Chrome -> ko, everything else -> en via default_locale). Call sites stay clean:
-// `t.captureButton`, `t.captureFailed(err)` - they never touch chrome.i18n directly.
+// UI strings facade. Source of truth: public/_locales/en/messages.json.
+// Recall is English-only, so call sites use this facade instead of branching on locale.
 //
 // In a real extension page (side panel, onboarding) chrome.i18n.getMessage is synchronous and
 // always available. In a plain Node context (vitest) there is no `chrome`, so we fall back to
@@ -44,10 +42,20 @@ export interface UIStrings {
   brand: string
   // Search
   searching: string
+  answering: string
   noResults: string
   searchTabLabel: string
   searchButtonLabel: string
   searchButtonAria: string
+  askModeLabel: string
+  askButtonLabel: string
+  askButtonAria: string
+  askPlaceholder: string
+  triedSearches: string
+  downloadWebLlm: string
+  webLlmReady: string
+  webLlmLoading: (pct: number) => string
+  webLlmRequired: string
   historyTabLabel: string
   settingsTabLabel: string
   historyEmpty: string
@@ -56,6 +64,7 @@ export interface UIStrings {
   captureButton: string
   updateButton: string
   cannotCaptureButton: string
+  loadingSearchModel: string
   saving: string
   savingHint: string
   saveRetry: string
@@ -67,6 +76,7 @@ export interface UIStrings {
   cannotCapturePage: string
   reloadToCapture: string
   searchFailed: (err: string) => string
+  askFailed: (err: string) => string
   // SAVED badge (PAGE-scoped)
   savedBadge: string
   notSavedBadge: string
@@ -137,10 +147,20 @@ export interface UIStrings {
 export const t: UIStrings = {
   brand: msg('brand'),
   searching: msg('searching'),
+  answering: msg('answering'),
   noResults: msg('noResults'),
   searchTabLabel: msg('searchTabLabel'),
   searchButtonLabel: msg('searchButtonLabel'),
   searchButtonAria: msg('searchButtonAria'),
+  askModeLabel: msg('askModeLabel'),
+  askButtonLabel: msg('askButtonLabel'),
+  askButtonAria: msg('askButtonAria'),
+  askPlaceholder: msg('askPlaceholder'),
+  triedSearches: msg('triedSearches'),
+  downloadWebLlm: msg('downloadWebLlm'),
+  webLlmReady: msg('webLlmReady'),
+  webLlmLoading: (pct) => msg('webLlmLoading', [String(pct)]),
+  webLlmRequired: msg('webLlmRequired'),
   historyTabLabel: msg('historyTabLabel'),
   settingsTabLabel: msg('settingsTabLabel'),
   historyEmpty: msg('historyEmpty'),
@@ -148,6 +168,7 @@ export const t: UIStrings = {
   captureButton: msg('captureButton'),
   updateButton: msg('updateButton'),
   cannotCaptureButton: msg('cannotCaptureButton'),
+  loadingSearchModel: msg('loadingSearchModel'),
   saving: msg('saving'),
   savingHint: msg('savingHint'),
   saveRetry: msg('saveRetry'),
@@ -159,6 +180,7 @@ export const t: UIStrings = {
   cannotCapturePage: msg('cannotCapturePage'),
   reloadToCapture: msg('reloadToCapture'),
   searchFailed: (err) => msg('searchFailed', [err]),
+  askFailed: (err) => msg('askFailed', [err]),
   savedBadge: msg('savedBadge'),
   notSavedBadge: msg('notSavedBadge'),
   loadingPercent: (pct) => msg('loadingPercent', [String(pct)]),

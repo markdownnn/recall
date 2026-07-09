@@ -1,5 +1,5 @@
-// Real embedder that runs the granite-107m-multilingual model (raw text, NO
-// query:/passage: prefix) inside the offscreen document.  Tries WebGPU first
+// Real embedder that runs the selected BGE English model inside the offscreen document.
+// Query text gets BGE's search instruction; passage text stays raw. Tries WebGPU first
 // (fast) and falls back to single-thread WASM if WebGPU is unsupported; if BOTH
 // fail, the load REJECTS so the offscreen can surface an "unavailable" state
 // (this device can't run the on-device model).  Returns embeddings as number[][]
@@ -9,6 +9,7 @@
 // This is the REAL embedder of the hexagonal architecture; the SW holds only a
 // proxy (OffscreenEmbedderProxy) that forwards here over RPC.
 import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers'
+import { MODEL_CDN_BASE_URL } from '../core/model-cdn'
 
 type ProgressCb = (e: { status: string; progress?: number }) => void
 
@@ -28,22 +29,18 @@ export type PipelineFactory = (
   options?: unknown,
 ) => Promise<FeatureExtractionPipeline>
 
-// granite-107m-multilingual, committed under public/models/granite/ and loaded by its bare
-// dir name. dtype:'q8' requests onnx/model_quantized.onnx - our FIRST-PARTY re-quantized
-// artifact (Task 5/6). Granite takes RAW text (no e5-style query:/passage: prefix). 384-dim.
-const MODEL_ID = 'granite'
+const MODEL_ID = 'bge-base-en-v1.5'
 // Small batches + a yield between them keep indexing GPU-gentle: a big single
 // submission monopolizes the GPU and makes the page the user is currently reading
 // stutter. Smaller submissions with gaps let the foreground keep rendering. A single
 // query (1 text => 1 batch) never hits the inter-batch yield, so search stays fast.
-const BATCH = 8
+const BATCH = 4
 const YIELD_MS = 120
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 // Configure the ONNX runtime ONCE to load its WASM from the bundled extension
 // dir (public/onnx-hf/), not a CDN.  Both WASM and WebGPU backends need asyncify.wasm.
-// The model itself is also bundled under public/models/ (fetched at build time by
-// scripts/fetch-model.mjs) so connect-src no longer needs huggingface.co at runtime.
+// The BGE model itself is downloaded from our model CDN and cached by the browser.
 let _envConfigured = false
 function configureEnv(): void {
   if (_envConfigured) return
@@ -54,13 +51,11 @@ function configureEnv(): void {
       wasm: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.wasm`,
       mjs: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.mjs`,
     }
-    // Load the model from the bundled extension path, never from a remote host.
-    env.allowLocalModels = true
-    env.localModelPath = chrome.runtime.getURL('models/')
-    env.allowRemoteModels = false
-    // We bundle the model locally, so transformers.js's browser cache is pointless and, in a
-    // chrome-extension context, warns "Cache 'put' ... unsupported". Turn it off.
-    env.useBrowserCache = false
+    env.allowLocalModels = false
+    env.allowRemoteModels = true
+    env.remoteHost = MODEL_CDN_BASE_URL
+    env.remotePathTemplate = '{model}/resolve/{revision}/'
+    env.useBrowserCache = true
   }
 }
 
@@ -106,9 +101,9 @@ export class WebGpuEmbedder {
   }
 
   // The offscreen wires this to an 'embedder-degraded' rpc-event with state:'wasm'. Called once
-  // granite loaded on WASM (slower than the WebGPU ideal). The side panel turns it into a
+  // BGE loaded on WASM (slower than the WebGPU ideal). The side panel turns it into a
   // "running slow" notice instead of a buried console.warn. (The harder "unavailable" state -
-  // granite failed on BOTH providers - is surfaced by the offscreen from ensureLoaded's
+  // BGE failed on BOTH providers - is surfaced by the offscreen from ensureLoaded's
   // rejection, not from here.)
   setDegradedSink(cb: (info: { device: 'wasm' }) => void): void {
     this.degradedSink = cb
@@ -134,7 +129,10 @@ export class WebGpuEmbedder {
       this.pipeP = this.createPipe(onProgress ?? this.progressSink)
         .then((pipe) => {
           this._everLoaded = true
-          console.log(`[Recall:perf] model load ${Math.round(performance.now() - t0)}ms (${fresh ? 'fresh' : 'reload'})`)
+          console.log(
+            `[Recall:perf] bge-load device=${this._device ?? 'unknown'} ms=${Math.round(performance.now() - t0)} ` +
+            `kind=${fresh ? 'fresh' : 'reload'}`,
+          )
           return pipe
         })
         .catch((e) => {
@@ -153,7 +151,7 @@ export class WebGpuEmbedder {
     try {
       const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
         device: 'webgpu',
-        // dtype:'q8' requests model_quantized.onnx — the file we bundle in public/models/.
+        // dtype:'q8' requests model_quantized.onnx from the CDN model folder.
         dtype: 'q8',
         progress_callback: onProgress,
       })) as FeatureExtractionPipeline
@@ -166,17 +164,17 @@ export class WebGpuEmbedder {
     }
 
     // --- WASM single-thread fallback. numThreads=1 avoids the proxy worker. If THIS also
-    //     throws there is no further fallback (granite-only): the rejection propagates, getPipe
+    //     throws there is no further fallback: the rejection propagates, getPipe
     //     nulls pipeP, and ensureLoaded rejects so the offscreen can surface "unavailable". ---
     ;(env.backends.onnx as any).wasm.numThreads = 1
     const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
       device: 'wasm',
-      dtype: 'q8', // model_quantized.onnx - the same bundled file used by the WebGPU path.
+      dtype: 'q8', // model_quantized.onnx - the same CDN file used by the WebGPU path.
       progress_callback: onProgress,
     })) as FeatureExtractionPipeline
     await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix
     this._device = 'wasm'
-    console.warn('[recall] DEGRADED embedder: granite on WASM single-thread (slow)')
+    console.warn('[recall] DEGRADED embedder: BGE on WASM single-thread (slow)')
     if (!this.degradedEmitted) {
       this.degradedEmitted = true
       this.degradedSink?.({ device: 'wasm' })
@@ -214,13 +212,15 @@ export class WebGpuEmbedder {
     const out: number[][] = []
     try {
       for (let i = 0; i < texts.length; i += BATCH) {
-        // granite takes raw text in both lanes (no e5-style prefix). `kind` still drives the
-        // two-lane scheduler priority; it no longer alters the text.
         const slice = texts.slice(i, i + BATCH)
+        const inputs =
+          kind === 'query'
+            ? slice.map((text) => `Represent this sentence for searching relevant passages: ${text}`)
+            : slice
         // [Recall:perf] per-batch embed cost. Summed over a drain this shows whether the
         // ~30s is the model inference itself vs the load/yields around it. Removable.
         const b0 = performance.now()
-        const output = await pipe(slice, { pooling: 'mean', normalize: true })
+        const output = await pipe(inputs, { pooling: 'mean', normalize: true })
         console.log(`[Recall:perf] embed batch=${slice.length} ${Math.round(performance.now() - b0)}ms`)
         for (const arr of output.tolist() as number[][]) out.push(arr)
         // Yield the GPU between batches (not after the last) so the foreground page

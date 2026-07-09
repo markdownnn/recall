@@ -6,8 +6,8 @@ dashboard's per-permission justification field.
 | Permission | Why Recall needs it (reviewer justification) |
 | --- | --- |
 | `activeTab` | Read the readable text of the page in the active tab when the user saves it (or when an auto-capture fires for the tab they are reading), so it can be indexed for later search. |
-| `offscreen` | Run the bundled embedding model (ONNX/WebGPU) and the SQLite-WASM database in an offscreen document - heavy local work that cannot run in the service worker. No network is used. |
-| `sidePanel` | The entire UI is a side panel: search, the History tab, and the per-page save controls. There is no popup. |
+| `offscreen` | Run the embedding model (ONNX/WebGPU), WebLLM answer model, and SQLite-WASM database in an offscreen document - heavy local work that cannot run in the service worker. User data is not sent to a server. |
+| `sidePanel` | The entire UI is a side panel: Search, Ask, History, and per-page save controls. There is no popup. |
 | `alarms` | A periodic alarm (>=1 min) re-creates the offscreen document and drains the local embedding queue after the service worker is reaped, so saved pages still finish indexing while the panel is closed. |
 | `unlimitedStorage` | The captured page text, search index, and the database live in local OPFS storage and can grow past the default quota for heavy readers. All storage is on-device. |
 | `host_permissions: <all_urls>` (+ `content_scripts` on `<all_urls>`) | The content script extracts readable text from the pages the user reads. Capture can happen on any site the user chooses to read, so the script must be allowed broadly. It only reads text after the privacy gate passes; sensitive sites are denylisted and never captured. |

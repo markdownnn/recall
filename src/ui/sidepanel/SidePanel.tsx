@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'preact/hooks'
-import type { MsgResult, ModelProgressMsg, EmbedderDegradedMsg } from '../../messaging'
+import type { AskModelProgressMsg, MsgResult, ModelProgressMsg, EmbedderDegradedMsg } from '../../messaging'
 import { INITIAL_MODEL_STATUS } from '../../core/model-progress'
 import type { ModelStatus } from '../../core/model-progress'
+import { INITIAL_ASK_MODEL_STATUS } from '../../core/ask-model-status'
+import type { AskModelStatus } from '../../core/ask-model-status'
 import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
 import { ThisPageBar } from './ThisPageBar'
@@ -19,6 +21,7 @@ import type { TabKey } from './Tabs'
 // removes the old shared/global indicator, so one tab's indexing can never leak onto another.
 export function SidePanel() {
   const [modelStatus, setModelStatus] = useState<ModelStatus>(INITIAL_MODEL_STATUS)
+  const [askModelStatus, setAskModelStatus] = useState<AskModelStatus>(INITIAL_ASK_MODEL_STATUS)
   // Transient capture-RESULT note, set ONLY when a capture is BLOCKED or FAILS. A SUCCESSFUL
   // capture writes NOTHING here - its feedback is the button/badge flipping to "Saving..." then
   // "saved". Cleared on every tab switch so a note about a previous page never rides along.
@@ -38,12 +41,16 @@ export function SidePanel() {
     chrome.runtime.sendMessage({ type: 'model-status' }).then((res: MsgResult) => {
       if (res?.type === 'model-status') setModelStatus(res.status)
     }).catch(() => {})
+    chrome.runtime.sendMessage({ type: 'ask-model-status' }).then((res: MsgResult) => {
+      if (res?.type === 'ask-model-status') setAskModelStatus(res.status)
+    }).catch(() => {})
 
     // Background broadcasts that THIS panel root still cares about: model load progress and the
     // degraded-embedder banner. The per-page indexing state is owned by ThisPageBar (it listens
     // to indexing-progress itself), so there is no indexing handling here anymore.
-    const listener = (msg: ModelProgressMsg | EmbedderDegradedMsg) => {
+    const listener = (msg: ModelProgressMsg | AskModelProgressMsg | EmbedderDegradedMsg) => {
       if (msg?.type === 'model-progress') setModelStatus(msg.status)
+      if (msg?.type === 'ask-model-progress') setAskModelStatus(msg.status)
       if (msg?.type === 'embedder-degraded') {
         // Persistent banner: the on-device embedder is unavailable (no search) or slow (WASM).
         // A fresh event always re-shows the banner even if the user dismissed a prior one.
@@ -145,6 +152,15 @@ export function SidePanel() {
     }
   }
 
+  const prepareAskModel = async () => {
+    try {
+      const res: MsgResult = await chrome.runtime.sendMessage({ type: 'prepare-ask-model' })
+      if (res?.type === 'ask-model-status') setAskModelStatus(res.status)
+    } catch (err) {
+      setAskModelStatus({ state: 'error', percent: askModelStatus.percent, message: String(err) })
+    }
+  }
+
   function renderModelStatus() {
     if (modelStatus.state === 'loading') return <span class="status loading">{t.loadingPercent(modelStatus.percent)}</span>
     if (modelStatus.state === 'error') return <span class="status error">{t.modelError}</span>
@@ -184,13 +200,16 @@ export function SidePanel() {
         </div>
       )}
 
-      <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} />
+      <ThisPageBar onCapture={capture} refreshSignal={savedRefresh} modelStatus={modelStatus} />
       {status && <div class="note">{status}</div>}
 
       <hr class="rule" />
 
       <TabBar active={tab} onSelect={setTab} />
-      {tab === 'search' && <SearchTab />}
+      {tab === 'search' && <SearchTab initialMode="search" />}
+      {tab === 'ask' && (
+        <SearchTab initialMode="ask" askModelStatus={askModelStatus} onPrepareAskModel={prepareAskModel} />
+      )}
       {tab === 'history' && <HistoryTab />}
       {tab === 'settings' && <SettingsTab />}
     </div>

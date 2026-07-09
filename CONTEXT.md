@@ -1,6 +1,6 @@
-# Recall ("어디서 봤더라")
+# Recall
 
-Local-first 리서치 회수 익스텐션. 사용자가 읽은 것을 게이트를 통과한 것만 자동으로 쌓고, 자연어 질문에 정확한 구절과 출처로 답한다.
+영어 웹 리서치 회수 익스텐션. 사용자가 읽은 것을 게이트를 통과한 것만 자동으로 쌓고, 자연어 질문에 정확한 구절과 출처로 답한다.
 
 ## Language
 
@@ -45,5 +45,9 @@ _Avoid_: Import, backfill, seed
 _Avoid_: Sync, publish
 
 **Golden set**:
-개발용으로 직접 큐레이션한 (샘플 페이지 + 질문 + 1등이어야 할 정답 Chunk) 묶음. precision@1/MRR을 숫자로 내어 임베딩 모델과 청킹 전략을 고르는 기준. 한글 질문→영어 구절 같은 크로스링구얼 케이스를 반드시 포함한다. 사용자 데이터는 로컬·비공개라 튜닝에 못 쓰므로 별도로 만든다.
+개발용으로 직접 큐레이션한 (샘플 페이지 + 질문 + 1등이어야 할 정답 Chunk) 묶음. precision@1/MRR을 숫자로 내어 영어 임베딩 모델과 청킹 전략을 고르는 기준이다. 사용자 데이터는 로컬·비공개라 튜닝에 못 쓰므로 별도로 만든다.
 _Avoid_: Test set, eval data
+
+**Ask to Recall**:
+저장된 Chunk를 먼저 찾고, 그 Chunk만 근거로 답을 만드는 질문 기능. 답에는 근거가 된 Chunk와 CapturedPage 출처가 함께 따라온다.
+_Avoid_: Chat, assistant, Q&A

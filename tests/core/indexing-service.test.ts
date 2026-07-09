@@ -1,4 +1,4 @@
-import { IndexingService } from '../../src/core/indexing-service'
+import { INDEXING_BATCH_SIZE, INDEXING_YIELD_MS, IndexingService } from '../../src/core/indexing-service'
 import { MemoryVectorStore } from '../../src/adapters/memory-vector-store'
 import { CaptureService } from '../../src/core/capture-service'
 import { ParagraphChunker } from '../../src/core/paragraph-chunker'
@@ -130,6 +130,13 @@ test('drain() is suppressed during migration; drainForMigration() still runs', a
 // --- New retry tests (TDD - written before implementation) ---
 
 const noSleep = async () => {}
+
+// Scenario: 현재 페이지 저장 직후 큰 임베딩 배치가 GPU를 오래 잡으면 사용자가 스크롤/입력 렉을 느낀다.
+// Coverage: ✅ integration
+test('default indexing pacing uses small GPU-gentle batches', () => {
+  expect(INDEXING_BATCH_SIZE).toBe(4)
+  expect(INDEXING_YIELD_MS).toBeGreaterThanOrEqual(120)
+})
 
 // Scenario: A transient embed failure (e.g. GPU hiccup) must not strand a chunk as
 // unsearchable. The drain retries and the chunk eventually gets its vector.

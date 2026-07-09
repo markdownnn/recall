@@ -97,10 +97,9 @@ test('single-flight: concurrent embed calls never overlap in the model', async (
   expect(fake.maxActive).toBe(1)
 })
 
-// Scenario: granite takes raw input_ids+attention_mask and must NOT receive the old e5
-// "query: "/"passage: " prefixes; leaking them poisons every embedding.
-// Coverage: integration (fake records the exact strings the model receives).
-test('granite: raw text (no prefix) reaches the model for both lanes', async () => {
+// Scenario: BGE query text needs a search instruction, while saved passages must stay raw.
+// Coverage: ⚠️ mock - fake pipeline으로 입력 문자열만 확인한다.
+test('bge: search instruction reaches query lane only', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
 
@@ -108,18 +107,19 @@ test('granite: raw text (no prefix) reaches the model for both lanes', async () 
   await embedder.embed(['bar'], 'passage')
 
   const flat = fake.calls.flat()
-  expect(flat).toContain('foo')
+  expect(flat).toContain('Represent this sentence for searching relevant passages: foo')
   expect(flat).toContain('bar')
+  expect(flat).not.toContain('foo')
   expect(flat).not.toContain('query: foo')
   expect(flat).not.toContain('passage: bar')
 })
 
-// Scenario: WebGPU is unavailable so granite loads on WASM single-thread (slower). The
+// Scenario: WebGPU is unavailable so BGE loads on WASM single-thread (slower). The
 // embedder must record device='wasm' AND fire the degraded sink so the side panel can show a
 // "running slow" notice instead of a buried console.warn.
-// Coverage: integration (fake fails webgpu once; wasm succeeds; asserts device + sink).
+// Coverage: ⚠️ mock - fake pipeline으로 WebGPU 실패와 WASM 성공을 흉내 낸다.
 test('wasm fallback records device=wasm and fires the degraded sink', async () => {
-  const fake = makeFake({ failTimes: 1 }) // fail granite on webgpu; wasm (2nd call) succeeds
+  const fake = makeFake({ failTimes: 1 }) // fail BGE on webgpu; wasm (2nd call) succeeds
   const embedder = new WebGpuEmbedder(fake.factory)
   const seen: { device: string }[] = []
   embedder.setDegradedSink((info) => seen.push(info))
@@ -130,12 +130,12 @@ test('wasm fallback records device=wasm and fires the degraded sink', async () =
   expect(seen).toEqual([{ device: 'wasm' }])
 })
 
-// Scenario: granite cannot be created on EITHER WebGPU or WASM - this device can't run the
+// Scenario: BGE cannot be created on EITHER WebGPU or WASM - this device can't run the
 // on-device model at all. ensureLoaded()/embed() MUST reject (the offscreen turns that into a
 // user-visible "search unavailable on this hardware" notice) rather than hang or fake success.
-// Coverage: integration (fake fails both granite attempts; asserts the load rejects).
-test('granite unavailable on both providers rejects (offscreen surfaces unavailable)', async () => {
-  const fake = makeFake({ failTimes: 2 }) // fail granite on webgpu AND wasm
+// Coverage: ⚠️ mock - fake pipeline으로 두 번의 모델 로드 실패를 흉내 낸다.
+test('bge unavailable on both providers rejects (offscreen surfaces unavailable)', async () => {
+  const fake = makeFake({ failTimes: 2 }) // fail BGE on webgpu AND wasm
   const embedder = new WebGpuEmbedder(fake.factory)
   await expect(embedder.embed(['foo'], 'query')).rejects.toBeTruthy()
 })
@@ -155,13 +155,13 @@ test('priority: a query embed jumps ahead of queued passage embeds', async () =>
   const q = embedder.embed(['q1'], 'query') // arrives while p1 in flight -> overtakes p2
   await Promise.all([p1, p2, q])
 
-  expect(fake.calls.flat()).toEqual(['p1', 'q1', 'p2'])
+  expect(fake.calls.flat()).toEqual(['p1', 'Represent this sentence for searching relevant passages: q1', 'p2'])
 })
 
-// Scenario: a large capture (20 chunks) must be embedded in small GPU-gentle batches
-// of 8 and return one vector per input, not drop or merge any.
-// Coverage: integration (fake records each batch size; asserts 8 + 8 + 4).
-test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () => {
+// Scenario: a large capture (20 chunks) must be embedded in smaller GPU-gentle batches
+// of 4 and return one vector per input, not drop or merge any.
+// Coverage: integration (fake records each batch size; asserts five batches of 4).
+test('batching: 20 texts embed in batches of 4 and return 20 vectors', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
   const texts = Array.from({ length: 20 }, (_, i) => `t${i}`)
@@ -171,5 +171,5 @@ test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () 
   expect(vecs.length).toBe(20)
   expect(vecs[0].length).toBe(4)
   const batchSizes = fake.calls.filter((c) => c[0] !== 'warmup').map((c) => c.length)
-  expect(batchSizes).toEqual([8, 8, 4])
+  expect(batchSizes).toEqual([4, 4, 4, 4, 4])
 })

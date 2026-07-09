@@ -1,0 +1,23 @@
+[
+  {
+    "id": "Xenova/bge-small-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 34
+  },
+  {
+    "id": "Xenova/bge-base-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 110
+  },
+  {
+    "id": "Xenova/bge-large-en-v1.5",
+    "dtype": "q8",
+    "prefix": "bge",
+    "modelFile": "",
+    "expectedSizeMB": 337
+  }
+]

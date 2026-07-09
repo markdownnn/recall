@@ -1,5 +1,7 @@
 # 임베딩 모델과 청킹 전략은 골든셋으로 고른다
 
+Status: superseded in part by ADR 0023. The measurement-first rule remains. The Korean/English cross-lingual requirement does not.
+
 임베딩 모델과 청킹 전략을 코드에 못박지 않고, 둘 다 포트(`EmbeddingPort`, `ContentChunkerPort`) 뒤 스왑 가능 어댑터로 두고 골든셋 평가 하네스(precision@1/MRR)로 고른다. 골든셋 하네스는 v1 스코프 IN이다 — 정밀도가 이 제품의 핵심 지표인데, 측정 장치가 없으면 모델·청커 선택이 감이 되기 때문이다.
 
 ## Considered Options
