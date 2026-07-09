@@ -51,6 +51,11 @@ export interface UIStrings {
   askButtonLabel: string
   askButtonAria: string
   askPlaceholder: string
+  triedSearches: string
+  downloadWebLlm: string
+  webLlmReady: string
+  webLlmLoading: (pct: number) => string
+  webLlmRequired: string
   historyTabLabel: string
   settingsTabLabel: string
   historyEmpty: string
@@ -59,6 +64,7 @@ export interface UIStrings {
   captureButton: string
   updateButton: string
   cannotCaptureButton: string
+  loadingSearchModel: string
   saving: string
   savingHint: string
   saveRetry: string
@@ -150,6 +156,11 @@ export const t: UIStrings = {
   askButtonLabel: msg('askButtonLabel'),
   askButtonAria: msg('askButtonAria'),
   askPlaceholder: msg('askPlaceholder'),
+  triedSearches: msg('triedSearches'),
+  downloadWebLlm: msg('downloadWebLlm'),
+  webLlmReady: msg('webLlmReady'),
+  webLlmLoading: (pct) => msg('webLlmLoading', [String(pct)]),
+  webLlmRequired: msg('webLlmRequired'),
   historyTabLabel: msg('historyTabLabel'),
   settingsTabLabel: msg('settingsTabLabel'),
   historyEmpty: msg('historyEmpty'),
@@ -157,6 +168,7 @@ export const t: UIStrings = {
   captureButton: msg('captureButton'),
   updateButton: msg('updateButton'),
   cannotCaptureButton: msg('cannotCaptureButton'),
+  loadingSearchModel: msg('loadingSearchModel'),
   saving: msg('saving'),
   savingHint: msg('savingHint'),
   saveRetry: msg('saveRetry'),

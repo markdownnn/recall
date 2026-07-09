@@ -1,3 +1,4 @@
+import type { AnswerRetrievalOptions } from './answer-retrieval'
 import type { Chunk, RankedResult } from './model'
 
 // Wraps "turn a page into clean, block-joined prose + a title" behind one seam so the
@@ -45,6 +46,9 @@ export interface VectorSearchPort {
   recentPages(limit: number, beforeTs?: number): Promise<import('./model').CapturedPage[]>
   // Search ONLY over embedded chunks (those with a vector).
   search(queryVector: Float32Array, queryText: string, k: number): Promise<RankedResult[]>
+  // Ask needs context, not a page list: return multiple useful chunks per matching page,
+  // including nearby chunks when configured.
+  searchForAnswer(queryVector: Float32Array, queryText: string, options: AnswerRetrievalOptions): Promise<RankedResult[]>
   // Delete all pages (and their chunks) whose host equals or is a subdomain of the given host.
   deletePagesByHost(host: string): Promise<void>
 }

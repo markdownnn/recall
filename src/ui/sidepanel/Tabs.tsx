@@ -2,10 +2,11 @@ import { t } from './strings'
 
 // The single extension point for tabs. Adding one is a 3-line change: extend the union, push a
 // row into TABS, add one `{tab === 'x' && <X/>}` line in SidePanel. No change to this bar.
-export type TabKey = 'search' | 'history' | 'settings'
+export type TabKey = 'search' | 'ask' | 'history' | 'settings'
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: 'search', label: t.searchTabLabel },
+  { key: 'ask', label: t.askModeLabel },
   { key: 'history', label: t.historyTabLabel },
   { key: 'settings', label: t.settingsTabLabel },
 ]

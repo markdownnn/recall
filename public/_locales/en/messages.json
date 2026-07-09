@@ -17,6 +17,14 @@
   "askButtonLabel": { "message": "Ask" },
   "askButtonAria": { "message": "Ask saved pages" },
   "askPlaceholder": { "message": "Ask about saved pages..." },
+  "triedSearches": { "message": "Tried searches" },
+  "downloadWebLlm": { "message": "Download WebLLM" },
+  "webLlmReady": { "message": "WebLLM ready" },
+  "webLlmLoading": {
+    "message": "Loading WebLLM $percent$%",
+    "placeholders": { "percent": { "content": "$1" } }
+  },
+  "webLlmRequired": { "message": "Download WebLLM before asking" },
   "historyTabLabel": { "message": "History" },
   "settingsTabLabel": { "message": "Settings" },
   "historyEmpty": { "message": "Nothing captured yet - pages you save will show up here." },
@@ -25,6 +33,7 @@
   "captureButton": { "message": "Capture this page" },
   "updateButton": { "message": "Update this page" },
   "cannotCaptureButton": { "message": "Can't save this page" },
+  "loadingSearchModel": { "message": "Loading search model..." },
   "saving": { "message": "Saving..." },
   "savingHint": { "message": "Saving can take a moment." },
   "saveRetry": { "message": "Couldn't finish saving - it'll retry shortly." },

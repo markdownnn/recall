@@ -30,11 +30,10 @@ export default defineManifest({
     { matches: ['<all_urls>'], js: ['src/content/capture.ts'], run_at: 'document_idle' },
   ],
   // 'wasm-unsafe-eval' is required for @sqlite.org/sqlite-wasm, Transformers ONNX, and WebLLM.
-  // connect-src is 'self' only: runtime model loads must use extension-hosted URLs.
-  // BGE is prepared under public/models/bge-base-en-v1.5, and WebLLM uses an appConfig
-  // that points at public/models/webllm instead of the WebLLM Hugging Face/GitHub defaults.
+  // BGE and WebLLM model files are served from our R2-backed model CDN.
   content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'",
+    extension_pages:
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn.teamnyongs.com",
   },
   // 'alarms': an SW-independent re-drain. The 20s setInterval keep-alive ping does NOT survive
   // an SW reap (sleep/memory pressure/reload), so a chrome.alarms alarm (>=1min) re-creates the

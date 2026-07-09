@@ -71,6 +71,7 @@ describe('r2 model manifest script', () => {
 
       expect(out).toContain('npx wrangler r2 object put recall-models/models/bge-base-en-v1.5/manifest.json')
       expect(out).toContain('npx wrangler r2 object put recall-models/models/bge-base-en-v1.5/onnx/model.onnx')
+      expect(out).toContain('--remote')
       expect(out.indexOf('manifest.json')).toBeLessThan(out.indexOf('onnx/model.onnx'))
     } finally {
       rmSync(root, { recursive: true, force: true })

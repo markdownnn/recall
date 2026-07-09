@@ -9,6 +9,7 @@
 // This is the REAL embedder of the hexagonal architecture; the SW holds only a
 // proxy (OffscreenEmbedderProxy) that forwards here over RPC.
 import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers'
+import { MODEL_CDN_BASE_URL } from '../core/model-cdn'
 
 type ProgressCb = (e: { status: string; progress?: number }) => void
 
@@ -33,14 +34,13 @@ const MODEL_ID = 'bge-base-en-v1.5'
 // submission monopolizes the GPU and makes the page the user is currently reading
 // stutter. Smaller submissions with gaps let the foreground keep rendering. A single
 // query (1 text => 1 batch) never hits the inter-batch yield, so search stays fast.
-const BATCH = 8
+const BATCH = 4
 const YIELD_MS = 120
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 // Configure the ONNX runtime ONCE to load its WASM from the bundled extension
 // dir (public/onnx-hf/), not a CDN.  Both WASM and WebGPU backends need asyncify.wasm.
-// The model itself is also bundled under public/models/ (fetched at build time by
-// scripts/fetch-model.mjs) so connect-src no longer needs huggingface.co at runtime.
+// The BGE model itself is downloaded from our model CDN and cached by the browser.
 let _envConfigured = false
 function configureEnv(): void {
   if (_envConfigured) return
@@ -51,13 +51,11 @@ function configureEnv(): void {
       wasm: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.wasm`,
       mjs: `${onnxHfBase}ort-wasm-simd-threaded.asyncify.mjs`,
     }
-    // Load the model from the bundled extension path, never from a remote host.
-    env.allowLocalModels = true
-    env.localModelPath = chrome.runtime.getURL('models/')
-    env.allowRemoteModels = false
-    // We bundle the model locally, so transformers.js's browser cache is pointless and, in a
-    // chrome-extension context, warns "Cache 'put' ... unsupported". Turn it off.
-    env.useBrowserCache = false
+    env.allowLocalModels = false
+    env.allowRemoteModels = true
+    env.remoteHost = MODEL_CDN_BASE_URL
+    env.remotePathTemplate = '{model}/resolve/{revision}/'
+    env.useBrowserCache = true
   }
 }
 
@@ -131,7 +129,10 @@ export class WebGpuEmbedder {
       this.pipeP = this.createPipe(onProgress ?? this.progressSink)
         .then((pipe) => {
           this._everLoaded = true
-          console.log(`[Recall:perf] model load ${Math.round(performance.now() - t0)}ms (${fresh ? 'fresh' : 'reload'})`)
+          console.log(
+            `[Recall:perf] bge-load device=${this._device ?? 'unknown'} ms=${Math.round(performance.now() - t0)} ` +
+            `kind=${fresh ? 'fresh' : 'reload'}`,
+          )
           return pipe
         })
         .catch((e) => {
@@ -150,7 +151,7 @@ export class WebGpuEmbedder {
     try {
       const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
         device: 'webgpu',
-        // dtype:'q8' requests model_quantized.onnx — the file we bundle in public/models/.
+        // dtype:'q8' requests model_quantized.onnx from the CDN model folder.
         dtype: 'q8',
         progress_callback: onProgress,
       })) as FeatureExtractionPipeline
@@ -168,7 +169,7 @@ export class WebGpuEmbedder {
     ;(env.backends.onnx as any).wasm.numThreads = 1
     const pipe = (await this.pipelineFactory('feature-extraction', MODEL_ID, {
       device: 'wasm',
-      dtype: 'q8', // model_quantized.onnx - the same bundled file used by the WebGPU path.
+      dtype: 'q8', // model_quantized.onnx - the same CDN file used by the WebGPU path.
       progress_callback: onProgress,
     })) as FeatureExtractionPipeline
     await pipe(['warmup'], { pooling: 'mean', normalize: true }) // raw text, no prefix

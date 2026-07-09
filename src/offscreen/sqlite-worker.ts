@@ -16,6 +16,7 @@ import {
 } from '../core/ranking'
 
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
+import type { AnswerRetrievalOptions } from '../core/answer-retrieval'
 import type { AppSettings } from '../core/ports'
 
 // Set true only after the FTS5 table + triggers are successfully created (see init).
@@ -208,6 +209,97 @@ function opSearch(db: any, { queryVector, queryText, k }: { queryVector: number[
   return topPagesBySnippet(hydrated, k)
 }
 
+function embeddedCandidates(db: any, queryVector: Float32Array): RankedResult[] {
+  const results: RankedResult[] = []
+  db.exec({
+    sql: `SELECT c.id AS id, c.pageId AS pageId, c.idx AS idx, c.text AS text, c.vector AS vector,
+                 p.id AS pId, p.url AS url, p.title AS title, p.capturedAt AS capturedAt
+          FROM chunks c JOIN pages p ON p.id = c.pageId
+          WHERE c.vector IS NOT NULL`,
+    rowMode: 'object',
+    callback: (r: any) => {
+      const bytes = r.vector as Uint8Array
+      const v = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
+      results.push({
+        chunk: { id: r.id, pageId: r.pageId, index: r.idx, text: r.text },
+        page: { id: r.pId, url: r.url, title: r.title, capturedAt: r.capturedAt },
+        score: cosineSimilarity(queryVector, v),
+      })
+    },
+  })
+  return results
+}
+
+function opSearchForAnswer(
+  db: any,
+  { queryVector, queryText, options }: { queryVector: number[]; queryText: string; options: AnswerRetrievalOptions },
+): RankedResult[] {
+  const q = Float32Array.from(queryVector)
+  const candidates = embeddedCandidates(db, q)
+  const byId = new Map(candidates.map((r) => [r.chunk.id, r]))
+  const candidateLimit = CANDIDATE_PAGE_LIMIT * Math.max(1, options.hitsPerPage)
+  const vectorIds = [...candidates]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, candidateLimit)
+    .map((r) => r.chunk.id)
+
+  const lexicalIds: string[] = []
+  const match = ftsAvailable ? toFtsQuery(queryText) : null
+  if (match) {
+    try {
+      db.exec({
+        sql: `SELECT c.id AS id FROM chunks_fts f JOIN chunks c ON c.rowid = f.rowid
+              WHERE c.vector IS NOT NULL AND chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?`,
+        bind: [match, 300],
+        rowMode: 'object',
+        callback: (r: any) => lexicalIds.push(r.id),
+      })
+    } catch (e) {
+      console.warn('[recall-worker] FTS MATCH failed, vector-only answer query:', String(e))
+    }
+  }
+
+  const fused = rrfFuse([vectorIds, lexicalIds], 60, [1, LEXICAL_RRF_WEIGHT])
+  const selectedPageIds: string[] = []
+  const hitIdsByPage = new Map<string, string[]>()
+  for (const hit of fused) {
+    const ranked = byId.get(hit.id)
+    if (!ranked) continue
+    if (!hitIdsByPage.has(ranked.page.id)) {
+      if (selectedPageIds.length >= options.pageK) continue
+      selectedPageIds.push(ranked.page.id)
+      hitIdsByPage.set(ranked.page.id, [])
+    }
+    const pageHitIds = hitIdsByPage.get(ranked.page.id)!
+    if (pageHitIds.length < options.hitsPerPage) pageHitIds.push(hit.id)
+  }
+
+  const results: RankedResult[] = []
+  const seen = new Set<string>()
+  for (const pageId of selectedPageIds) {
+    const indexes = new Set<number>()
+    for (const id of hitIdsByPage.get(pageId) ?? []) {
+      const center = byId.get(id)
+      if (!center) continue
+      for (
+        let i = center.chunk.index - options.neighborWindow;
+        i <= center.chunk.index + options.neighborWindow;
+        i++
+      ) indexes.add(i)
+    }
+    const pageChunks = candidates
+      .filter((r) => r.page.id === pageId && indexes.has(r.chunk.index))
+      .sort((a, b) => a.chunk.index - b.chunk.index)
+    for (const ranked of pageChunks) {
+      if (seen.has(ranked.chunk.id)) continue
+      seen.add(ranked.chunk.id)
+      results.push(ranked)
+      if (results.length >= options.maxContextChunks) return results
+    }
+  }
+  return results
+}
+
 function opGetSettings(db: any): AppSettings {
   let paused = false
   db.exec({
@@ -302,6 +394,7 @@ const handlers: Record<string, (db: any, args: any) => unknown> = {
   pendingChunks: (db, args) => opPendingChunks(db, args),
   setVector: (db, args) => { opSetVector(db, args) },
   search: (db, args) => opSearch(db, args),
+  searchForAnswer: (db, args) => opSearchForAnswer(db, args),
   getSettings: (db) => opGetSettings(db),
   setPaused: (db, args) => { opSetPaused(db, args as boolean) },
   addDenyHost: (db, args) => { opAddDenyHost(db, args as string) },

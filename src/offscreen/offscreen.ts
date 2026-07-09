@@ -19,6 +19,8 @@ import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
 import { migrateEmbeddingModel } from '../core/embed-migration'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
+import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-model-status'
+import type { AskModelStatus } from '../core/ask-model-status'
 import type { EmbeddingPort } from '../core/ports'
 import type { AnswerGeneratorPort } from '../core/answer-generator'
 import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'
@@ -70,14 +72,38 @@ const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
 const recall = new RecallService(localEmbedder, store)
 let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
+let answerGeneratorReady = false
+let askModelStatus: AskModelStatus = INITIAL_ASK_MODEL_STATUS
+
+function emitAskModelProgress(e: { status: string; progress?: number; error?: string }): void {
+  askModelStatus = reduceAskModelProgress(askModelStatus, e)
+  chrome.runtime
+    .sendMessage({ channel: 'rpc-event', kind: 'ask-model-progress', status: e })
+    .catch(() => {})
+}
+
 function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
   if (!answerGeneratorP) {
-    answerGeneratorP = createLlamaAskEngine(emitModelProgress)
-      .then((engine) => new WebLlmAnswerGenerator(engine))
+    answerGeneratorReady = false
+    answerGeneratorP = createLlamaAskEngine(emitAskModelProgress)
+      .then((engine) => {
+        answerGeneratorReady = true
+        askModelStatus = { state: 'ready', percent: 100 }
+        return new WebLlmAnswerGenerator(engine)
+      })
       .catch((err) => {
         answerGeneratorP = null
+        answerGeneratorReady = false
+        emitAskModelProgress({ status: 'error', error: String(err) })
         throw err
       })
+  }
+  return answerGeneratorP
+}
+
+function getReadyAnswerGenerator(): AnswerGeneratorPort | Promise<AnswerGeneratorPort> {
+  if (!answerGeneratorReady || !answerGeneratorP) {
+    throw new Error('WebLLM is not ready yet.')
   }
   return answerGeneratorP
 }
@@ -96,6 +122,8 @@ function runDrainWithProgress(): void {
       chrome.runtime
         .sendMessage({ channel: 'rpc-event', kind: 'indexing-progress', embedded: totalEmbedded })
         .catch(() => {})
+    }, ({ chunks, ms }) => {
+      console.log(`[Recall:perf] capture-indexed chunks=${chunks} ms=${ms}`)
     })
     .then(() => {
       // Signal "drain complete" so the popup shows "indexed".
@@ -314,9 +342,41 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
-    const ask = new AskService(localEmbedder, store, await getAnswerGenerator())
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
     const answer = await ask.ask({ text, retrieveK, contextK })
     return { answer }
+  }
+
+  if (op === 'ask-stream') {
+    const requestId = String(p.requestId ?? '')
+    const text = String(p.text ?? '')
+    const retrieveK = Number(p.retrieveK ?? 12)
+    const contextK = Number(p.contextK ?? 8)
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const answer = await ask.askStream({ text, retrieveK, contextK }, (delta) => {
+      chrome.runtime
+        .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-delta', requestId, text: delta })
+        .catch(() => {})
+    }, (event) => {
+      if (event.type === 'expanded-queries') {
+        chrome.runtime
+          .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-queries', requestId, queries: event.queries })
+          .catch(() => {})
+      }
+    })
+    chrome.runtime
+      .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-done', requestId, answer })
+      .catch(() => {})
+    return { ok: true }
+  }
+
+  if (op === 'prepare-ask-model') {
+    await getAnswerGenerator()
+    return { status: askModelStatus }
+  }
+
+  if (op === 'ask-model-status') {
+    return { status: askModelStatus }
   }
 
   // --- ensureLoaded: warm up the model, push progress events ---

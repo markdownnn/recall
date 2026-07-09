@@ -1,4 +1,5 @@
 import type { VectorSearchPort } from '../core/ports'
+import type { AnswerRetrievalOptions } from '../core/answer-retrieval'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import type { SqliteWorkerClient } from './sqlite-worker-client'
 
@@ -16,5 +17,7 @@ export class WorkerVectorStore implements VectorSearchPort {
   pagesWithVectors = () => this.c.request<string[]>('pagesWithVectors', undefined)
   search = (queryVector: Float32Array, queryText: string, k: number) =>
     this.c.request<RankedResult[]>('search', { queryVector: Array.from(queryVector), queryText, k })
+  searchForAnswer = (queryVector: Float32Array, queryText: string, options: AnswerRetrievalOptions) =>
+    this.c.request<RankedResult[]>('searchForAnswer', { queryVector: Array.from(queryVector), queryText, options })
   deletePagesByHost = (host: string) => this.c.request<void>('deletePagesByHost', host)
 }

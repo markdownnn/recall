@@ -255,6 +255,37 @@ test('search excludes pending chunks (vector not yet set)', async () => {
   expect(results[0].chunk.id).toBe('p1#0')
 })
 
+// Scenario: Ask가 대표 청크 하나만 받으면 같은 글 안의 정의 문단을 놓쳐서 "못 찾음"이라고 답할 수 있다.
+// Coverage: integration (real MemoryVectorStore answer retrieval).
+test('searchForAnswer returns multiple chunks from the same matching page with neighbors', async () => {
+  const store = new MemoryVectorStore()
+  const r2Page: CapturedPage = { id: 'r2', url: 'http://r2', title: 'Cloudflare R2', capturedAt: 1 }
+  const otherPage: CapturedPage = { id: 'other', url: 'http://other', title: 'Other', capturedAt: 1 }
+  await store.upsertPage(r2Page)
+  await store.upsertPage(otherPage)
+  await store.putChunks('r2', [
+    { id: 'r2#0', pageId: 'r2', index: 0, text: 'Cloudflare R2 overview heading' },
+    { id: 'r2#1', pageId: 'r2', index: 1, text: 'Cloudflare R2 is object storage for buckets.' },
+    { id: 'r2#2', pageId: 'r2', index: 2, text: 'R2 has an S3-compatible API.' },
+    { id: 'r2#3', pageId: 'r2', index: 3, text: 'Pricing details are listed later.' },
+  ])
+  await store.putChunks('other', [{ id: 'other#0', pageId: 'other', index: 0, text: 'unrelated storage note' }])
+  for (const id of ['r2#0', 'r2#1', 'r2#2', 'r2#3']) {
+    await store.setVector(id, new Float32Array([1, 0]))
+  }
+  await store.setVector('other#0', new Float32Array([0, 1]))
+
+  const results = await store.searchForAnswer(new Float32Array([1, 0]), 'what is cloudflare r2?', {
+    pageK: 1,
+    hitsPerPage: 1,
+    neighborWindow: 1,
+    maxContextChunks: 4,
+  })
+
+  expect(results.map((r) => r.chunk.id)).toEqual(['r2#0', 'r2#1'])
+  expect(results.map((r) => r.page.id)).toEqual(['r2', 'r2'])
+})
+
 // Scenario: the re-index re-embeds one page at a time. Clearing page p1 must re-queue ONLY
 // p1's chunks (removing them from search until re-embedded) while page p2 stays searchable.
 // This per-page scope is what keeps the corpus from going blank during a migration.

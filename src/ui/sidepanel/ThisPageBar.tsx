@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import type { MsgResult, IndexingProgressMsg, IndexingErrorMsg } from '../../messaging'
+import type { ModelStatus } from '../../core/model-progress'
 import { siteHost } from '../../core/site-host'
 import { isCapturableUrl } from '../../core/is-capturable-url'
 import { t } from './strings'
@@ -18,7 +19,7 @@ function hostOf(url: string | undefined): string {
 // no-remember list). The combined capture/index status is NOT owned here - the Capture
 // button fires the `onCapture` prop and SidePanel renders the one status line. Uses no
 // <article> element (that tag is reserved for SearchTab result cards).
-export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => void; refreshSignal: number }) {
+export function ThisPageBar({ onCapture, refreshSignal, modelStatus }: { onCapture: () => void; refreshSignal: number; modelStatus: ModelStatus }) {
   const [tab, setTab] = useState<ActiveTab>({ url: '', host: '', title: '' })
   // False until the FIRST active-tab query resolves. The seed url is '' (isCapturableUrl('')
   // is false), so without this gate the button would flash the disabled "Can't save this page"
@@ -193,6 +194,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   // proactively prevents the "Receiving end does not exist" error. Internal/intranet http
   // hosts ARE capturable-by-manual, so they stay active "Capture this page".
   const capturable = isCapturableUrl(tab.url)
+  const modelLoading = modelStatus.state === 'loading'
 
   // Is THIS host already on the no-remember list? Compare the registrable form (the same
   // siteHost(...) the deny/forget logic derives) against state - never sniff English
@@ -208,11 +210,13 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
   const badgeClass = showSaving ? 'badge saving' : saved ? 'badge saved' : 'badge'
   const badgeLabel = showSaving ? t.saving : saved ? t.savedBadge : t.notSavedBadge
   const buttonClass = !resolved ? 'capture'
+    : modelLoading ? 'capture disabled'
     : !capturable ? 'capture disabled'
     : showSaving ? 'capture saving'
     : saved ? 'capture saved'
     : 'capture'
   const buttonLabel = !resolved ? t.captureButton
+    : modelLoading ? t.loadingSearchModel
     : !capturable ? t.cannotCaptureButton
     : showSaving ? t.saving
     : saved ? t.updateButton
@@ -233,7 +237,7 @@ export function ThisPageBar({ onCapture, refreshSignal }: { onCapture: () => voi
       <div class="page-actions">
         <button
           class={buttonClass}
-          disabled={!resolved || !capturable || showSaving}
+          disabled={!resolved || modelLoading || !capturable || showSaving}
           onClick={onCapture}
         >
           {buttonLabel}

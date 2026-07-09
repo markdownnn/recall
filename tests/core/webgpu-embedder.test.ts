@@ -158,10 +158,10 @@ test('priority: a query embed jumps ahead of queued passage embeds', async () =>
   expect(fake.calls.flat()).toEqual(['p1', 'Represent this sentence for searching relevant passages: q1', 'p2'])
 })
 
-// Scenario: a large capture (20 chunks) must be embedded in small GPU-gentle batches
-// of 8 and return one vector per input, not drop or merge any.
-// Coverage: integration (fake records each batch size; asserts 8 + 8 + 4).
-test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () => {
+// Scenario: a large capture (20 chunks) must be embedded in smaller GPU-gentle batches
+// of 4 and return one vector per input, not drop or merge any.
+// Coverage: integration (fake records each batch size; asserts five batches of 4).
+test('batching: 20 texts embed in batches of 4 and return 20 vectors', async () => {
   const fake = makeFake()
   const embedder = new WebGpuEmbedder(fake.factory)
   const texts = Array.from({ length: 20 }, (_, i) => `t${i}`)
@@ -171,5 +171,5 @@ test('batching: 20 texts embed in batches of 8 and return 20 vectors', async () 
   expect(vecs.length).toBe(20)
   expect(vecs[0].length).toBe(4)
   const batchSizes = fake.calls.filter((c) => c[0] !== 'warmup').map((c) => c.length)
-  expect(batchSizes).toEqual([8, 8, 4])
+  expect(batchSizes).toEqual([4, 4, 4, 4, 4])
 })

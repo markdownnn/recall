@@ -1,4 +1,5 @@
 import type { VectorSearchPort } from '../core/ports'
+import type { AnswerRetrievalOptions } from '../core/answer-retrieval'
 import type { CapturedPage, Chunk, RankedResult } from '../core/model'
 import { cosineSimilarity } from '../core/cosine'
 import { rrfFuse } from '../core/rrf'
@@ -143,6 +144,90 @@ export class MemoryVectorStore implements VectorSearchPort {
       results.push({ chunk: entry.chunk, page, score: hit.score })
     }
     return topPagesBySnippet(results, k)
+  }
+
+  async searchForAnswer(
+    queryVector: Float32Array,
+    queryText: string,
+    options: AnswerRetrievalOptions,
+  ): Promise<RankedResult[]> {
+    const queryTerms = queryText
+      .split(/\s+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => [...t].length >= 3)
+
+    const vectorIds = [...this.embeddedChunkCandidates(queryVector)]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, CANDIDATE_PAGE_LIMIT * Math.max(1, options.hitsPerPage))
+      .map((r) => r.chunk.id)
+
+    const lexicalIds = [...this.embeddedChunkCandidates(queryVector)]
+      .map((r) => ({
+        id: r.chunk.id,
+        pageId: r.page.id,
+        count: queryTerms.reduce((n, term) => n + (r.chunk.text.toLowerCase().includes(term) ? 1 : 0), 0),
+      }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, CANDIDATE_PAGE_LIMIT * Math.max(1, options.hitsPerPage))
+      .map((r) => r.id)
+
+    const fused = rrfFuse([vectorIds, lexicalIds], 60, [1, LEXICAL_RRF_WEIGHT])
+    const rankedById = new Map(this.embeddedChunkCandidates(queryVector).map((r) => [r.chunk.id, r]))
+    const selectedPageIds: string[] = []
+    const hitIdsByPage = new Map<string, string[]>()
+
+    for (const hit of fused) {
+      const ranked = rankedById.get(hit.id)
+      if (!ranked) continue
+      if (!hitIdsByPage.has(ranked.page.id)) {
+        if (selectedPageIds.length >= options.pageK) continue
+        selectedPageIds.push(ranked.page.id)
+        hitIdsByPage.set(ranked.page.id, [])
+      }
+      const pageHitIds = hitIdsByPage.get(ranked.page.id)!
+      if (pageHitIds.length < options.hitsPerPage) pageHitIds.push(hit.id)
+    }
+
+    const results: RankedResult[] = []
+    const seen = new Set<string>()
+    for (const pageId of selectedPageIds) {
+      const centerIds = hitIdsByPage.get(pageId) ?? []
+      const indexes = new Set<number>()
+      for (const id of centerIds) {
+        const center = rankedById.get(id)
+        if (!center) continue
+        for (
+          let i = center.chunk.index - options.neighborWindow;
+          i <= center.chunk.index + options.neighborWindow;
+          i++
+        ) {
+          indexes.add(i)
+        }
+      }
+      const pageChunks = [...this.chunks.values()]
+        .map(({ chunk, vector }) => ({ chunk, vector }))
+        .filter(({ chunk, vector }) => chunk.pageId === pageId && vector !== null && indexes.has(chunk.index))
+        .sort((a, b) => a.chunk.index - b.chunk.index)
+      for (const { chunk, vector } of pageChunks) {
+        if (seen.has(chunk.id)) continue
+        const page = this.pages.get(chunk.pageId)
+        if (!page || !vector) continue
+        seen.add(chunk.id)
+        results.push({ chunk, page, score: cosineSimilarity(queryVector, vector) })
+        if (results.length >= options.maxContextChunks) return results
+      }
+    }
+    return results
+  }
+
+  private *embeddedChunkCandidates(queryVector: Float32Array): Iterable<RankedResult> {
+    for (const { chunk, vector } of this.chunks.values()) {
+      if (vector === null) continue
+      const page = this.pages.get(chunk.pageId)
+      if (!page) continue
+      yield { chunk, page, score: cosineSimilarity(queryVector, vector) }
+    }
   }
 
   async deletePagesByHost(host: string): Promise<void> {

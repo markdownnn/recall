@@ -10,6 +10,10 @@ export interface AnswerDraft {
   citedChunkIds: string[]
 }
 
+export type AskProgressEvent = { type: 'expanded-queries'; queries: string[] }
+
 export interface AnswerGeneratorPort {
   answer(request: AnswerRequest): Promise<AnswerDraft>
+  answerStream?(request: AnswerRequest, onDelta: (delta: string) => void): Promise<AnswerDraft>
+  expandQueries?(question: string): Promise<string[]>
 }

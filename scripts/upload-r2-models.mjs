@@ -46,6 +46,7 @@ for (const file of files) {
     file,
     '--content-type',
     contentType(rel),
+    '--remote',
   ]
 
   if (dryRun) {

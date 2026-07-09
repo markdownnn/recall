@@ -6,7 +6,8 @@ import { t } from '../../src/ui/sidepanel/strings'
 
 const STATIC_KEYS = [
   'brand', 'searching', 'answering', 'noResults', 'searchTabLabel', 'searchButtonLabel', 'searchButtonAria',
-  'askModeLabel', 'askButtonLabel', 'askButtonAria', 'askPlaceholder',
+  'askModeLabel', 'askButtonLabel', 'askButtonAria', 'askPlaceholder', 'triedSearches',
+  'downloadWebLlm', 'webLlmReady', 'webLlmRequired',
   'historyTabLabel', 'settingsTabLabel', 'historyEmpty', 'loadMore',
   'captureButton', 'updateButton', 'cannotCaptureButton', 'saving', 'savingHint', 'saveRetry', 'nothingSubstantial', 'nothingToCapture',
   'pausedNote', 'notSavedDenylisted', 'savedBadge', 'notSavedBadge',
@@ -82,6 +83,8 @@ test('byte-identical e2e strings are preserved', () => {
   expect(t.askModeLabel).toBe('Ask')
   expect(t.askButtonLabel).toBe('Ask')
   expect(t.askPlaceholder).toBe('Ask about saved pages...')
+  expect(t.triedSearches).toBe('Tried searches')
+  expect(t.webLlmRequired).toBe('Download WebLLM before asking')
   expect(t.cannotCapturePage).toBe("This page can't be saved")
   expect(t.reloadToCapture).toBe('Reload this page, then save it')
   expect(t.obSeedButton).toBe('Add 3 sample pages')
