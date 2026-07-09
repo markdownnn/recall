@@ -20,3 +20,4 @@ public/models/Xenova/
 # eval harness
 eval/.cache/
 eval/last-scorecard.json
+eval/last-ask-scorecard.json
