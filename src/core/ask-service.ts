@@ -8,8 +8,23 @@ const MAX_ASK_SEARCH_QUERIES = 5
 // Starting values (docs/superpowers/specs/2026-07-09-ask-answer-quality-design.md §11).
 // Tuned via `npm run eval:ask`; update this comment with the final value + rationale once
 // measured.
+// QUERY_DEDUP_THRESHOLD: left at the starting value. `eval/fixtures/expansions.json` is
+// empty, so the 9-query eval:ask set never produces more than 1 surviving query per
+// question (survQ was 1 for all 9 rows) — dedup never actually triggers, so this run
+// gives no signal to tune it from.
 export const QUERY_DEDUP_THRESHOLD = 0.92
-export const ASK_MIN_CONFIDENCE = 0.3
+// ASK_MIN_CONFIDENCE: measured 2026-07-09 via eval:ask (9-query set: 6 answerable, 3
+// unanswerable). Raised from 0.3 to 0.70 -> gate-accuracy 7/9 (was 6/9 at 0.3). The two
+// groups' top scores overlap (answerable: 0.648-0.776, unanswerable: 0.556-0.691), so no
+// single threshold on this sample reaches 9/9 -- 7/9 is the measured ceiling, tied between
+// two disjoint bands: (0.556, 0.648] (0 false negatives, 2 false positives) and
+// (0.691, 0.707] (2 false negatives, 0 false positives). Picked the latter (0.70) per
+// ADR 0024 (docs/adr/0024-ask-shows-only-verified-grounding.md): an unanswered "not
+// found" is safer than a hallucinated answer, and one of the 2 false positives at the
+// lower band is a medical-dosage question ("what dose of melatonin..."), the worst case
+// to get wrong. More negative examples in the golden set would be needed to separate the
+// bands further.
+export const ASK_MIN_CONFIDENCE = 0.7
 
 export class AskService {
   constructor(
