@@ -1,9 +1,8 @@
-import type { AnswerGeneratorPort, AskProgressEvent } from './answer-generator'
+import { NOT_FOUND_ANSWER, type AnswerGeneratorPort, type AskProgressEvent } from './answer-generator'
 import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS, type AnswerRetrievalOptions } from './answer-retrieval'
 import type { AskAnswer, AskQuery, RankedResult } from './model'
 import type { EmbeddingPort, VectorSearchPort } from './ports'
 
-const NOT_FOUND = "I couldn't find that in your saved pages."
 const MAX_ASK_SEARCH_QUERIES = 5
 
 export class AskService {
@@ -53,7 +52,7 @@ export class AskService {
       searchQueries.map((text, i) => this.store.searchForAnswer(vectors[i], text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
-    if (retrieved.length === 0) return { text: NOT_FOUND, sources: [] }
+    if (retrieved.length === 0) return { text: NOT_FOUND_ANSWER, sources: [] }
 
     const chunks = retrieved.slice(0, options.maxContextChunks)
     const draft = await generate(chunks)

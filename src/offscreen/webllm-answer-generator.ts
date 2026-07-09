@@ -4,7 +4,7 @@ import type {
   InitProgressReport,
   MLCEngineInterface,
 } from '@mlc-ai/web-llm'
-import type { AnswerDraft, AnswerGeneratorPort, AnswerRequest } from '../core/answer-generator'
+import { NOT_FOUND_ANSWER, type AnswerDraft, type AnswerGeneratorPort, type AnswerRequest } from '../core/answer-generator'
 import type { RankedResult } from '../core/model'
 import { modelCdnUrl } from '../core/model-cdn'
 
@@ -15,7 +15,6 @@ export const GEMMA_ASK_MODEL = 'gemma3-1b-it-q4f16_1-MLC'
 export const GEMMA_ASK_MODEL_DIR = 'webllm/gemma3-1b-it/q4f16_1/resolve/main/'
 export const GEMMA_ASK_MODEL_LIB = 'gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm'
 export const ASK_MODEL_CANDIDATES = [LLAMA_ASK_MODEL, GEMMA_ASK_MODEL] as const
-export const NOT_FOUND_ANSWER = "I couldn't find that in your saved pages."
 export const MAX_QUERY_EXPANSIONS = 4
 export const MAX_EVIDENCE_PROMPT_CHUNKS = 4
 export const MAX_ASK_PROMPT_CHUNKS = 5
