@@ -5,6 +5,9 @@ import type { EmbeddingPort, VectorSearchPort } from './ports'
 import { dedupeSimilarQueries, type EmbeddedQuery } from './query-dedup'
 
 const MAX_ASK_SEARCH_QUERIES = 5
+// Starting values (docs/superpowers/specs/2026-07-09-ask-answer-quality-design.md §11).
+// Tuned via `npm run eval:ask`; update this comment with the final value + rationale once
+// measured.
 export const QUERY_DEDUP_THRESHOLD = 0.92
 export const ASK_MIN_CONFIDENCE = 0.3
 
