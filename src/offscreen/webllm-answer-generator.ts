@@ -5,6 +5,7 @@ import type {
   MLCEngineInterface,
 } from '@mlc-ai/web-llm'
 import { NOT_FOUND_ANSWER, type AnswerDraft, type AnswerGeneratorPort, type AnswerRequest } from '../core/answer-generator'
+import { parseAnswerCitation } from '../core/answer-citation'
 import type { RankedResult } from '../core/model'
 import { modelCdnUrl } from '../core/model-cdn'
 
@@ -73,7 +74,7 @@ function promptSafeChunkText(text: string): string {
 function formatSavedExcerpts(chunks: RankedResult[], maxChunks: number): string {
   return chunks
     .slice(0, maxChunks)
-    .map((r) => `Page title: ${r.page.title}\nSaved text: ${promptSafeChunkText(r.chunk.text)}`)
+    .map((r, i) => `Excerpt ${i + 1})\nPage title: ${r.page.title}\nSaved text: ${promptSafeChunkText(r.chunk.text)}`)
     .join('\n\n')
 }
 
@@ -125,6 +126,7 @@ export function buildAskMessages(
           '- Stay neutral and factual. Don\'t add opinions or filler like "Great question!"',
           'Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".',
           'Do not include a sources section; Recall shows sources below the answer.',
+          'After your answer, on a new line, add the excerpt numbers you actually used like this: [[cite: 1, 3]] using the numbers shown below. This line is hidden from the user and does not count as a visible sources section. If you cannot answer from the excerpts, do not add this line.',
           notes ? 'Use the working notes as a relevance guide, but the saved excerpts are the source of truth. Do not mention the working notes.' : '',
         ].join(' '),
     },
@@ -146,12 +148,12 @@ export function buildQueryExpansionMessages(question: string): ChatCompletionMes
       role: 'user',
       content:
         [
-          "You rewrite a user's search query into multiple search queries to improve retrieval coverage.",
+          "You expand a user's search query into multiple search queries to improve retrieval coverage.",
           '',
-          "Given the user's question, output 3-4 alternative search queries that:",
-          '- Rephrase the question using different keywords or synonyms',
-          '- Break a complex question into sub-queries if needed',
-          '- Include both broad and specific versions',
+          "Given the user's question, output 3-4 alternative search queries that each explore a DIFFERENT angle, entity, or sub-topic of the question.",
+          '- Do NOT just reword the same idea with synonyms. Each query should be able to surface DIFFERENT saved content than the others.',
+          '- Break a complex question into distinct sub-questions if it has multiple parts.',
+          '- Include both broad and specific versions.',
           '',
           'Output ONLY a JSON array of strings. No explanation, no markdown.',
           '',
@@ -233,20 +235,23 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
       const delta = chunk.choices?.[0]?.delta?.content ?? ''
       if (!delta) continue
       text += delta
+      // Known limitation: the trailing [[cite: ...]] tag streams to onDelta character-by-
+      // character like any other model output before we can strip it (we only know a
+      // suffix is a citation tag once the FULL text is in hand). It briefly appears in the
+      // live-typing UI and disappears once ask-answer-done replaces it with parseAnswerCitation's
+      // stripped displayText. Not fixed here: buffering the tail to hide it would add real
+      // complexity for a sub-second cosmetic flicker.
       onDelta(delta)
     }
-    return {
-      text: text.trim() || NOT_FOUND_ANSWER,
-      citedChunkIds: request.chunks.slice(0, 3).map((r) => r.chunk.id),
-    }
+    const raw = text.trim() || NOT_FOUND_ANSWER
+    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks)
+    return { text: displayText, citedChunkIds }
   }
 
   async answer(request: AnswerRequest): Promise<AnswerDraft> {
     const workingNotes = await this.createEvidenceNotes(request)
     const raw = await this.createAnswerText(request, workingNotes)
-    return {
-      text: raw,
-      citedChunkIds: request.chunks.slice(0, 3).map((r) => r.chunk.id),
-    }
+    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks)
+    return { text: displayText, citedChunkIds }
   }
 }
