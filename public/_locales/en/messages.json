@@ -115,7 +115,7 @@
   "obDemoRemoved": { "message": "Demo data removed" },
 
   "obHeroTagline": { "message": "That page you read last week? Find it again in seconds." },
-  "obHeroCalm": { "message": "100% on your device. Nothing ever leaves it." },
+  "obHeroCalm": { "message": "100% on your device. Your reading never leaves it." },
   "obHowTitle": { "message": "How it works" },
   "obHowAutomaticLabel": { "message": "Automatic." },
   "obHowAutomaticText": { "message": "On-device AI quietly remembers the pages you actually read." },
@@ -129,6 +129,9 @@
   "obExampleQuery2": { "message": "the pricing page I saw" },
   "obExampleQuery3": { "message": "react useEffect cleanup" },
   "obExampleQuery4": { "message": "how photosynthesis works" },
+  "obAskTitle": { "message": "Ask, don't just search" },
+  "obAskText": { "message": "Have a question about what you read? Ask it in plain words. Recall finds the right saved pages and writes a short answer - with links to the exact pages it used." },
+  "obAskNote": { "message": "It all runs on your device. Your questions and pages never leave it. Recall only downloads the AI models it needs - once, from our secure CDN (cdn.teamnyongs.com) - then it works offline." },
   "obOpenRecall": { "message": "Open Recall" },
   "obOpenText": { "message": "Click the Recall icon in your toolbar to open the side panel." },
   "obOpenTip": { "message": "Tip: pin it for one-click access - click the puzzle-piece icon, then the pin next to Recall." },

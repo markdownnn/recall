@@ -133,6 +133,9 @@ export interface UIStrings {
   obMeaningTitle: string
   obMeaningText: string
   obExampleQueries: string[]
+  obAskTitle: string
+  obAskText: string
+  obAskNote: string
   obOpenRecall: string
   obOpenText: string
   obOpenTip: string
@@ -227,6 +230,9 @@ export const t: UIStrings = {
   obMeaningTitle: msg('obMeaningTitle'),
   obMeaningText: msg('obMeaningText'),
   obExampleQueries: [msg('obExampleQuery1'), msg('obExampleQuery2'), msg('obExampleQuery3'), msg('obExampleQuery4')],
+  obAskTitle: msg('obAskTitle'),
+  obAskText: msg('obAskText'),
+  obAskNote: msg('obAskNote'),
   obOpenRecall: msg('obOpenRecall'),
   obOpenText: msg('obOpenText'),
   obOpenTip: msg('obOpenTip'),
