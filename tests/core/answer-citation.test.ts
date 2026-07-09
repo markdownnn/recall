@@ -102,3 +102,18 @@ test('parseAnswerCitation strips a malformed trailing tag instead of leaking it 
   expect(displayText).not.toContain('[[cite:')
   expect(citedChunkIds).toEqual([])
 })
+
+// Scenario: 답변 본문 중간에 "[[cite:"라는 글자가 우연히 들어가고(예: 태그 형식 자체를 설명하는 문장),
+// 그 뒤에 진짜(그러나 깨진) 트레일링 태그가 따로 붙으면 — 잘라내는 기준점은 맨 마지막 "[[cite:"여야
+// 한다. 첫 번째 등장 지점에서 잘라버리면 실제 답변 내용("More detail follows here.")이 통째로 사라진다.
+// 앞쪽의 우연한 언급 자체는 실제 답변 내용이므로 남아 있어도 된다 — 오직 진짜(깨진) 트레일링 태그
+// 시도만 잘려나가면 된다.
+// Coverage: ✅ integration
+test('parseAnswerCitation cuts at the LAST tag-shaped marker, not the first, when text mentions "[[cite:" earlier', () => {
+  const raw = 'This app marks sources with a tag like [[cite: 1]] at the end.\n' +
+    'More detail follows here.\n[[cite: 2]]x' // trailing tag has a stray "x" -> malformed
+  const { displayText } = parseAnswerCitation(raw, chunks)
+
+  expect(displayText).toContain('More detail follows here.')
+  expect(displayText).not.toContain('[[cite: 2]]x')
+})

@@ -15,22 +15,17 @@ import {
   WebLlmAnswerGenerator,
 } from '../../src/offscreen/webllm-answer-generator'
 import type { RankedResult } from '../../src/core/model'
+import { rankedResult } from './fixtures'
 
-const result: RankedResult = {
-  chunk: { id: 'p1#0', pageId: 'p1', index: 0, text: 'Cortisol can disrupt REM sleep.' },
-  page: { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep article', capturedAt: 1 },
-  score: 1,
-}
+const result = rankedResult('p1#0', 'Cortisol can disrupt REM sleep.')
+const CAFFEINE_PAGE = { id: 'p2', url: 'https://example.com/caffeine', title: 'Caffeine article', capturedAt: 1 }
+const LIGHT_PAGE = { id: 'p3', url: 'https://example.com/light', title: 'Light article', capturedAt: 1 }
 
 describe('webllm answer generator', () => {
   // Scenario: 인용 태그가 청크를 정확히 가리키려면 프롬프트에서 발췌마다 번호가 보여야 한다.
   // Coverage: ✅ integration
   test('ask prompt numbers each excerpt so the model can cite by number', () => {
-    const second: RankedResult = {
-      chunk: { id: 'p2#0', pageId: 'p2', index: 0, text: 'Caffeine blocks adenosine receptors.' },
-      page: { id: 'p2', url: 'https://example.com/caffeine', title: 'Caffeine article', capturedAt: 1 },
-      score: 1,
-    }
+    const second = rankedResult('p2#0', 'Caffeine blocks adenosine receptors.', CAFFEINE_PAGE)
     const messages = buildAskMessages('what hurts sleep?', [result, second])
     const joined = messages.map((m) => m.content).join('\n')
 
@@ -373,12 +368,9 @@ describe('webllm answer generator', () => {
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
   test('answer cites only the excerpts the model tagged, not every retrieved chunk', async () => {
     const chunks: RankedResult[] = [
-      { chunk: { id: 'p1#0', pageId: 'p1', index: 0, text: 'Cortisol can disrupt REM sleep.' },
-        page: { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep article', capturedAt: 1 }, score: 1 },
-      { chunk: { id: 'p2#0', pageId: 'p2', index: 0, text: 'Caffeine blocks adenosine receptors.' },
-        page: { id: 'p2', url: 'https://example.com/caffeine', title: 'Caffeine article', capturedAt: 1 }, score: 1 },
-      { chunk: { id: 'p3#0', pageId: 'p3', index: 0, text: 'Blue light suppresses melatonin.' },
-        page: { id: 'p3', url: 'https://example.com/light', title: 'Light article', capturedAt: 1 }, score: 1 },
+      rankedResult('p1#0', 'Cortisol can disrupt REM sleep.'),
+      rankedResult('p2#0', 'Caffeine blocks adenosine receptors.', CAFFEINE_PAGE),
+      rankedResult('p3#0', 'Blue light suppresses melatonin.', LIGHT_PAGE),
     ]
     const engine = {
       chat: {
@@ -397,7 +389,6 @@ describe('webllm answer generator', () => {
 
     expect(answer.text).toBe('Cortisol and blue light both disrupt sleep.')
     expect(answer.citedChunkIds).toEqual(['p1#0', 'p3#0'])
-    expect(answer.citedChunkIds).not.toContain('p2#0')
   })
 
   // Scenario: AskService retrieves up to contextK (8 by default) chunks, but the prompt only
@@ -407,11 +398,11 @@ describe('webllm answer generator', () => {
   // array's bounds.
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
   test('answer never resolves a citation number beyond what the prompt actually showed the model', async () => {
-    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) => ({
-      chunk: { id: `p${i}#0`, pageId: `p${i}`, index: 0, text: `Excerpt number ${i + 1} content.` },
-      page: { id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1 },
-      score: 1,
-    }))
+    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) =>
+      rankedResult(`p${i}#0`, `Excerpt number ${i + 1} content.`, {
+        id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1,
+      }),
+    )
     const engine = {
       chat: {
         completions: {
@@ -430,6 +421,37 @@ describe('webllm answer generator', () => {
     const answer = await generator.answer({ question: 'what does this say?', chunks: eightChunks })
 
     expect(answer.citedChunkIds).toEqual([])
-    expect(answer.citedChunkIds).not.toContain('p5#0')
+  })
+
+  // Scenario: 같은 5-vs-8 경계 버그가 스트리밍 경로(answerStream)에도 있었다 -- 위 테스트는 answer()만
+  // 지킨다. 스트리밍 코드가 나중에 따로 리팩터링되면서 이 검증이 빠지는 걸 막기 위해 answerStream도
+  // 똑같이 확인한다.
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 stream chunk 계약을 가진 fake engine을 쓴다.
+  test('answerStream never resolves a citation number beyond what the prompt actually showed the model', async () => {
+    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) =>
+      rankedResult(`p${i}#0`, `Excerpt number ${i + 1} content.`, {
+        id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1,
+      }),
+    )
+    async function* chunks() {
+      yield { choices: [{ delta: { content: 'This is an answer.\n[[cite: 6]]' } }] }
+    }
+    const engine = {
+      chat: {
+        completions: {
+          create: async (request: { stream?: boolean }) => (request.stream ? chunks() : {
+            choices: [{ message: { content: 'evidence notes' } }],
+          }),
+        },
+      },
+    }
+
+    const generator = new WebLlmAnswerGenerator(engine as any)
+    const answer = await generator.answerStream(
+      { question: 'what does this say?', chunks: eightChunks },
+      () => undefined,
+    )
+
+    expect(answer.citedChunkIds).toEqual([])
   })
 })

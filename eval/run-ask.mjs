@@ -9,6 +9,7 @@ import { dedupeSimilarQueries } from '../src/core/query-dedup.ts'
 import {
   mergeAnswerResults,
   passesConfidenceGate,
+  topScoreOf,
   ASK_MIN_CONFIDENCE,
   QUERY_DEDUP_THRESHOLD,
 } from '../src/core/ask-service.ts'
@@ -30,14 +31,14 @@ console.log(`[eval:ask] indexed + embedded in ${((Date.now() - t0) / 1000).toFix
 // texts per forward pass, so calling it once per row (1-2 texts each) wastes that batching on
 // a cold-cache run.
 const allCandidateTexts = golden.map((g) => [g.query, ...(expansions[g.query] ?? [])])
-const flatVectors = await embed(allCandidateTexts.flat(), 'query')
+// A mutable queue: each row consumes exactly as many vectors as its own candidateTexts via
+// splice, so there's no separate cursor variable to keep in sync by hand.
+const remainingVectors = await embed(allCandidateTexts.flat(), 'query')
 
 const rows = []
-let cursor = 0
 for (const [i, g] of golden.entries()) {
   const candidateTexts = allCandidateTexts[i]
-  const vectors = flatVectors.slice(cursor, cursor + candidateTexts.length)
-  cursor += candidateTexts.length
+  const vectors = remainingVectors.splice(0, candidateTexts.length)
   const candidates = candidateTexts.map((text, j) => ({ text, vector: vectors[j] }))
   const survivors = dedupeSimilarQueries(candidates, QUERY_DEDUP_THRESHOLD)
 
@@ -45,11 +46,9 @@ for (const [i, g] of golden.entries()) {
     survivors.map((s) => store.searchForAnswer(s.vector, s.text, DEFAULT_ANSWER_RETRIEVAL_OPTIONS)),
   )
   const merged = mergeAnswerResults(resultSets)
-  // Same fix as AskService.askWithGenerator (src/core/ask-service.ts): merged[0] is whichever
-  // chunk the most expanded queries corroborated, not necessarily the highest-scoring one. Use
-  // the true max so this measurement matches what production actually gates on. -Infinity on
-  // an empty merge makes passesConfidenceGate fail naturally, so no separate empty-check needed.
-  const topScore = merged.reduce((max, r) => Math.max(max, r.score), -Infinity)
+  // Uses the same topScoreOf as production (src/core/ask-service.ts) so this measurement
+  // matches exactly what AskService's confidence gate actually sees.
+  const topScore = topScoreOf(merged)
   const passesGate = passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)
 
   const context = merged.slice(0, DEFAULT_ANSWER_RETRIEVAL_OPTIONS.maxContextChunks)

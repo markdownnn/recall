@@ -74,14 +74,7 @@ export class AskService {
       searchQueries.map((q) => this.store.searchForAnswer(q.vector, q.text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
-    // mergeAnswerResults sorts by hit-count (how many expanded queries corroborated a chunk)
-    // BEFORE score, so retrieved[0] is not necessarily the highest-scoring chunk -- a
-    // mediocre chunk two queries agree on can outrank a single query's much stronger match.
-    // The gate needs the true best evidence, so it takes the max score across everything
-    // retrieved rather than trusting merge order. -Infinity on an empty array means the gate
-    // fails naturally, collapsing what used to be two separate NOT_FOUND branches into one.
-    const topScore = retrieved.reduce((max, r) => Math.max(max, r.score), -Infinity)
-    if (!passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)) {
+    if (!passesConfidenceGate(topScoreOf(retrieved), ASK_MIN_CONFIDENCE)) {
       return { text: NOT_FOUND_ANSWER, sources: [] }
     }
 
@@ -122,6 +115,18 @@ export class AskService {
 // match should not be dressed up into a confident-sounding hallucination).
 export function passesConfidenceGate(topScore: number, minScore: number): boolean {
   return topScore >= minScore
+}
+
+// mergeAnswerResults sorts by hit-count (how many expanded queries corroborated a chunk)
+// BEFORE score, so results[0] is not necessarily the highest-scoring chunk -- a mediocre
+// chunk two queries agree on can outrank a single query's much stronger match. The confidence
+// gate needs the true best evidence, so this takes the max score across everything retrieved
+// rather than trusting merge order. -Infinity on an empty array means passesConfidenceGate
+// fails naturally, with no separate empty-array branch needed. Exported so eval/run-ask.mjs
+// measures the exact same "top score" production actually gates on, instead of a second
+// hand-written copy that could silently drift from this one.
+export function topScoreOf(results: RankedResult[]): number {
+  return results.reduce((max, r) => Math.max(max, r.score), -Infinity)
 }
 
 function uniqueQueries(queries: string[]): string[] {
