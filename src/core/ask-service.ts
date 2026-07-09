@@ -74,8 +74,14 @@ export class AskService {
       searchQueries.map((q) => this.store.searchForAnswer(q.vector, q.text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
-    if (retrieved.length === 0) return { text: NOT_FOUND_ANSWER, sources: [] }
-    if (!passesConfidenceGate(retrieved[0].score, ASK_MIN_CONFIDENCE)) {
+    // mergeAnswerResults sorts by hit-count (how many expanded queries corroborated a chunk)
+    // BEFORE score, so retrieved[0] is not necessarily the highest-scoring chunk -- a
+    // mediocre chunk two queries agree on can outrank a single query's much stronger match.
+    // The gate needs the true best evidence, so it takes the max score across everything
+    // retrieved rather than trusting merge order. -Infinity on an empty array means the gate
+    // fails naturally, collapsing what used to be two separate NOT_FOUND branches into one.
+    const topScore = retrieved.reduce((max, r) => Math.max(max, r.score), -Infinity)
+    if (!passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)) {
       return { text: NOT_FOUND_ANSWER, sources: [] }
     }
 

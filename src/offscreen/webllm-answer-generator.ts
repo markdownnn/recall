@@ -244,14 +244,20 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
       onDelta(delta)
     }
     const raw = text.trim() || NOT_FOUND_ANSWER
-    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks)
+    // Validate citations against exactly the excerpts the prompt showed (buildAskMessages
+    // slices to MAX_ASK_PROMPT_CHUNKS via formatSavedExcerpts) -- NOT the full request.chunks,
+    // which can be larger (AskService retrieves up to contextK chunks for context-building
+    // even though only the first MAX_ASK_PROMPT_CHUNKS are ever numbered/shown to the model).
+    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks.slice(0, MAX_ASK_PROMPT_CHUNKS))
     return { text: displayText, citedChunkIds }
   }
 
   async answer(request: AnswerRequest): Promise<AnswerDraft> {
     const workingNotes = await this.createEvidenceNotes(request)
     const raw = await this.createAnswerText(request, workingNotes)
-    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks)
+    // See the matching comment in answerStream: citations must be validated against the same
+    // slice the prompt actually showed, not the full (possibly larger) request.chunks.
+    const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks.slice(0, MAX_ASK_PROMPT_CHUNKS))
     return { text: displayText, citedChunkIds }
   }
 }

@@ -399,4 +399,37 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual(['p1#0', 'p3#0'])
     expect(answer.citedChunkIds).not.toContain('p2#0')
   })
+
+  // Scenario: AskService retrieves up to contextK (8 by default) chunks, but the prompt only
+  // ever numbers and shows the model the first MAX_ASK_PROMPT_CHUNKS (5) of them. If the
+  // model cites a number beyond 5 (an excerpt it was never shown), that citation must NOT
+  // resolve to a real chunk just because the number happens to be within the full 8-item
+  // array's bounds.
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
+  test('answer never resolves a citation number beyond what the prompt actually showed the model', async () => {
+    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) => ({
+      chunk: { id: `p${i}#0`, pageId: `p${i}`, index: 0, text: `Excerpt number ${i + 1} content.` },
+      page: { id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1 },
+      score: 1,
+    }))
+    const engine = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              // The model hallucinates citing excerpt 6, which is beyond MAX_ASK_PROMPT_CHUNKS (5)
+              // and was never numbered/shown to it in the prompt.
+              message: { content: 'This is an answer.\n[[cite: 6]]' },
+            }],
+          }),
+        },
+      },
+    }
+
+    const generator = new WebLlmAnswerGenerator(engine as any)
+    const answer = await generator.answer({ question: 'what does this say?', chunks: eightChunks })
+
+    expect(answer.citedChunkIds).toEqual([])
+    expect(answer.citedChunkIds).not.toContain('p5#0')
+  })
 })

@@ -1,14 +1,9 @@
 import { expect, test } from 'vitest'
 import { parseAnswerCitation } from '../../src/core/answer-citation'
 import { NOT_FOUND_ANSWER } from '../../src/core/answer-generator'
-import type { CapturedPage, RankedResult } from '../../src/core/model'
+import type { RankedResult } from '../../src/core/model'
+import { rankedResult as result } from './fixtures'
 
-const page: CapturedPage = { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep', capturedAt: 1 }
-const result = (id: string, text: string): RankedResult => ({
-  chunk: { id, pageId: 'p1', index: Number(id.split('#')[1]), text },
-  page,
-  score: 1,
-})
 const chunks: RankedResult[] = [
   result('p1#0', 'Cortisol can disrupt REM sleep.'),
   result('p1#1', 'Caffeine blocks adenosine receptors.'),
@@ -79,5 +74,31 @@ test('parseAnswerCitation does not fall back to the only chunk when no tag is pr
   const single = [chunks[0]]
   const { citedChunkIds } = parseAnswerCitation('Cortisol disrupts sleep.', single)
 
+  expect(citedChunkIds).toEqual([])
+})
+
+// Scenario: 호출한 쪽이 "모델에게 실제로 보여준 발췌"만 chunks로 넘겨야 한다 — 이 함수는 넘어온 배열
+// 길이를 곧 "모델이 볼 수 있었던 발췌 개수"로 신뢰한다. 만약 호출한 쪽이 모델에겐 5개만 보여주고 8개짜리
+// 배열을 그대로 넘기면, 모델이 못 본 6~8번을 인용해도 "유효 범위"로 통과해버린다. 이 테스트는 함수가
+// 딱 넘어온 배열 길이까지만 유효하다고 정확히 지키는지 확인한다(실제 5-vs-8 불일치는 호출부 수정으로
+// 막는다 — 아래 webllm-answer-generator.test.ts 참고).
+// Coverage: ✅ integration
+test('parseAnswerCitation treats the passed-in chunks array as the full set of what was shown', () => {
+  const shown = chunks.slice(0, 2) // pretend only 2 excerpts were actually shown to the model
+  const raw = 'Cortisol disrupts sleep.\n[[cite: 3]]' // model cites a 3rd excerpt it was never shown
+  const { citedChunkIds } = parseAnswerCitation(raw, shown)
+
+  expect(citedChunkIds).toEqual([]) // 3 is out of range for the 2-item array that was actually passed
+})
+
+// Scenario: 모델이 태그 형식을 살짝 어겨도(숫자가 아닌 문자가 섞이는 등), 파싱은 실패하더라도 사용자
+// 화면에는 내부 마커가 절대 그대로 새면 안 된다.
+// Coverage: ✅ integration
+test('parseAnswerCitation strips a malformed trailing tag instead of leaking it into the displayed text', () => {
+  const raw = 'Cortisol disrupts sleep.\n[[cite: 1a]]'
+  const { displayText, citedChunkIds } = parseAnswerCitation(raw, chunks)
+
+  expect(displayText).toBe('Cortisol disrupts sleep.')
+  expect(displayText).not.toContain('[[cite:')
   expect(citedChunkIds).toEqual([])
 })

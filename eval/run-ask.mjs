@@ -3,7 +3,7 @@
 // itself is out of scope here; see the spec's "잴 수 없는 것" section).
 // Usage: vite-node eval/run-ask.mjs
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { buildStore } from './lib/build-and-search.mjs'
+import { buildStore, loadManifest } from './lib/build-and-search.mjs'
 import { embed } from './lib/embed-node.mjs'
 import { dedupeSimilarQueries } from '../src/core/query-dedup.ts'
 import {
@@ -15,7 +15,7 @@ import {
 import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS } from '../src/core/answer-retrieval.ts'
 import { evidenceRecallAtContext, confidenceGateCorrect } from '../src/core/eval-metrics.ts'
 
-const manifest = JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
+const manifest = loadManifest()
 const golden = JSON.parse(readFileSync('eval/ask-golden.json', 'utf8'))
 const expansionsPath = 'eval/fixtures/expansions.json'
 const expansions = existsSync(expansionsPath) ? JSON.parse(readFileSync(expansionsPath, 'utf8')) : {}
@@ -25,19 +25,32 @@ const t0 = Date.now()
 const store = await buildStore(manifest, { strip: true, minProse: 0.35 })
 console.log(`[eval:ask] indexed + embedded in ${((Date.now() - t0) / 1000).toFixed(1)}s\n`)
 
+// Batch-embed every candidate query text across the whole golden set up front (one round of
+// model calls) instead of one call per golden row -- embed-node.mjs already batches BATCH=8
+// texts per forward pass, so calling it once per row (1-2 texts each) wastes that batching on
+// a cold-cache run.
+const allCandidateTexts = golden.map((g) => [g.query, ...(expansions[g.query] ?? [])])
+const flatVectors = await embed(allCandidateTexts.flat(), 'query')
+
 const rows = []
-for (const g of golden) {
-  const candidateTexts = [g.query, ...(expansions[g.query] ?? [])]
-  const vectors = await embed(candidateTexts, 'query')
-  const candidates = candidateTexts.map((text, i) => ({ text, vector: vectors[i] }))
+let cursor = 0
+for (const [i, g] of golden.entries()) {
+  const candidateTexts = allCandidateTexts[i]
+  const vectors = flatVectors.slice(cursor, cursor + candidateTexts.length)
+  cursor += candidateTexts.length
+  const candidates = candidateTexts.map((text, j) => ({ text, vector: vectors[j] }))
   const survivors = dedupeSimilarQueries(candidates, QUERY_DEDUP_THRESHOLD)
 
   const resultSets = await Promise.all(
     survivors.map((s) => store.searchForAnswer(s.vector, s.text, DEFAULT_ANSWER_RETRIEVAL_OPTIONS)),
   )
   const merged = mergeAnswerResults(resultSets)
-  const topScore = merged[0]?.score ?? 0
-  const passesGate = merged.length > 0 && passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)
+  // Same fix as AskService.askWithGenerator (src/core/ask-service.ts): merged[0] is whichever
+  // chunk the most expanded queries corroborated, not necessarily the highest-scoring one. Use
+  // the true max so this measurement matches what production actually gates on. -Infinity on
+  // an empty merge makes passesConfidenceGate fail naturally, so no separate empty-check needed.
+  const topScore = merged.reduce((max, r) => Math.max(max, r.score), -Infinity)
+  const passesGate = passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)
 
   const context = merged.slice(0, DEFAULT_ANSWER_RETRIEVAL_OPTIONS.maxContextChunks)
   const contextPageIds = context.map((r) => r.page.id)

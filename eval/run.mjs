@@ -2,7 +2,7 @@
 // Usage: vite-node eval/run.mjs [--strip] [--min-prose=0.35] [--ci]
 // Prints a per-query + per-scenario scorecard and writes eval/last-scorecard.json.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { buildStore, runQuery } from './lib/build-and-search.mjs'
+import { buildStore, runQuery, loadManifest } from './lib/build-and-search.mjs'
 import { proseScore } from '../src/core/prose-score.ts'
 import {
   precisionAt1,
@@ -19,7 +19,7 @@ const minProse = Number(args.find((a) => a.startsWith('--min-prose='))?.split('=
 const TAU = 0.35 // prose threshold for "is this snippet a citation list?"
 const K = 5
 
-const manifest = JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
+const manifest = loadManifest()
 // --golden=<path> overrides the default set (used by the translation-footnote run).
 const goldenPath =
   args.find((a) => a.startsWith('--golden='))?.split('=')[1] ??

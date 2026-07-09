@@ -2,14 +2,8 @@ import { expect, test, vi } from 'vitest'
 import { AskService } from '../../src/core/ask-service'
 import type { AnswerGeneratorPort } from '../../src/core/answer-generator'
 import type { EmbeddingPort, VectorSearchPort } from '../../src/core/ports'
-import type { CapturedPage, Chunk, RankedResult } from '../../src/core/model'
-
-const page: CapturedPage = { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep', capturedAt: 1 }
-const chunk = (id: string, text: string): RankedResult => ({
-  chunk: { id, pageId: 'p1', index: Number(id.split('#')[1]), text } as Chunk,
-  page,
-  score: 1,
-})
+import type { RankedResult } from '../../src/core/model'
+import { rankedResult as chunk } from './fixtures'
 
 function fakeStore(search: VectorSearchPort['search']): VectorSearchPort {
   return {
@@ -337,4 +331,52 @@ test('ask drops an expanded query that is semantically too similar to one alread
   await svc.ask({ text: 'who invented rnn', retrieveK: 12, contextK: 8 })
 
   expect(searchedTexts).toEqual(['who invented rnn', 'lstm inventors'])
+})
+
+// Scenario: mergeAnswerResults ranks a chunk that TWO expanded queries corroborate (hits=2)
+// above a chunk only ONE query found, even if that single-hit chunk has a much higher score.
+// The confidence gate must judge by the true best score among all retrieved chunks, not
+// whichever chunk happens to sort first by hit-count -- otherwise a genuinely strong, highly
+// confident match gets wrongly blocked as NOT_FOUND just because a mediocre-but-corroborated
+// chunk outranked it in the merge.
+// Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 계약을 가진 fake generator를 쓴다.
+test('ask gates on the true max score across retrieved chunks, not the hit-count winner', async () => {
+  const strong: RankedResult = { ...chunk('p1#0', 'Strong single-hit match.'), score: 0.9 }
+  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.6 }
+  const spyEmbedder: EmbeddingPort = {
+    // Mutually orthogonal vectors so all three queries survive dedupeSimilarQueries regardless
+    // of threshold -- this test is about the merge/gate interaction, not dedup.
+    embed: async (texts) =>
+      texts.map((text) => {
+        if (text === 'strong query') return new Float32Array([1, 0, 0])
+        if (text === 'shared query one') return new Float32Array([0, 1, 0])
+        return new Float32Array([0, 0, 1])
+      }),
+  }
+  const store: VectorSearchPort = {
+    ...fakeStore(async () => []),
+    searchForAnswer: async (_vector, text) => {
+      if (text === 'strong query') return [strong]
+      // Both expansions independently return the SAME mediocre chunk, so after merging it
+      // has hits=2 while `strong` only has hits=1 -- mergeAnswerResults sorts mediocre first.
+      if (text === 'shared query one' || text === 'shared query two') return [mediocre]
+      return []
+    },
+  }
+  let generatorCalled = false
+  const generator: AnswerGeneratorPort = {
+    expandQueries: async () => ['shared query one', 'shared query two'],
+    answer: async ({ chunks }) => {
+      generatorCalled = true
+      return { text: 'answered from the strong match', citedChunkIds: chunks.map((r) => r.chunk.id) }
+    },
+  }
+
+  const svc = new AskService(spyEmbedder, store, generator)
+  const answer = await svc.ask({ text: 'strong query', retrieveK: 12, contextK: 8 })
+
+  // ASK_MIN_CONFIDENCE is 0.7: the mediocre chunk's 0.6 must NOT gate this off, because the
+  // true best score (strong, 0.9) clears the bar even though mediocre sorts first in the merge.
+  expect(generatorCalled).toBe(true)
+  expect(answer.text).toBe('answered from the strong match')
 })
