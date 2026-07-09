@@ -1,0 +1,78 @@
+// Ask-quality harness: runs the REAL retrieval/dedup/merge/gate pipeline (everything up to
+// but not including the LLM's final answer — WebLLM only runs in-browser, so generation
+// itself is out of scope here; see the spec's "잴 수 없는 것" section).
+// Usage: vite-node eval/run-ask.mjs
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { buildStore } from './lib/build-and-search.mjs'
+import { embed } from './lib/embed-node.mjs'
+import { dedupeSimilarQueries } from '../src/core/query-dedup.ts'
+import {
+  mergeAnswerResults,
+  passesConfidenceGate,
+  ASK_MIN_CONFIDENCE,
+  QUERY_DEDUP_THRESHOLD,
+} from '../src/core/ask-service.ts'
+import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS } from '../src/core/answer-retrieval.ts'
+import { evidenceRecallAtContext, confidenceGateCorrect } from '../src/core/eval-metrics.ts'
+
+const manifest = JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
+const golden = JSON.parse(readFileSync('eval/ask-golden.json', 'utf8'))
+const expansionsPath = 'eval/fixtures/expansions.json'
+const expansions = existsSync(expansionsPath) ? JSON.parse(readFileSync(expansionsPath, 'utf8')) : {}
+
+console.log(`[eval:ask] corpus=${manifest.length} pages  queries=${golden.length}`)
+const t0 = Date.now()
+const store = await buildStore(manifest, { strip: true, minProse: 0.35 })
+console.log(`[eval:ask] indexed + embedded in ${((Date.now() - t0) / 1000).toFixed(1)}s\n`)
+
+const rows = []
+for (const g of golden) {
+  const candidateTexts = [g.query, ...(expansions[g.query] ?? [])]
+  const vectors = await embed(candidateTexts, 'query')
+  const candidates = candidateTexts.map((text, i) => ({ text, vector: vectors[i] }))
+  const survivors = dedupeSimilarQueries(candidates, QUERY_DEDUP_THRESHOLD)
+
+  const resultSets = await Promise.all(
+    survivors.map((s) => store.searchForAnswer(s.vector, s.text, DEFAULT_ANSWER_RETRIEVAL_OPTIONS)),
+  )
+  const merged = mergeAnswerResults(resultSets)
+  const topScore = merged[0]?.score ?? 0
+  const passesGate = merged.length > 0 && passesConfidenceGate(topScore, ASK_MIN_CONFIDENCE)
+
+  const context = merged.slice(0, DEFAULT_ANSWER_RETRIEVAL_OPTIONS.maxContextChunks)
+  const contextPageIds = context.map((r) => r.page.id)
+
+  rows.push({
+    query: g.query,
+    expectAnswerable: g.expectAnswerable,
+    survivingQueries: survivors.length,
+    topScore: Number(topScore.toFixed(3)),
+    passesGate,
+    gateCorrect: confidenceGateCorrect(passesGate, g.expectAnswerable),
+    evidenceRecall: g.expectAnswerable
+      ? evidenceRecallAtContext(contextPageIds, g.expectTopPageIds ?? [])
+      : null,
+  })
+}
+
+console.log('QUERY                                          answerable  gate    OK   evidRecall  survQ  topScore')
+for (const r of rows) {
+  console.log(
+    `${r.query.slice(0, 46).padEnd(46)}  ${String(r.expectAnswerable).padEnd(10)}  ` +
+      `${(r.passesGate ? 'pass' : 'block').padEnd(6)}  ${r.gateCorrect ? 'yes' : 'NO '}  ` +
+      `${r.evidenceRecall === null ? '   n/a' : `     ${r.evidenceRecall}`}       ${r.survivingQueries}      ${r.topScore}`,
+  )
+}
+
+const gateAccuracy = rows.reduce((a, r) => a + r.gateCorrect, 0) / rows.length
+const answerable = rows.filter((r) => r.expectAnswerable)
+const evidenceRecallAvg = answerable.length
+  ? answerable.reduce((a, r) => a + r.evidenceRecall, 0) / answerable.length
+  : 0
+console.log('---')
+console.log(`gate-accuracy=${gateAccuracy.toFixed(2)}  evidence-recall@context=${evidenceRecallAvg.toFixed(2)}`)
+
+writeFileSync(
+  'eval/last-ask-scorecard.json',
+  JSON.stringify({ gateAccuracy, evidenceRecallAvg, rows }, null, 2) + '\n',
+)

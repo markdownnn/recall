@@ -15,6 +15,7 @@
     "models:manifest": "node scripts/r2-model-manifest.mjs",
     "models:upload-r2": "node scripts/upload-r2-models.mjs",
     "eval:ci": "npm run eval:fetch-model && vite-node eval/run.mjs -- --ci --strip --min-prose=0.35",
+    "eval:ask": "npm run eval:fetch-model && vite-node eval/run-ask.mjs",
     "e2e": "playwright test",
     "package": "rm -rf dist-ext recall-extension.zip && npm run build && (cd dist-ext && zip -qr -X ../recall-extension.zip . -x '*.map') && echo \"packaged -> recall-extension.zip\""
   },
