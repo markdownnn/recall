@@ -23,7 +23,8 @@ const STATIC_KEYS = [
   'obHeroTagline', 'obHeroCalm', 'obHowTitle',
   'obHowAutomaticLabel', 'obHowAutomaticText', 'obHowManualLabel', 'obHowManualText',
   'obHowPrivateLabel', 'obHowPrivateText',
-  'obMeaningTitle', 'obMeaningText', 'obOpenRecall', 'obOpenText', 'obOpenTip',
+  'obMeaningTitle', 'obMeaningText', 'obAskTitle', 'obAskText', 'obAskNote',
+  'obOpenRecall', 'obOpenText', 'obOpenTip',
   'obShortcutsTitle', 'obMacTip', 'obTryTitle', 'obTryText',
 ] as const
 const FUNCTION_KEYS = [

@@ -16,19 +16,21 @@ export type OnboardingSection =
   | { kind: 'hero'; id: string }
   | { kind: 'how-it-works'; id: string }
   | { kind: 'search-by-meaning'; id: string }
+  | { kind: 'ask'; id: string }
   | { kind: 'try-it'; id: string; samples: SampleDoc[]; exampleQueries: string[] }
   | { kind: 'open-recall'; id: string }
 
 // The set of kinds that have a renderer. The sections test pins every SECTIONS entry against
 // this so a new kind without a renderer is caught before it can crash at render.
 export const SECTION_KINDS = [
-  'hero', 'how-it-works', 'search-by-meaning', 'try-it', 'open-recall',
+  'hero', 'how-it-works', 'search-by-meaning', 'ask', 'try-it', 'open-recall',
 ] as const
 
 export const SECTIONS: OnboardingSection[] = [
   { kind: 'hero', id: 'hero' },
   { kind: 'how-it-works', id: 'how-it-works' },
   { kind: 'search-by-meaning', id: 'search-by-meaning' },
+  { kind: 'ask', id: 'ask' },
   // The one live card: seed the bundled samples, then search them with the real engine.
   {
     kind: 'try-it',

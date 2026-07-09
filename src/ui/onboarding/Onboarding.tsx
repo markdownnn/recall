@@ -64,6 +64,16 @@ function SearchByMeaningSection() {
   )
 }
 
+function AskSection() {
+  return (
+    <section class="card section">
+      <h2>{t.obAskTitle}</h2>
+      <p>{t.obAskText}</p>
+      <p class="tip">{t.obAskNote}</p>
+    </section>
+  )
+}
+
 function OpenRecallSection() {
   return (
     <section class="card section">
@@ -92,6 +102,7 @@ const SECTION_RENDERERS: Record<OnboardingSection['kind'], (props: { section: an
   'hero': HeroSection,
   'how-it-works': HowItWorksSection,
   'search-by-meaning': SearchByMeaningSection,
+  'ask': AskSection,
   'try-it': TryItCard,
   'open-recall': OpenRecallSection,
 }

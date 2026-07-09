@@ -13,8 +13,8 @@ cell's power plant" and Recall finds it using on-device English semantic search.
 
 Your reading data stays on your machine. The BGE English embedding model, the WebLLM answer model,
 and a SQLite database run in the browser. Model files may be loaded from the extension package or
-from a configured Cloudflare R2 model bucket, but **the pages you read and the questions you ask do
-not leave your computer**. No accounts, no telemetry, no ads.
+downloaded once from our secure CDN (cdn.teamnyongs.com), cached, then used offline — but **the
+pages you read and the questions you ask do not leave your computer**. No accounts, no telemetry, no ads.
 
 ---
 
