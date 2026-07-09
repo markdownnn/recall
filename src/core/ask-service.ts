@@ -2,8 +2,11 @@ import { NOT_FOUND_ANSWER, type AnswerGeneratorPort, type AskProgressEvent } fro
 import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS, type AnswerRetrievalOptions } from './answer-retrieval'
 import type { AskAnswer, AskQuery, RankedResult } from './model'
 import type { EmbeddingPort, VectorSearchPort } from './ports'
+import { dedupeSimilarQueries, type EmbeddedQuery } from './query-dedup'
 
 const MAX_ASK_SEARCH_QUERIES = 5
+export const QUERY_DEDUP_THRESHOLD = 0.92
+export const ASK_MIN_CONFIDENCE = 0.3
 
 export class AskService {
   constructor(
@@ -45,14 +48,18 @@ export class AskService {
           pageK: Math.max(1, Math.ceil(query.retrieveK / 4)),
           maxContextChunks: query.contextK,
         }
-    const searchQueries = await this.searchQueriesFor(query.text)
-    if (searchQueries.length > 1) onProgress?.({ type: 'expanded-queries', queries: searchQueries })
-    const vectors = await this.embedder.embed(searchQueries, 'query')
+    const searchQueries = await this.resolveSearchQueries(query.text)
+    if (searchQueries.length > 1) {
+      onProgress?.({ type: 'expanded-queries', queries: searchQueries.map((q) => q.text) })
+    }
     const resultSets = await Promise.all(
-      searchQueries.map((text, i) => this.store.searchForAnswer(vectors[i], text, options)),
+      searchQueries.map((q) => this.store.searchForAnswer(q.vector, q.text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
     if (retrieved.length === 0) return { text: NOT_FOUND_ANSWER, sources: [] }
+    if (!passesConfidenceGate(retrieved[0].score, ASK_MIN_CONFIDENCE)) {
+      return { text: NOT_FOUND_ANSWER, sources: [] }
+    }
 
     const chunks = retrieved.slice(0, options.maxContextChunks)
     const draft = await generate(chunks)
@@ -67,7 +74,11 @@ export class AskService {
     return { text: draft.text, sources }
   }
 
-  private async searchQueriesFor(question: string): Promise<string[]> {
+  // Expands the question via the generator (best-effort), textually dedupes, embeds every
+  // surviving candidate in one batch, then semantically dedupes so a reworded-not-diversified
+  // expansion never burns a second search pass on the same idea. The original question is
+  // always first and is never dropped (dedupeSimilarQueries keeps the first item unconditionally).
+  private async resolveSearchQueries(question: string): Promise<EmbeddedQuery[]> {
     let expanded: string[] = []
     if (this.generator.expandQueries) {
       expanded = await this.generator.expandQueries(question).catch((err) => {
@@ -75,8 +86,18 @@ export class AskService {
         return []
       })
     }
-    return uniqueQueries([question, ...expanded]).slice(0, MAX_ASK_SEARCH_QUERIES)
+    const texts = uniqueQueries([question, ...expanded]).slice(0, MAX_ASK_SEARCH_QUERIES)
+    const vectors = await this.embedder.embed(texts, 'query')
+    const candidates = texts.map((text, i) => ({ text, vector: vectors[i] }))
+    return dedupeSimilarQueries(candidates, QUERY_DEDUP_THRESHOLD)
   }
+}
+
+// Whether the top (best) merged result is strong enough to answer from. Below the threshold,
+// AskService returns NOT_FOUND_ANSWER without ever calling the generator (ADR 0024: a weak
+// match should not be dressed up into a confident-sounding hallucination).
+export function passesConfidenceGate(topScore: number, minScore: number): boolean {
+  return topScore >= minScore
 }
 
 function uniqueQueries(queries: string[]): string[] {
@@ -92,7 +113,7 @@ function uniqueQueries(queries: string[]): string[] {
   return clean
 }
 
-function mergeAnswerResults(resultSets: RankedResult[][]): RankedResult[] {
+export function mergeAnswerResults(resultSets: RankedResult[][]): RankedResult[] {
   const byChunk = new Map<string, { result: RankedResult; hits: number; firstRank: number }>()
   let rankCursor = 0
   for (const results of resultSets) {
