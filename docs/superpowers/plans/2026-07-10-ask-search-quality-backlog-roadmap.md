@@ -29,9 +29,14 @@
 - [x] **B1 인용 청크 전부 하단 표시** (코어 변경 — 위 결정 참조) — **완료 2026-07-10**
   - ask-service: `sourcesByPage` 접기 → `chunks.filter(cited)` (전부·순서). SearchTab: 제목 링크 + 3줄 클램프 스니펫.
   - 잴: ask-service.test.ts(코어) + ask-ui.test.ts(소스 계약)로 고정. 픽셀 눈 확인은 남은 선택 항목.
-- [ ] **A1 크로스인코더 리랭커** (최대 레버, 새 온디바이스 모델)
-  - 후보 50개 → 크로스인코더 재채점. Search 결과 + Ask 청크 둘 다.
-  - 잴: `eval:english` 골든셋으로 precision@1·MRR 전후 비교.
+- [~] **A1 크로스인코더 리랭커** (최대 레버, 새 온디바이스 모델) — **증거 확보, productionize 대기**
+  - **결정**: 증거 먼저 + 모델 `Xenova/ms-marco-MiniLM-L-6-v2`(q8).
+  - **측정 완료 2026-07-10** (`npm run eval:rerank`, retrieveN=25, 12쿼리): 같은 후보 top-25에서 검색순 top-5 vs 리랭크 top-5.
+    - BASELINE P@1=0.58 recall@5=0.92 MRR=0.70
+    - RERANKED P@1=**0.83** recall@5=**1.00** MRR=**0.90**
+    - DELTA P@1=**+0.25** recall@5=+0.08 MRR=+0.20, **회귀 0건**. (골든셋 12쿼리·전부 EN→EN이라 표본은 작음.)
+  - 추가한 것: [eval/lib/rerank-node.mjs](../../../eval/lib/rerank-node.mjs), [eval/run-rerank.mjs](../../../eval/run-rerank.mjs), `eval:rerank` 스크립트.
+  - **남은 productionize (사용자 결정 필요)**: 온디바이스 배선(offscreen worker에 transformers.js 크로스인코더) + 모델 아티팩트 호스팅(ADR 0022 R2) + Search/Ask 검색 경로에 retrieve-N→rerank 삽입. 체감 지연 측정 필요.
 - [ ] **A2 청킹 겹침 + 문장 경계** (재색인 필요)
   - [ParagraphChunker](../../../src/core/paragraph-chunker.ts) 220단어 하드컷 → 1~2문장 겹침 + 문장 끝 자르기. 저장된 페이지 전체 재색인([embed-migration](../../../src/core/embed-migration.ts) 계열).
   - 잴: 골든셋이 페이지 단위 정답이라 청킹이 바뀌어도 안 깨짐 → `eval:english` recall 전후 비교.
