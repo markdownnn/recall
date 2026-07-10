@@ -61,7 +61,7 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Use ONLY information found in the saved excerpts.')
     expect(joined).toContain('Never invent facts, numbers, names, or dates.')
     expect(joined).toContain('I couldn\'t find that in your saved pages.')
-    expect(joined).toContain('SHORT, direct answer in 1-3 sentences')
+    expect(joined).toContain('direct answer in 2-4 sentences')
     expect(joined).toContain('Do NOT quote, paste, or list the excerpts')
     expect(joined).toContain('no headings, labels, or section titles')
     expect(joined).toContain("Match the language of the user's question.")
@@ -259,7 +259,7 @@ describe('webllm answer generator', () => {
     expect(calls).toHaveLength(1) // no evidence pass
     expect(calls[0].content).not.toContain('Working notes:')
     expect(calls[0].content).not.toContain('Return short working notes')
-    expect(calls[0].maxTokens).toBe(200)
+    expect(calls[0].maxTokens).toBeUndefined() // length is controlled by the prompt, not a token cap
     expect(answer.text).toBe('GABA is an inhibitory neurotransmitter.')
   })
 
@@ -323,11 +323,11 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
 
-  // Scenario: Ask는 짧게 요약한 결과를 내야 한다. 답변 토큰 예산을 일부러 작게(200) 잡아, 1B가 excerpt를
-  // 계속 붙이다 문장 중간에 잘리는 대신 짧게 끝맺게 한다.
+  // Scenario: 답변 길이는 토큰 상한이 아니라 프롬프트("2-4 sentences")로 제어한다. 토큰 상한을 두면 문장을
+  // 중간에서 자르므로, 답변 호출은 max_tokens를 아예 안 넘긴다(모델이 end-of-turn에서 스스로 끝맺음).
   // Coverage: ⚠️ mock - 실제 WebLLM 대신 요청 옵션만 기록하는 fake engine을 쓴다.
-  test('answer and answerStream cap the answer at a concise token budget', async () => {
-    const seen: number[] = []
+  test('answer and answerStream set no max_tokens (length is prompt-controlled)', async () => {
+    const seen: Array<number | undefined> = []
     async function* chunks() {
       yield { choices: [{ delta: { content: 'GABA is inhibitory.' } }] }
     }
@@ -335,7 +335,7 @@ describe('webllm answer generator', () => {
       chat: {
         completions: {
           create: async (request: { max_tokens?: number; stream?: boolean }) => {
-            seen.push(request.max_tokens ?? 0)
+            seen.push(request.max_tokens)
             if (request.stream) return chunks()
             return { choices: [{ message: { content: 'GABA is inhibitory.' } }] }
           },
@@ -347,8 +347,7 @@ describe('webllm answer generator', () => {
     await generator.answer({ question: 'what is GABA?', chunks: [result] })
     await generator.answerStream({ question: 'what is GABA?', chunks: [result] }, () => undefined)
 
-    // One answer call each (no evidence pass), both capped at the concise 200-token budget.
-    expect(seen).toEqual([200, 200])
+    expect(seen).toEqual([undefined, undefined])
   })
 
   // Scenario: 청크가 여러 개일 때, 모델이 실제로 인용한 발췌만 출처가 되고 인용 안 한 발췌는 빠져야

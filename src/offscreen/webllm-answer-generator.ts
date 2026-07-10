@@ -21,10 +21,6 @@ export const MAX_EVIDENCE_PROMPT_CHUNKS = 4
 export const MAX_ASK_PROMPT_CHUNKS = 3
 export const MAX_CHARS_PER_PROMPT_CHUNK = 800
 export const MAX_EVIDENCE_TOKENS = 220
-// Kept short on purpose: Ask must return a concise SUMMARY, not a wall of text. A large budget
-// let the 1B model ramble and paste excerpts until it got cut off mid-sentence; a tight cap forces
-// a short answer that finishes cleanly.
-export const MAX_ANSWER_TOKENS = 200
 export type ModelProgressEvent = { status: string; progress?: number; error?: string }
 
 function buildWebLlmAppConfig(
@@ -120,7 +116,7 @@ export function buildAskMessages(question: string, chunks: RankedResult[]): Chat
           'Rules:',
           '- Use ONLY information found in the saved excerpts. Never invent facts, numbers, names, or dates.',
           `- If the saved excerpts don't contain the answer, say exactly: "${NOT_FOUND_ANSWER}"`,
-          '- Give a SHORT, direct answer in 1-3 sentences of plain prose, in your own words.',
+          '- Give a direct answer in 2-4 sentences of plain prose, in your own words. Answer the question fully but stay concise -- no rambling or filler.',
           '- Do NOT quote, paste, or list the excerpts, and do not copy sentences verbatim.',
           '- Write ONLY the answer sentences, with no headings, labels, or section titles (no "Answer" or "Summary" labels, no sources or citation section), no markdown, no bullet points, and no lists.',
           "- Match the language of the user's question.",
@@ -228,7 +224,6 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
     const completion = await this.engine.chat.completions.create({
       messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
-      max_tokens: MAX_ANSWER_TOKENS,
     })
     return completion.choices[0]?.message.content?.trim() || NOT_FOUND_ANSWER
   }
@@ -237,7 +232,6 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
     const stream = await this.engine.chat.completions.create({
       messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
-      max_tokens: MAX_ANSWER_TOKENS,
       stream: true,
     })
     let text = ''
