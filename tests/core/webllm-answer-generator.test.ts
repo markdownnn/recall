@@ -251,25 +251,17 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual([])
   })
 
-  // Scenario: evidence pass는 사용자에게 보일 답변이 아니라 다음 답변 호출에 들어갈 짧은 내부 메모다.
-  // Coverage: ⚠️ mock - 실제 WebLLM 대신 같은 chat 계약을 가진 fake engine으로 호출 순서와 프롬프트 전달만 확인한다.
-  test('answer runs an evidence pass before the final answer', async () => {
+  // Scenario: 예전엔 답변 전에 "근거 메모" 단계를 한 번 더 돌렸는데, 그 메모의 메타 문구("Excerpt 1
+  // directly answers...")가 최종 답에 새어들어 제거했다. 이제 답변은 단 한 번의 호출로, 근거 메모 없이 만든다.
+  // Coverage: ⚠️ mock - 실제 WebLLM 대신 같은 chat 계약을 가진 fake engine으로 호출 횟수와 프롬프트만 확인한다.
+  test('answer makes a single answer call with no separate evidence pass', async () => {
     const calls: Array<{ content: string; maxTokens?: number }> = []
     const engine = {
       chat: {
         completions: {
           create: async (request: { messages: Array<{ content: string }>; max_tokens?: number }) => {
-            const content = request.messages.map((m) => m.content).join('\n')
-            calls.push({ content, maxTokens: request.max_tokens })
-            return {
-              choices: [{
-                message: {
-                  content: calls.length === 1
-                    ? 'Direct fact: GABA is inhibitory.'
-                    : 'GABA is an inhibitory neurotransmitter.',
-                },
-              }],
-            }
+            calls.push({ content: request.messages.map((m) => m.content).join('\n'), maxTokens: request.max_tokens })
+            return { choices: [{ message: { content: 'GABA is an inhibitory neurotransmitter.' } }] }
           },
         },
       },
@@ -278,31 +270,25 @@ describe('webllm answer generator', () => {
     const generator = new WebLlmAnswerGenerator(engine as any)
     const answer = await generator.answer({ question: 'what is GABA?', chunks: [result] })
 
-    expect(calls).toHaveLength(2)
-    expect(calls[0].content).toContain('Return short working notes')
-    expect(calls[0].maxTokens).toBe(220)
-    expect(calls[1].content).toContain('Working notes:')
-    expect(calls[1].content).toContain('Direct fact: GABA is inhibitory.')
-    expect(calls[1].maxTokens).toBe(200)
+    expect(calls).toHaveLength(1) // no evidence pass
+    expect(calls[0].content).not.toContain('Working notes:')
+    expect(calls[0].content).not.toContain('Return short working notes')
+    expect(calls[0].maxTokens).toBe(200)
     expect(answer.text).toBe('GABA is an inhibitory neurotransmitter.')
   })
 
-  // Scenario: 스트리밍으로 가려면 첫 답을 숨겼다가 다시 쓰는 흐름이 화면을 복잡하게 만든다.
+  // Scenario: 답변은 한 번의 호출로 만들고, 끝에 붙은 숨김 인용 태그([[cite: 1]])는 화면 텍스트에서
+  // 잘라내되 citedChunkIds로는 뽑아낸다.
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 chat 호출 횟수만 fake로 확인한다.
-  test('answer does not retry when the first draft looks like a raw source snippet', async () => {
+  test('answer strips the trailing citation tag and returns cited chunk ids in one call', async () => {
     let calls = 0
     const engine = {
       chat: {
         completions: {
-          create: async () => ({
-            choices: [{
-              message: {
-                content: calls++ === 0
-                  ? 'Relevant fact: sleep article.'
-                  : 'Sleep article says cortisol disrupts sleep.\n[[cite: 1]]',
-              },
-            }],
-          }),
+          create: async () => {
+            calls++
+            return { choices: [{ message: { content: 'Sleep article says cortisol disrupts sleep.\n[[cite: 1]]' } }] }
+          },
         },
       },
     }
@@ -310,7 +296,7 @@ describe('webllm answer generator', () => {
     const generator = new WebLlmAnswerGenerator(engine as any)
     const answer = await generator.answer({ question: 'what hurts sleep?', chunks: [result] })
 
-    expect(calls).toBe(2)
+    expect(calls).toBe(1)
     expect(answer.text).toBe('Sleep article says cortisol disrupts sleep.')
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
@@ -375,7 +361,8 @@ describe('webllm answer generator', () => {
     await generator.answer({ question: 'what is GABA?', chunks: [result] })
     await generator.answerStream({ question: 'what is GABA?', chunks: [result] }, () => undefined)
 
-    expect(seen).toEqual([220, 200, 220, 200])
+    // One answer call each (no evidence pass), both capped at the concise 200-token budget.
+    expect(seen).toEqual([200, 200])
   })
 
   // Scenario: 청크가 여러 개일 때, 모델이 실제로 인용한 발췌만 출처가 되고 인용 안 한 발췌는 빠져야

@@ -238,18 +238,9 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
     return parseExpandedQueries(completion.choices[0]?.message.content ?? '')
   }
 
-  private async createEvidenceNotes(request: AnswerRequest): Promise<string> {
+  private async createAnswerText(request: AnswerRequest): Promise<string> {
     const completion = await this.engine.chat.completions.create({
-      messages: buildEvidenceMessages(request.question, request.chunks),
-      temperature: 0,
-      max_tokens: MAX_EVIDENCE_TOKENS,
-    })
-    return completion.choices?.[0]?.message.content?.trim() ?? ''
-  }
-
-  private async createAnswerText(request: AnswerRequest, workingNotes: string): Promise<string> {
-    const completion = await this.engine.chat.completions.create({
-      messages: buildAskMessages(request.question, request.chunks, workingNotes),
+      messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
       max_tokens: MAX_ANSWER_TOKENS,
     })
@@ -257,9 +248,8 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
   }
 
   async answerStream(request: AnswerRequest, onDelta: (delta: string) => void): Promise<AnswerDraft> {
-    const workingNotes = await this.createEvidenceNotes(request)
     const stream = await this.engine.chat.completions.create({
-      messages: buildAskMessages(request.question, request.chunks, workingNotes),
+      messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
       max_tokens: MAX_ANSWER_TOKENS,
       stream: true,
@@ -287,8 +277,7 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
   }
 
   async answer(request: AnswerRequest): Promise<AnswerDraft> {
-    const workingNotes = await this.createEvidenceNotes(request)
-    const raw = await this.createAnswerText(request, workingNotes)
+    const raw = await this.createAnswerText(request)
     // See the matching comment in answerStream: citations must be validated against the same
     // slice the prompt actually showed, not the full (possibly larger) request.chunks.
     const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks.slice(0, MAX_ASK_PROMPT_CHUNKS))
