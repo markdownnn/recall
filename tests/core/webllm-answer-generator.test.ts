@@ -15,14 +15,35 @@ import {
   WebLlmAnswerGenerator,
 } from '../../src/offscreen/webllm-answer-generator'
 import type { RankedResult } from '../../src/core/model'
+import { rankedResult } from './fixtures'
 
-const result: RankedResult = {
-  chunk: { id: 'p1#0', pageId: 'p1', index: 0, text: 'Cortisol can disrupt REM sleep.' },
-  page: { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep article', capturedAt: 1 },
-  score: 1,
-}
+const result = rankedResult('p1#0', 'Cortisol can disrupt REM sleep.')
+const CAFFEINE_PAGE = { id: 'p2', url: 'https://example.com/caffeine', title: 'Caffeine article', capturedAt: 1 }
+const LIGHT_PAGE = { id: 'p3', url: 'https://example.com/light', title: 'Light article', capturedAt: 1 }
 
 describe('webllm answer generator', () => {
+  // Scenario: 인용 태그가 청크를 정확히 가리키려면 프롬프트에서 발췌마다 번호가 보여야 한다.
+  // Coverage: ✅ integration
+  test('ask prompt numbers each excerpt so the model can cite by number', () => {
+    const second = rankedResult('p2#0', 'Caffeine blocks adenosine receptors.', CAFFEINE_PAGE)
+    const messages = buildAskMessages('what hurts sleep?', [result, second])
+    const joined = messages.map((m) => m.content).join('\n')
+
+    expect(joined).toContain('Excerpt 1)')
+    expect(joined).toContain('Excerpt 2)')
+  })
+
+  // Scenario: 모델이 실제로 사용한 발췌를 답 끝에 숨김 태그로 표시해야 citedChunkIds를 신뢰할 수 있다.
+  // Coverage: ✅ integration
+  test('ask prompt instructs the model to append a hidden citation tag', () => {
+    const messages = buildAskMessages('what hurts sleep?', [result])
+    const joined = messages.map((m) => m.content).join('\n')
+
+    expect(joined).toContain('[[cite:')
+    expect(joined).toContain('hidden from the user')
+    expect(joined).not.toContain('Sources:')
+  })
+
   // Scenario: WebLLM이 저장된 근거 밖의 답을 만들거나 검색 결과를 나열하면 Recall Ask의 신뢰가 깨진다.
   // Coverage: ✅ integration
   test('ask prompt tells model to answer only from chunks', () => {
@@ -100,14 +121,16 @@ describe('webllm answer generator', () => {
     expect(answerJoined).not.toContain('x'.repeat(MAX_CHARS_PER_PROMPT_CHUNK + 50))
   })
 
-  // Scenario: 원문 질문과 저장 글의 단어가 다르면 검색이 놓칠 수 있으므로 WebLLM이 검색용 변형 문장을 만들어야 한다.
+  // Scenario: 확장 검색어가 원문과 뜻만 같은 동의어면 검색이 매번 같은 결과만 낸다. WebLLM이 서로 다른
+  // 측면(인물/개념/하위질문)으로 쪼개야 실제로 다른 저장 글을 찾아낼 수 있다.
   // Coverage: ✅ integration
-  test('query expansion prompt asks for JSON search queries only', () => {
+  test('query expansion prompt asks for distinct-angle search queries as JSON', () => {
     const messages = buildQueryExpansionMessages('what is cf r2?')
     const joined = messages.map((m) => m.content).join('\n')
 
-    expect(joined).toContain("You rewrite a user's search query into multiple search queries")
-    expect(joined).toContain('output 3-4 alternative search queries')
+    expect(joined).toContain("You expand a user's search query into multiple search queries")
+    expect(joined).toContain('each explore a DIFFERENT angle, entity, or sub-topic')
+    expect(joined).toContain('Do NOT just reword the same idea with synonyms')
     expect(joined).toContain('Output ONLY a JSON array of strings.')
     expect(joined).toContain('No explanation, no markdown.')
     expect(joined).toContain('User question: what is cf r2?')
@@ -171,14 +194,15 @@ describe('webllm answer generator', () => {
       .toEqual({ status: 'progress', progress: 42 })
   })
 
-  // Scenario: 모델 출력을 코드가 몰래 고치면 스트리밍과 디버깅이 모두 어려워진다.
+  // Scenario: 모델이 [[cite: N]] 형식을 정확히 지키면, 답변 본문은 그대로 두고 태그 줄만 잘라내며
+  // citedChunkIds는 태그가 가리킨 청크가 된다.
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
-  test('answer returns model text without parser cleanup', async () => {
+  test('answer keeps the model text as-is and only strips the trailing citation tag', async () => {
     const engine = {
       chat: {
         completions: {
           create: async () => ({
-            choices: [{ message: { content: 'Cortisol can disrupt sleep.\\nSources: [p1#0] [missing#9]' } }],
+            choices: [{ message: { content: 'Cortisol can disrupt sleep.\n[[cite: 1]]' } }],
           }),
         },
       },
@@ -187,13 +211,14 @@ describe('webllm answer generator', () => {
     const generator = new WebLlmAnswerGenerator(engine as any)
     const answer = await generator.answer({ question: 'what hurts sleep?', chunks: [result] })
 
-    expect(answer.text).toBe('Cortisol can disrupt sleep.\\nSources: [p1#0] [missing#9]')
+    expect(answer.text).toBe('Cortisol can disrupt sleep.')
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
 
-  // Scenario: 출처는 답변 카드 하단에 이미 보이므로 WebLLM 답변 본문에 내부용 Sources 줄을 강요하지 않는다.
-  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 source 없는 chat 응답 계약만 fake로 둔다.
-  test('answer can omit source lines and still uses retrieved chunks as sources', async () => {
+  // Scenario: 모델이 인용 태그를 아예 안 달면, 상위 청크로 대신 채우지 말고 출처를 비워야 한다
+  // (ADR 0024: 근거가 불확실하면 추측 대신 비운다).
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 태그 없는 chat 응답 계약만 fake로 둔다.
+  test('answer returns no sources when the model omits the citation tag', async () => {
     const engine = {
       chat: {
         completions: {
@@ -208,7 +233,7 @@ describe('webllm answer generator', () => {
     const answer = await generator.answer({ question: 'what hurts sleep?', chunks: [result] })
 
     expect(answer.text).toBe('The saved page says cortisol can disrupt REM sleep.')
-    expect(answer.citedChunkIds).toEqual(['p1#0'])
+    expect(answer.citedChunkIds).toEqual([])
   })
 
   // Scenario: evidence pass는 사용자에게 보일 답변이 아니라 다음 답변 호출에 들어갈 짧은 내부 메모다.
@@ -257,7 +282,9 @@ describe('webllm answer generator', () => {
           create: async () => ({
             choices: [{
               message: {
-                content: calls++ === 0 ? 'Relevant fact: sleep article.' : '[p1#0] Sleep article',
+                content: calls++ === 0
+                  ? 'Relevant fact: sleep article.'
+                  : 'Sleep article says cortisol disrupts sleep.\n[[cite: 1]]',
               },
             }],
           }),
@@ -269,16 +296,19 @@ describe('webllm answer generator', () => {
     const answer = await generator.answer({ question: 'what hurts sleep?', chunks: [result] })
 
     expect(calls).toBe(2)
-    expect(answer.text).toBe('[p1#0] Sleep article')
+    expect(answer.text).toBe('Sleep article says cortisol disrupts sleep.')
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
 
   // Scenario: WebLLM 답변을 다 만든 뒤 한 번에 보여주면 사용자는 loading 상태에서 멈춘 것처럼 느낀다.
+  // 인용 태그는 스트리밍 도중엔 그대로 흘러나오지만(마지막 조각이라 미리 알 방법이 없음), 최종
+  // answer.text에서는 잘려나가야 한다.
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 stream chunk 계약을 가진 fake engine을 쓴다.
-  test('answerStream emits deltas as WebLLM chunks arrive', async () => {
+  test('answerStream emits deltas as WebLLM chunks arrive and strips the trailing citation tag from the final text', async () => {
     async function* chunks() {
       yield { choices: [{ delta: { content: 'GABA is ' } }] }
       yield { choices: [{ delta: { content: 'an inhibitory neurotransmitter.' } }] }
+      yield { choices: [{ delta: { content: '\n[[cite: 1]]' } }] }
       yield { choices: [{ delta: {} }] }
     }
     let sawStream = false
@@ -301,7 +331,7 @@ describe('webllm answer generator', () => {
     )
 
     expect(sawStream).toBe(true)
-    expect(deltas).toEqual(['GABA is ', 'an inhibitory neurotransmitter.'])
+    expect(deltas).toEqual(['GABA is ', 'an inhibitory neurotransmitter.', '\n[[cite: 1]]'])
     expect(answer.text).toBe('GABA is an inhibitory neurotransmitter.')
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
@@ -330,5 +360,98 @@ describe('webllm answer generator', () => {
     await generator.answerStream({ question: 'what is GABA?', chunks: [result] }, () => undefined)
 
     expect(seen).toEqual([220, 640, 220, 640])
+  })
+
+  // Scenario: 청크가 여러 개일 때, 모델이 실제로 인용한 발췌만 출처가 되고 인용 안 한 발췌는 빠져야
+  // 한다. 청크 1개짜리 테스트로는 "태그를 읽는지"와 "무조건 상위 N개인지"를 구분 못 하므로, 이 구멍을
+  // 청크 3개로 명시적으로 막는다.
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
+  test('answer cites only the excerpts the model tagged, not every retrieved chunk', async () => {
+    const chunks: RankedResult[] = [
+      rankedResult('p1#0', 'Cortisol can disrupt REM sleep.'),
+      rankedResult('p2#0', 'Caffeine blocks adenosine receptors.', CAFFEINE_PAGE),
+      rankedResult('p3#0', 'Blue light suppresses melatonin.', LIGHT_PAGE),
+    ]
+    const engine = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: { content: 'Cortisol and blue light both disrupt sleep.\n[[cite: 1, 3]]' },
+            }],
+          }),
+        },
+      },
+    }
+
+    const generator = new WebLlmAnswerGenerator(engine as any)
+    const answer = await generator.answer({ question: 'what disrupts sleep?', chunks })
+
+    expect(answer.text).toBe('Cortisol and blue light both disrupt sleep.')
+    expect(answer.citedChunkIds).toEqual(['p1#0', 'p3#0'])
+  })
+
+  // Scenario: AskService retrieves up to contextK (8 by default) chunks, but the prompt only
+  // ever numbers and shows the model the first MAX_ASK_PROMPT_CHUNKS (5) of them. If the
+  // model cites a number beyond 5 (an excerpt it was never shown), that citation must NOT
+  // resolve to a real chunk just because the number happens to be within the full 8-item
+  // array's bounds.
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 chat 계약을 가진 fake engine을 쓴다.
+  test('answer never resolves a citation number beyond what the prompt actually showed the model', async () => {
+    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) =>
+      rankedResult(`p${i}#0`, `Excerpt number ${i + 1} content.`, {
+        id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1,
+      }),
+    )
+    const engine = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              // The model hallucinates citing excerpt 6, which is beyond MAX_ASK_PROMPT_CHUNKS (5)
+              // and was never numbered/shown to it in the prompt.
+              message: { content: 'This is an answer.\n[[cite: 6]]' },
+            }],
+          }),
+        },
+      },
+    }
+
+    const generator = new WebLlmAnswerGenerator(engine as any)
+    const answer = await generator.answer({ question: 'what does this say?', chunks: eightChunks })
+
+    expect(answer.citedChunkIds).toEqual([])
+  })
+
+  // Scenario: 같은 5-vs-8 경계 버그가 스트리밍 경로(answerStream)에도 있었다 -- 위 테스트는 answer()만
+  // 지킨다. 스트리밍 코드가 나중에 따로 리팩터링되면서 이 검증이 빠지는 걸 막기 위해 answerStream도
+  // 똑같이 확인한다.
+  // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 stream chunk 계약을 가진 fake engine을 쓴다.
+  test('answerStream never resolves a citation number beyond what the prompt actually showed the model', async () => {
+    const eightChunks: RankedResult[] = Array.from({ length: 8 }, (_, i) =>
+      rankedResult(`p${i}#0`, `Excerpt number ${i + 1} content.`, {
+        id: `p${i}`, url: `https://example.com/${i}`, title: `Page ${i}`, capturedAt: 1,
+      }),
+    )
+    async function* chunks() {
+      yield { choices: [{ delta: { content: 'This is an answer.\n[[cite: 6]]' } }] }
+    }
+    const engine = {
+      chat: {
+        completions: {
+          create: async (request: { stream?: boolean }) => (request.stream ? chunks() : {
+            choices: [{ message: { content: 'evidence notes' } }],
+          }),
+        },
+      },
+    }
+
+    const generator = new WebLlmAnswerGenerator(engine as any)
+    const answer = await generator.answerStream(
+      { question: 'what does this say?', chunks: eightChunks },
+      () => undefined,
+    )
+
+    expect(answer.citedChunkIds).toEqual([])
   })
 })

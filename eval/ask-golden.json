@@ -1,0 +1,18 @@
+[
+  { "query": "bacteria", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Bacteria"] },
+  { "query": "deep learning neural networks", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Deep_learning"] },
+  { "query": "hormone that ruins sleep", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Cortisol"] },
+  { "query": "powerhouse of the cell", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Mitochondrion"] },
+  { "query": "what is a protein", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/Protein"] },
+  { "query": "genetic material in chromosomes", "expectAnswerable": true,
+    "expectTopPageIds": ["https://en.wikipedia.org/wiki/DNA"] },
+
+  { "query": "what dose of melatonin supplement should I take before bed", "expectAnswerable": false },
+  { "query": "how much does a home DNA testing kit cost", "expectAnswerable": false },
+  { "query": "what gpu should I buy to train a deep learning model at home", "expectAnswerable": false }
+]

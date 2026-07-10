@@ -17,3 +17,5 @@ export interface AnswerGeneratorPort {
   answerStream?(request: AnswerRequest, onDelta: (delta: string) => void): Promise<AnswerDraft>
   expandQueries?(question: string): Promise<string[]>
 }
+
+export const NOT_FOUND_ANSWER = "I couldn't find that in your saved pages."

@@ -4,6 +4,8 @@ import {
   mrr,
   referenceSnippetRate,
   aggregate,
+  evidenceRecallAtContext,
+  confidenceGateCorrect,
 } from '../../src/core/eval-metrics'
 
 // Scenario: a ranked page-id list plus the expected id must produce the standard
@@ -44,4 +46,21 @@ test('aggregate averages per-query metrics', () => {
   expect(agg.precisionAt1).toBe(0.5)
   expect(agg.recallAt5).toBe(1)
   expect(agg.mrr).toBe(0.75)
+})
+
+// Scenario: Ask가 LLM에 넘기는 최종 문맥 안에 정답 페이지의 청크가 있는가.
+// Coverage: ✅ integration (pure arithmetic).
+test('evidenceRecallAtContext is 1 when any context chunk belongs to an expected page', () => {
+  expect(evidenceRecallAtContext(['p1', 'p2'], ['p2'])).toBe(1)
+  expect(evidenceRecallAtContext(['p1', 'p2'], ['p3'])).toBe(0)
+  expect(evidenceRecallAtContext([], ['p1'])).toBe(0)
+})
+
+// Scenario: 저신뢰 게이트의 판정이 실제로 "답 가능/불가능" 기대와 일치하는가.
+// Coverage: ✅ integration (pure arithmetic).
+test('confidenceGateCorrect compares the gate decision against expectAnswerable', () => {
+  expect(confidenceGateCorrect(true, true)).toBe(1)
+  expect(confidenceGateCorrect(false, false)).toBe(1)
+  expect(confidenceGateCorrect(true, false)).toBe(0)
+  expect(confidenceGateCorrect(false, true)).toBe(0)
 })

@@ -45,7 +45,7 @@ _Avoid_: Import, backfill, seed
 _Avoid_: Sync, publish
 
 **Golden set**:
-개발용으로 직접 큐레이션한 (샘플 페이지 + 질문 + 1등이어야 할 정답 Chunk) 묶음. precision@1/MRR을 숫자로 내어 영어 임베딩 모델과 청킹 전략을 고르는 기준이다. 사용자 데이터는 로컬·비공개라 튜닝에 못 쓰므로 별도로 만든다.
+개발용으로 직접 큐레이션한 (샘플 페이지 + 질문 + 1등이어야 할 정답 CapturedPage) 묶음. precision@1/MRR을 숫자로 내어 영어 임베딩 모델과 청킹 전략을 고르는 기준이다. 정답은 Chunk가 아니라 CapturedPage 단위로 못박는다 — 청킹 전략이 바뀌면 Chunk 경계·id가 밀리므로, 청킹이 바뀌어도 골든셋이 안 깨지게 페이지 단위로 정답을 표현한다. 사용자 데이터는 로컬·비공개라 튜닝에 못 쓰므로 별도로 만든다.
 _Avoid_: Test set, eval data
 
 **Ask to Recall**:

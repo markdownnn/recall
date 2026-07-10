@@ -17,6 +17,11 @@ import { stripBoilerplate } from '../../src/core/boilerplate-strip.ts'
 import { proseScore } from '../../src/core/prose-score.ts'
 import { embed } from './embed-node.mjs'
 
+// Shared by every eval/run*.mjs entrypoint so the corpus manifest path lives in one place.
+export function loadManifest() {
+  return JSON.parse(readFileSync('eval/manifest.json', 'utf8'))
+}
+
 // Chunk ids are `${pageId}#${index}`; keep them contiguous after a prose filter so two
 // pages' chunk ids never collide and hydrate sees no gaps. Re-number the survivors.
 function reindex(chunks, pageId) {

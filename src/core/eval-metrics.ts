@@ -34,3 +34,18 @@ export function aggregate(rows: PerQuery[]): { precisionAt1: number; recallAt5: 
   const sum = (sel: (r: PerQuery) => number) => rows.reduce((a, r) => a + sel(r), 0) / rows.length
   return { precisionAt1: sum((r) => r.p1), recallAt5: sum((r) => r.r5), mrr: sum((r) => r.rr) }
 }
+
+// Ask-quality harness metrics (docs/superpowers/specs/2026-07-09-ask-answer-quality-design.md).
+// Ground truth is PAGE-level, matching the existing golden-set convention (see CONTEXT.md's
+// "Golden set" entry) — chunk ids shift whenever chunking changes, pages do not.
+
+// Whether the final context handed to the answer model contains any chunk from an expected
+// page. Catches "search found the right page but truncating to N context chunks dropped it."
+export function evidenceRecallAtContext(contextPageIds: string[], expectedPageIds: string[]): number {
+  return contextPageIds.some((id) => expectedPageIds.includes(id)) ? 1 : 0
+}
+
+// Whether the confidence gate's pass/block decision matches the golden set's expectation.
+export function confidenceGateCorrect(passesGate: boolean, expectAnswerable: boolean): number {
+  return passesGate === expectAnswerable ? 1 : 0
+}

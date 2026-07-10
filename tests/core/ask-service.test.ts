@@ -2,14 +2,8 @@ import { expect, test, vi } from 'vitest'
 import { AskService } from '../../src/core/ask-service'
 import type { AnswerGeneratorPort } from '../../src/core/answer-generator'
 import type { EmbeddingPort, VectorSearchPort } from '../../src/core/ports'
-import type { CapturedPage, Chunk, RankedResult } from '../../src/core/model'
-
-const page: CapturedPage = { id: 'p1', url: 'https://example.com/sleep', title: 'Sleep', capturedAt: 1 }
-const chunk = (id: string, text: string): RankedResult => ({
-  chunk: { id, pageId: 'p1', index: Number(id.split('#')[1]), text } as Chunk,
-  page,
-  score: 1,
-})
+import type { RankedResult } from '../../src/core/model'
+import { rankedResult as chunk } from './fixtures'
 
 function fakeStore(search: VectorSearchPort['search']): VectorSearchPort {
   return {
@@ -29,7 +23,7 @@ function fakeStore(search: VectorSearchPort['search']): VectorSearchPort {
 }
 
 const embedder: EmbeddingPort = {
-  embed: async () => [new Float32Array([1, 0])],
+  embed: async (texts) => texts.map((_, i) => new Float32Array([1, i])),
 }
 
 // Scenario: Ask가 너무 적은 Chunk만 보면 답변 모델이 근거 없는 말을 만들 수 있다. 하지만 같은 문서의 청크 여러 개를 썼다고 출처 링크가 여러 번 보이면 화면이 중복된다.
@@ -165,7 +159,13 @@ test('ask expands the question, searches each query, and merges duplicate chunks
     embed: async (texts, kind) => {
       embeddedTexts = texts
       expect(kind).toBe('query')
-      return texts.map((_, i) => new Float32Array([1, i]))
+      // Orthogonal one-hot vectors: each query gets a genuinely distinct direction (cosine 0
+      // against every other), so semantic dedup never collapses these three unrelated queries.
+      return texts.map((_, i) => {
+        const vector = new Float32Array(texts.length)
+        vector[i] = 1
+        return vector
+      })
     },
   }
   const store: VectorSearchPort = {
@@ -275,4 +275,108 @@ test('ask returns not-found answer when retrieval has no chunks', async () => {
 
   expect(answer.text).toBe("I couldn't find that in your saved pages.")
   expect(answer.sources).toEqual([])
+})
+
+// Scenario: 검색 결과가 있어도 1등 점수가 너무 낮으면(관련 없는 근거), LLM을 호출해 그럴듯한 답을
+// 지어내지 말고 바로 못 찾았다고 답해야 한다.
+// Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 계약을 가진 fake generator를 쓴다.
+test('ask returns not-found and skips the generator when the top score is below the confidence gate', async () => {
+  const weak: RankedResult = { ...chunk('p1#0', 'barely related text'), score: 0.1 }
+  const store = fakeStore(async () => [weak])
+  let generatorCalled = false
+  const generator: AnswerGeneratorPort = {
+    answer: async () => {
+      generatorCalled = true
+      return { text: 'should not be called', citedChunkIds: [] }
+    },
+  }
+
+  const svc = new AskService(embedder, store, generator)
+  const answer = await svc.ask({ text: 'unrelated question', retrieveK: 12, contextK: 8 })
+
+  expect(generatorCalled).toBe(false)
+  expect(answer.text).toBe("I couldn't find that in your saved pages.")
+  expect(answer.sources).toEqual([])
+})
+
+// Scenario: 확장 검색어 중 원본과 뜻이 겹치는 게 있으면(의미 유사도가 높으면) 실제로 검색에서
+// 제외돼야 한다 — LLM이 다양화 지시를 안 따르고 동의어만 바꿔도 검색 낭비가 없어야 한다.
+// Coverage: ⚠️ mock - 임베딩 벡터는 테스트가 직접 준 합성 값이라, "중복 제거가 배선대로 불리는가"만
+// 확인한다. 실제 임베딩으로 진짜 다양화 효과가 나는지는 eval/run-ask.mjs 하네스의 몫.
+test('ask drops an expanded query that is semantically too similar to one already kept', async () => {
+  const result = chunk('p1#0', 'R2 is object storage.')
+  const searchedTexts: string[] = []
+  const spyEmbedder: EmbeddingPort = {
+    embed: async (texts) => {
+      // First two texts collapse to nearly the same vector (paraphrase), the third is distinct.
+      return texts.map((_, i) => (i < 2 ? new Float32Array([1, 0]) : new Float32Array([0, 1])))
+    },
+  }
+  const store: VectorSearchPort = {
+    ...fakeStore(async () => []),
+    searchForAnswer: async (_vector, text) => {
+      searchedTexts.push(text)
+      return [result]
+    },
+  }
+  const generator: AnswerGeneratorPort = {
+    expandQueries: async () => ['who invented rnn (paraphrase)', 'lstm inventors'],
+    answer: async ({ chunks }) => ({
+      text: 'R2 is object storage.',
+      citedChunkIds: chunks.map((r) => r.chunk.id),
+    }),
+  }
+
+  const svc = new AskService(spyEmbedder, store, generator)
+  await svc.ask({ text: 'who invented rnn', retrieveK: 12, contextK: 8 })
+
+  expect(searchedTexts).toEqual(['who invented rnn', 'lstm inventors'])
+})
+
+// Scenario: mergeAnswerResults ranks a chunk that TWO expanded queries corroborate (hits=2)
+// above a chunk only ONE query found, even if that single-hit chunk has a much higher score.
+// The confidence gate must judge by the true best score among all retrieved chunks, not
+// whichever chunk happens to sort first by hit-count -- otherwise a genuinely strong, highly
+// confident match gets wrongly blocked as NOT_FOUND just because a mediocre-but-corroborated
+// chunk outranked it in the merge.
+// Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 계약을 가진 fake generator를 쓴다.
+test('ask gates on the true max score across retrieved chunks, not the hit-count winner', async () => {
+  const strong: RankedResult = { ...chunk('p1#0', 'Strong single-hit match.'), score: 0.9 }
+  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.6 }
+  const spyEmbedder: EmbeddingPort = {
+    // Mutually orthogonal vectors so all three queries survive dedupeSimilarQueries regardless
+    // of threshold -- this test is about the merge/gate interaction, not dedup.
+    embed: async (texts) =>
+      texts.map((text) => {
+        if (text === 'strong query') return new Float32Array([1, 0, 0])
+        if (text === 'shared query one') return new Float32Array([0, 1, 0])
+        return new Float32Array([0, 0, 1])
+      }),
+  }
+  const store: VectorSearchPort = {
+    ...fakeStore(async () => []),
+    searchForAnswer: async (_vector, text) => {
+      if (text === 'strong query') return [strong]
+      // Both expansions independently return the SAME mediocre chunk, so after merging it
+      // has hits=2 while `strong` only has hits=1 -- mergeAnswerResults sorts mediocre first.
+      if (text === 'shared query one' || text === 'shared query two') return [mediocre]
+      return []
+    },
+  }
+  let generatorCalled = false
+  const generator: AnswerGeneratorPort = {
+    expandQueries: async () => ['shared query one', 'shared query two'],
+    answer: async ({ chunks }) => {
+      generatorCalled = true
+      return { text: 'answered from the strong match', citedChunkIds: chunks.map((r) => r.chunk.id) }
+    },
+  }
+
+  const svc = new AskService(spyEmbedder, store, generator)
+  const answer = await svc.ask({ text: 'strong query', retrieveK: 12, contextK: 8 })
+
+  // ASK_MIN_CONFIDENCE is 0.7: the mediocre chunk's 0.6 must NOT gate this off, because the
+  // true best score (strong, 0.9) clears the bar even though mediocre sorts first in the merge.
+  expect(generatorCalled).toBe(true)
+  expect(answer.text).toBe('answered from the strong match')
 })
