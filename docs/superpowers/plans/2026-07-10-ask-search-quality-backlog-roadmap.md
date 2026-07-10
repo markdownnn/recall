@@ -36,7 +36,9 @@
     - RERANKED P@1=**0.83** recall@5=**1.00** MRR=**0.90**
     - DELTA P@1=**+0.25** recall@5=+0.08 MRR=+0.20, **회귀 0건**. (골든셋 12쿼리·전부 EN→EN이라 표본은 작음.)
   - 추가한 것: [eval/lib/rerank-node.mjs](../../../eval/lib/rerank-node.mjs), [eval/run-rerank.mjs](../../../eval/run-rerank.mjs), `eval:rerank` 스크립트.
-  - **남은 productionize (사용자 결정 필요)**: 온디바이스 배선(offscreen worker에 transformers.js 크로스인코더) + 모델 아티팩트 호스팅(ADR 0022 R2) + Search/Ask 검색 경로에 retrieve-N→rerank 삽입. 체감 지연 측정 필요.
+  - **호스팅 완료 2026-07-10**: 모델을 CDN `cdn.teamnyongs.com/models/ms-marco-minilm-l6-v2/resolve/main/`에 호스팅(사용자 업로드). transformers.js가 익스텐션 동일 로더 설정으로 로드·추론 검증(관련 5.029 vs 무관 -11.388).
+  - **Search 경로 코드 완료 2026-07-10**: `RerankPort`([ports.ts](../../../src/core/ports.ts)) + `RecallService` 후보N→rerank→k + best-effort 폴백(모델 실패 시 하이브리드 순서) + `WebGpuReranker`([webgpu-reranker.ts](../../../src/offscreen/webgpu-reranker.ts), WebGPU→WASM, 주입식 factory) + offscreen 배선 + `[Recall:perf]` 지연 로그. 단위 테스트 real-path(RecallService)·가짜 factory(어댑터), RED 검증 완료. 타입체크 통과.
+  - **남은 것**: (1) **실브라우저 지연 측정**(offscreen 콘솔 `[Recall:perf]` — 이 worktree는 빌드가 사전부터 깨져 있어(`@mlc-ai/web-llm` 미설치) 메인 체크아웃에서 빌드·로드 필요). (2) **Ask 경로 리랭킹**(현재는 Search만; Ask는 병합된 청크 집합 재정렬이라 별도).
 - [x] **A2 청킹 겹침 + 문장 경계 — 측정 후 기각(음성 결과) 2026-07-10**
   - 증거 먼저: eval 스파이크 [eval/lib/sentence-chunker.mjs](../../../eval/lib/sentence-chunker.mjs) + `EVAL_CHUNKER=sentence` 스위치([build-and-search.mjs](../../../eval/lib/build-and-search.mjs)). `EVAL_CHUNKER=sentence EVAL_CHUNK_OVERLAP=N npm run eval:english`로 재현.
   - 결과(12쿼리): 베이스라인 P@1=0.58/MRR=0.70. 문장경계 겹침0 → 0.50/0.65, 겹침1 → 0.50/0.68, 겹침2 → 0.42/0.60. **recall@5는 내내 0.92로 불변** = 겹침의 경계-구제 효과 안 나타남. 겹칠수록 악화.
