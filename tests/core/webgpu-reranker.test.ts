@@ -82,6 +82,19 @@ test('a failed load does not poison later reranks (retries)', async () => {
   expect(r.device).toBe('webgpu')
 })
 
+// Scenario: 리랭커는 코어 기능이라 임베딩 모델과 같은 시점에 미리 받아둬야 첫 검색이 다운로드로 느려지지
+// 않는다. prewarm으로 한 번 로드하면, 그 뒤 실제 검색은 모델을 다시 받지 말고 재사용해야 한다.
+// Coverage: ⚠️ mock - 같은 계약의 fake factory 호출 횟수로 "prewarm 후 재로드 없음"을 확인한다.
+test('ensureLoaded prewarms the model once and rerank reuses it (no second load)', async () => {
+  const fake = makeFake()
+  const r = new WebGpuReranker(fake.factory)
+  await r.ensureLoaded()
+  expect(fake.devices).toEqual(['webgpu']) // loaded during prewarm
+  expect(r.device).toBe('webgpu')
+  await r.rerank('q', candsOf(['aa', 'bbb']), 2)
+  expect(fake.devices).toEqual(['webgpu']) // rerank reused the prewarmed scorer -> no reload
+})
+
 // Scenario: 두 검색이 동시에 리랭크를 걸어도 ONNX 세션에 추론이 겹쳐 들어가면 안 된다.
 // Coverage: ⚠️ mock - 같은 계약의 fake scorer가 동시 실행 피크(maxActive)를 기록해 직렬화를 확인한다.
 test('serializes scoring so inferences never overlap', async () => {

@@ -75,6 +75,15 @@ export class WebGpuReranker implements RerankPort {
     return this._device
   }
 
+  // Prewarm the model so the first search isn't slowed by a ~22MB download + load. Called
+  // alongside the embedder's ensureLoaded (the reranker is a core part of search, not an add-on).
+  // Shares the single load promise, so a later rerank reuses it. Rejects only when the model
+  // fails on BOTH WebGPU and WASM; callers treat that as best-effort (search still falls back to
+  // the hybrid order), and load() has already cleared the promise so the first rerank retries.
+  async ensureLoaded(): Promise<void> {
+    await this.load()
+  }
+
   private load(): Promise<RerankScorer> {
     if (!this.scorerP) {
       // POISONED-PIPE FIX: null on failure so the NEXT rerank retries (e.g. after network

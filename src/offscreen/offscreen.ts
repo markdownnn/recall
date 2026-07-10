@@ -221,6 +221,16 @@ embedder
       .catch(() => {})
   })
 
+// Prewarm the cross-encoder reranker IN PARALLEL with the embedder above. Reranking is a core
+// part of search, not an add-on, so we download it up front (alongside the embedding model)
+// instead of lazily on the first query -- otherwise the first search pays a ~22MB fetch + load.
+// Fully independent of the embedder chain: a reranker load failure never blocks capture/indexing
+// or the embedder, and search still falls back to the raw hybrid order at query time.
+reranker
+  .ensureLoaded()
+  .then(() => console.log(`[recall] reranker prewarmed (device=${reranker.device})`))
+  .catch((e) => console.warn('[recall] reranker prewarm failed (search falls back to hybrid order):', String(e)))
+
 // ---------------------------------------------------------------------------
 // RPC handler: dispatches on payload.op
 // ---------------------------------------------------------------------------
