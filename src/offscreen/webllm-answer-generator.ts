@@ -18,10 +18,13 @@ export const GEMMA_ASK_MODEL_LIB = 'gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm'
 export const ASK_MODEL_CANDIDATES = [LLAMA_ASK_MODEL, GEMMA_ASK_MODEL] as const
 export const MAX_QUERY_EXPANSIONS = 4
 export const MAX_EVIDENCE_PROMPT_CHUNKS = 4
-export const MAX_ASK_PROMPT_CHUNKS = 5
+export const MAX_ASK_PROMPT_CHUNKS = 3
 export const MAX_CHARS_PER_PROMPT_CHUNK = 800
 export const MAX_EVIDENCE_TOKENS = 220
-export const MAX_ANSWER_TOKENS = 640
+// Kept short on purpose: Ask must return a concise SUMMARY, not a wall of text. A large budget
+// let the 1B model ramble and paste excerpts until it got cut off mid-sentence; a tight cap forces
+// a short answer that finishes cleanly.
+export const MAX_ANSWER_TOKENS = 200
 export type ModelProgressEvent = { status: string; progress?: number; error?: string }
 
 function buildWebLlmAppConfig(
@@ -122,9 +125,9 @@ export function buildAskMessages(
           'Rules:',
           '- Use ONLY information found in the saved excerpts. Never invent facts, numbers, names, or dates.',
           `- If the saved excerpts don't contain the answer, say exactly: "${NOT_FOUND_ANSWER}"`,
-          "- Synthesize across excerpts into one coherent answer. Don't list excerpts one by one or copy snippets verbatim.",
-          '- Lead with the direct answer first, then add supporting detail only if useful.',
-          '- Write in natural, conversational prose. Keep it to 2-3 short paragraphs. No bullet points unless the question explicitly asks for a list.',
+          '- Give a SHORT, direct answer in 1-3 sentences, in your own words -- a summary, not the source text.',
+          '- Do NOT quote, paste, or list the excerpts. Never begin with "Excerpt" or copy sentences verbatim; synthesize the facts into one concise answer.',
+          '- Lead with the direct answer to the question first.',
           "- Match the language of the user's question.",
           '- Stay neutral and factual. Don\'t add opinions or filler like "Great question!"',
           'Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".',

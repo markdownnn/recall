@@ -60,10 +60,10 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Use ONLY information found in the saved excerpts.')
     expect(joined).toContain('Never invent facts, numbers, names, or dates.')
     expect(joined).toContain('I couldn\'t find that in your saved pages.')
-    expect(joined).toContain("Synthesize across excerpts into one coherent answer.")
-    expect(joined).toContain("Don't list excerpts one by one or copy snippets verbatim.")
-    expect(joined).toContain('Lead with the direct answer first')
-    expect(joined).toContain('Keep it to 2-3 short paragraphs.')
+    expect(joined).toContain('SHORT, direct answer in 1-3 sentences')
+    expect(joined).toContain('Do NOT quote, paste, or list the excerpts.')
+    expect(joined).toContain('synthesize the facts into one concise answer.')
+    expect(joined).toContain('Lead with the direct answer')
     expect(joined).toContain("Match the language of the user's question.")
     expect(joined).toContain("Don't add opinions or filler like \"Great question!\"")
     expect(joined).toContain('Saved excerpts:')
@@ -283,7 +283,7 @@ describe('webllm answer generator', () => {
     expect(calls[0].maxTokens).toBe(220)
     expect(calls[1].content).toContain('Working notes:')
     expect(calls[1].content).toContain('Direct fact: GABA is inhibitory.')
-    expect(calls[1].maxTokens).toBe(640)
+    expect(calls[1].maxTokens).toBe(200)
     expect(answer.text).toBe('GABA is an inhibitory neurotransmitter.')
   })
 
@@ -351,9 +351,10 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
 
-  // Scenario: saved page 답변이 길어질 때 출력 토큰 예산이 너무 작으면 문장이 중간에서 끊긴다.
+  // Scenario: Ask는 짧게 요약한 결과를 내야 한다. 답변 토큰 예산을 일부러 작게(200) 잡아, 1B가 excerpt를
+  // 계속 붙이다 문장 중간에 잘리는 대신 짧게 끝맺게 한다.
   // Coverage: ⚠️ mock - 실제 WebLLM 대신 요청 옵션만 기록하는 fake engine을 쓴다.
-  test('answer and answerStream use a larger answer token budget', async () => {
+  test('answer and answerStream cap the answer at a concise token budget', async () => {
     const seen: number[] = []
     async function* chunks() {
       yield { choices: [{ delta: { content: 'GABA is inhibitory.' } }] }
@@ -374,7 +375,7 @@ describe('webllm answer generator', () => {
     await generator.answer({ question: 'what is GABA?', chunks: [result] })
     await generator.answerStream({ question: 'what is GABA?', chunks: [result] }, () => undefined)
 
-    expect(seen).toEqual([220, 640, 220, 640])
+    expect(seen).toEqual([220, 200, 220, 200])
   })
 
   // Scenario: 청크가 여러 개일 때, 모델이 실제로 인용한 발췌만 출처가 되고 인용 안 한 발췌는 빠져야
