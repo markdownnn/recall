@@ -38,15 +38,16 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Excerpt 2)')
   })
 
-  // Scenario: 모델이 실제로 사용한 발췌를 답 끝에 숨김 태그로 표시해야 citedChunkIds를 신뢰할 수 있다.
+  // Scenario: 인용 태그 지시가 1B에서 "Excerpt Numbers Used" 섹션으로 새어 답을 지저분하게 만들었다.
+  // 이제 프롬프트는 인용 태그를 요구하지 않고 헤더/라벨을 금지한다(출처는 컨텍스트 청크로 따로 표시).
   // Coverage: ✅ integration
-  test('ask prompt instructs the model to append a hidden citation tag', () => {
+  test('ask prompt does not ask for a citation tag and forbids headings/labels', () => {
     const messages = buildAskMessages('what hurts sleep?', [result])
     const joined = messages.map((m) => m.content).join('\n')
 
-    expect(joined).toContain('[[cite:')
-    expect(joined).toContain('hidden from the user')
-    expect(joined).not.toContain('Sources:')
+    expect(joined).not.toContain('[[cite:')
+    expect(joined).not.toContain('Excerpt Numbers Used')
+    expect(joined).toContain('no headings, labels, or section titles')
   })
 
   // Scenario: WebLLM이 저장된 근거 밖의 답을 만들거나 검색 결과를 나열하면 Recall Ask의 신뢰가 깨진다.
@@ -61,15 +62,12 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Never invent facts, numbers, names, or dates.')
     expect(joined).toContain('I couldn\'t find that in your saved pages.')
     expect(joined).toContain('SHORT, direct answer in 1-3 sentences')
-    expect(joined).toContain('Do NOT quote, paste, or list the excerpts.')
-    expect(joined).toContain('synthesize the facts into one concise answer.')
-    expect(joined).toContain('Lead with the direct answer')
+    expect(joined).toContain('Do NOT quote, paste, or list the excerpts')
+    expect(joined).toContain('no headings, labels, or section titles')
     expect(joined).toContain("Match the language of the user's question.")
-    expect(joined).toContain("Don't add opinions or filler like \"Great question!\"")
+    expect(joined).toContain('No opinions or filler.')
     expect(joined).toContain('Saved excerpts:')
-    expect(joined).toContain('Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".')
     expect(joined).toContain('Cortisol can disrupt REM sleep.')
-    expect(joined).not.toContain('say what is missing')
     expect(joined).not.toContain('Sources:')
     expect(joined).not.toContain('Source id:')
   })
@@ -89,18 +87,6 @@ describe('webllm answer generator', () => {
     expect(joined).not.toContain('<answer>')
   })
 
-  // Scenario: 근거 메모를 만든 뒤 최종 답변에 넘겨야 답변 모델이 관련 근거를 더 잘 따라간다.
-  // Coverage: ✅ integration
-  test('answer prompt can include internal evidence notes without showing a notes section', () => {
-    const messages = buildAskMessages('what is GABA?', [result], 'Direct fact: GABA is inhibitory.')
-    const joined = messages.map((m) => m.content).join('\n')
-
-    expect(joined).toContain('Working notes:')
-    expect(joined).toContain('Direct fact: GABA is inhibitory.')
-    expect(joined).toContain('Do not mention the working notes.')
-    expect(joined).not.toContain('Sources:')
-  })
-
   // Scenario: Ask가 검색 청크를 너무 많이, 너무 길게 그대로 넣으면 4K context window를 넘겨서 아예 답을 못 한다.
   // Coverage: ✅ integration
   test('prompt builders cap chunk count and chunk text length before calling WebLLM', () => {
@@ -116,7 +102,7 @@ describe('webllm answer generator', () => {
     })) satisfies RankedResult[]
 
     const evidenceJoined = buildEvidenceMessages('what is this?', oversized).map((m) => m.content).join('\n')
-    const answerJoined = buildAskMessages('what is this?', oversized, 'note').map((m) => m.content).join('\n')
+    const answerJoined = buildAskMessages('what is this?', oversized).map((m) => m.content).join('\n')
 
     expect(evidenceJoined.match(/Page title: Long page/g)?.length).toBe(MAX_EVIDENCE_PROMPT_CHUNKS)
     expect(answerJoined.match(/Page title: Long page/g)?.length).toBe(MAX_ASK_PROMPT_CHUNKS)

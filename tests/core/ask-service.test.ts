@@ -339,6 +339,24 @@ test('ask drops an expanded query that is semantically too similar to one alread
   expect(searchedTexts).toEqual(['who invented rnn', 'lstm inventors'])
 })
 
+// Scenario: 온디바이스 1B 모델은 인용 태그를 안 단다(형식을 못 지켜 지저분해져서 뺐다). 그래도 사용자는
+// 답이 어느 저장 글에서 나왔는지 봐야 하므로, 모델이 아무것도 인용 안 하면 답변의 근거가 된 컨텍스트
+// 청크(리랭커가 고른 것)를 출처로 보여준다.
+// Coverage: ⚠️ mock - 실제 검색/LLM은 무겁기 때문에 같은 계약의 fake로 출처 폴백만 확인한다.
+test('ask shows the context chunks as sources when the model cites nothing', async () => {
+  const results = Array.from({ length: 3 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = { ...fakeStore(async () => []), searchForAnswer: async () => results }
+  const generator: AnswerGeneratorPort = {
+    answer: async () => ({ text: 'a synthesized answer', citedChunkIds: [] }), // model cites nothing
+  }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 })
+  const answer = await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  // Fell back to the reranked context chunks (all 3) so the user still sees the source passages.
+  expect(answer.sources.map((s) => s.chunk.id)).toEqual(['p1#0', 'p1#1', 'p1#2'])
+})
+
 // Scenario: Ask는 여러 확장 검색으로 넓게 청크를 모으지만, 답변 모델에 넣을 컨텍스트는 몇 개로 제한된다.
 // 크로스인코더가 그 넓은 후보를 관련도로 다시 세워, "진짜 근거"가 제한된 컨텍스트 안에 들어가야 한다(A1 Ask).
 // Coverage: ⚠️ mock - 실제 크로스인코더는 무겁기 때문에 같은 계약의 fake reranker로 컨텍스트 선택 재정렬만 확인한다.

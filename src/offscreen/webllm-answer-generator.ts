@@ -109,12 +109,7 @@ export function buildEvidenceMessages(question: string, chunks: RankedResult[]):
   ]
 }
 
-export function buildAskMessages(
-  question: string,
-  chunks: RankedResult[],
-  workingNotes = '',
-): ChatCompletionMessageParam[] {
-  const notes = workingNotes.trim()
+export function buildAskMessages(question: string, chunks: RankedResult[]): ChatCompletionMessageParam[] {
   return [
     {
       role: 'system',
@@ -125,25 +120,16 @@ export function buildAskMessages(
           'Rules:',
           '- Use ONLY information found in the saved excerpts. Never invent facts, numbers, names, or dates.',
           `- If the saved excerpts don't contain the answer, say exactly: "${NOT_FOUND_ANSWER}"`,
-          '- Give a SHORT, direct answer in 1-3 sentences, in your own words -- a summary, not the source text.',
-          '- Do NOT quote, paste, or list the excerpts. Never begin with "Excerpt" or copy sentences verbatim; synthesize the facts into one concise answer.',
-          '- Lead with the direct answer to the question first.',
+          '- Give a SHORT, direct answer in 1-3 sentences of plain prose, in your own words.',
+          '- Do NOT quote, paste, or list the excerpts, and do not copy sentences verbatim.',
+          '- Write ONLY the answer sentences, with no headings, labels, or section titles (no "Answer" or "Summary" labels, no sources or citation section), no markdown, no bullet points, and no lists.',
           "- Match the language of the user's question.",
-          '- Stay neutral and factual. Don\'t add opinions or filler like "Great question!"',
-          'Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".',
-          'Do not include a sources section; Recall shows sources below the answer.',
-          'After your answer, on a new line, add the excerpt numbers you actually used like this: [[cite: 1, 3]] using the numbers shown below. This line is hidden from the user and does not count as a visible sources section. If you cannot answer from the excerpts, do not add this line.',
-          notes ? 'Use the working notes as a relevance guide, but the saved excerpts are the source of truth. Do not mention the working notes.' : '',
+          '- Stay neutral and factual. No opinions or filler.',
         ].join(' '),
     },
     {
       role: 'user',
-      content:
-        [
-          `Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_ASK_PROMPT_CHUNKS)}`,
-          notes ? `Working notes:\n${notes}` : '',
-          `Question: ${question}`,
-        ].filter(Boolean).join('\n\n'),
+      content: [`Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_ASK_PROMPT_CHUNKS)}`, `Question: ${question}`].join('\n\n'),
     },
   ]
 }

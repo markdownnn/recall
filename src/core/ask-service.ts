@@ -88,11 +88,13 @@ export class AskService {
     const chunks = await this.selectContext(query.text, retrieved, options.maxContextChunks)
     const draft = await generate(chunks)
     const sourceIds = new Set(draft.citedChunkIds)
-    // B1: surface EVERY cited chunk (unfolded), in context order, so the user can read each exact
-    // passage the answer leaned on -- not one representative chunk per page. Two chunks from the
-    // same saved page therefore appear as two sources. Naturally bounded: cited ⊆ context, and
-    // context is already capped at maxContextChunks.
-    const sources = chunks.filter((result) => sourceIds.has(result.chunk.id))
+    // Sources = the exact passages the answer was built from. When the model cites specific
+    // excerpts, show those (B1: unfolded, in context order). The on-device 1B model no longer
+    // emits citation tags (they produced ugly "Excerpt Numbers Used" sections), so it cites
+    // nothing -- then fall back to the reranked context chunks, which ARE what the answer was
+    // grounded in. Either way the user always sees the source passages below the answer.
+    const cited = chunks.filter((result) => sourceIds.has(result.chunk.id))
+    const sources = cited.length > 0 ? cited : chunks
     return { text: draft.text, sources }
   }
 
