@@ -22,6 +22,17 @@ export const MAX_ASK_PROMPT_CHUNKS = 5
 export const MAX_CHARS_PER_PROMPT_CHUNK = 800
 export const MAX_EVIDENCE_TOKENS = 220
 export const MAX_ANSWER_TOKENS = 640
+// Decoding for the final answer, tuned to avoid the greedy-loop failure a 1B model falls into:
+// at temperature 0 with no penalty it repeated a single sentence dozens of times. A little
+// temperature plus frequency/presence penalties break exact-repetition loops while staying
+// grounded enough for a short factual answer. (Only the ANSWER step -- evidence notes and query
+// expansion keep their own params.)
+export const ANSWER_DECODING = {
+  temperature: 0.3,
+  top_p: 0.9,
+  frequency_penalty: 0.5,
+  presence_penalty: 0.3,
+} as const
 export type ModelProgressEvent = { status: string; progress?: number; error?: string }
 
 function buildWebLlmAppConfig(
@@ -273,7 +284,7 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
   private async createAnswerText(request: AnswerRequest, workingNotes: string): Promise<string> {
     const completion = await this.engine.chat.completions.create({
       messages: buildAskMessages(request.question, request.chunks, workingNotes),
-      temperature: 0,
+      ...ANSWER_DECODING,
       max_tokens: MAX_ANSWER_TOKENS,
     })
     return completion.choices[0]?.message.content?.trim() || NOT_FOUND_ANSWER
@@ -283,7 +294,7 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
     const workingNotes = await this.createEvidenceNotes(request)
     const stream = await this.engine.chat.completions.create({
       messages: buildAskMessages(request.question, request.chunks, workingNotes),
-      temperature: 0,
+      ...ANSWER_DECODING,
       max_tokens: MAX_ANSWER_TOKENS,
       stream: true,
     })
