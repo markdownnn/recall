@@ -37,9 +37,10 @@
     - DELTA P@1=**+0.25** recall@5=+0.08 MRR=+0.20, **회귀 0건**. (골든셋 12쿼리·전부 EN→EN이라 표본은 작음.)
   - 추가한 것: [eval/lib/rerank-node.mjs](../../../eval/lib/rerank-node.mjs), [eval/run-rerank.mjs](../../../eval/run-rerank.mjs), `eval:rerank` 스크립트.
   - **남은 productionize (사용자 결정 필요)**: 온디바이스 배선(offscreen worker에 transformers.js 크로스인코더) + 모델 아티팩트 호스팅(ADR 0022 R2) + Search/Ask 검색 경로에 retrieve-N→rerank 삽입. 체감 지연 측정 필요.
-- [ ] **A2 청킹 겹침 + 문장 경계** (재색인 필요)
-  - [ParagraphChunker](../../../src/core/paragraph-chunker.ts) 220단어 하드컷 → 1~2문장 겹침 + 문장 끝 자르기. 저장된 페이지 전체 재색인([embed-migration](../../../src/core/embed-migration.ts) 계열).
-  - 잴: 골든셋이 페이지 단위 정답이라 청킹이 바뀌어도 안 깨짐 → `eval:english` recall 전후 비교.
+- [x] **A2 청킹 겹침 + 문장 경계 — 측정 후 기각(음성 결과) 2026-07-10**
+  - 증거 먼저: eval 스파이크 [eval/lib/sentence-chunker.mjs](../../../eval/lib/sentence-chunker.mjs) + `EVAL_CHUNKER=sentence` 스위치([build-and-search.mjs](../../../eval/lib/build-and-search.mjs)). `EVAL_CHUNKER=sentence EVAL_CHUNK_OVERLAP=N npm run eval:english`로 재현.
+  - 결과(12쿼리): 베이스라인 P@1=0.58/MRR=0.70. 문장경계 겹침0 → 0.50/0.65, 겹침1 → 0.50/0.68, 겹침2 → 0.42/0.60. **recall@5는 내내 0.92로 불변** = 겹침의 경계-구제 효과 안 나타남. 겹칠수록 악화.
+  - 결론: 이 골든셋에서 **도움 없음(오히려 악화)**. 프로덕션 `ParagraphChunker`는 **변경 안 함**, 재색인 안 함. (한계: 12쿼리·EN→EN·단순 문장 분리기. 큰 골든셋에서 재론 여지는 있으나 현 증거는 부정.)
 
 ### 2. 속도
 
