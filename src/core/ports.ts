@@ -17,6 +17,14 @@ export interface EmbeddingPort {
   embed(texts: string[], kind: 'query' | 'passage'): Promise<Float32Array[]>
 }
 
+// A cross-encoder reranker: reads each (query, candidate) PAIR together and reorders the
+// candidates by joint relevance, best first, returning the top k. Unlike the bi-encoder
+// EmbeddingPort (which encodes query and passage separately and compares vectors), the joint
+// read ranks better but costs more, so it only ever scores a small retrieved candidate set.
+export interface RerankPort {
+  rerank(query: string, candidates: RankedResult[], k: number): Promise<RankedResult[]>
+}
+
 export interface VectorSearchPort {
   upsertPage(page: import('./model').CapturedPage): Promise<void>
   // Replace ALL of a page's chunks with these (text only, no vectors yet = pending).

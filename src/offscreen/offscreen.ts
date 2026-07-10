@@ -7,6 +7,7 @@
 
 import { installOffscreenRpcHandler } from './offscreen-rpc'
 import { WebGpuEmbedder } from './webgpu-embedder'
+import { WebGpuReranker } from './webgpu-reranker'
 import { SqliteWorkerClient } from './sqlite-worker-client'
 import { WorkerVectorStore } from './worker-vector-store'
 import { WorkerSettingsStore } from './worker-settings-store'
@@ -70,7 +71,11 @@ const chunker = new ParagraphChunker(220)
 // findable.
 const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
-const recall = new RecallService(localEmbedder, store)
+// A1: a cross-encoder reranker re-scores the wide candidate pool from hybrid search into a better
+// top-k (measured lift on the english golden set: P@1 0.58->0.83). Best-effort: if the model can't
+// load on this device, RecallService silently falls back to the hybrid order.
+const reranker = new WebGpuReranker()
+const recall = new RecallService(localEmbedder, store, reranker)
 let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
 let answerGeneratorReady = false
 let askModelStatus: AskModelStatus = INITIAL_ASK_MODEL_STATUS
@@ -328,12 +333,15 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   }
 
 
-  // --- recall: embed query, cosine search ---
+  // --- recall: embed query, hybrid search, cross-encoder rerank ---
   if (op === 'recall') {
     const text = p.text as string
     const k = p.k as number
+    // [Recall:perf] end-to-end recall latency incl. rerank. Read this in the offscreen console to
+    // check the reranker isn't making search feel slow (the one thing not measurable offline).
+    const t0 = performance.now()
     const results = await recall.recall({ text, k })
-    console.log(`[recall] recalled ${results.length} results`)
+    console.log(`[recall] recalled ${results.length} results in ${Math.round(performance.now() - t0)}ms (device=${reranker.device ?? 'n/a'})`)
     return { results }
   }
 
