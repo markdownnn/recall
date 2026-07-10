@@ -38,7 +38,8 @@
   - 추가한 것: [eval/lib/rerank-node.mjs](../../../eval/lib/rerank-node.mjs), [eval/run-rerank.mjs](../../../eval/run-rerank.mjs), `eval:rerank` 스크립트.
   - **호스팅 완료 2026-07-10**: 모델을 CDN `cdn.teamnyongs.com/models/ms-marco-minilm-l6-v2/resolve/main/`에 호스팅(사용자 업로드). transformers.js가 익스텐션 동일 로더 설정으로 로드·추론 검증(관련 5.029 vs 무관 -11.388).
   - **Search 경로 코드 완료 2026-07-10**: `RerankPort`([ports.ts](../../../src/core/ports.ts)) + `RecallService` 후보N→rerank→k + best-effort 폴백(모델 실패 시 하이브리드 순서) + `WebGpuReranker`([webgpu-reranker.ts](../../../src/offscreen/webgpu-reranker.ts), WebGPU→WASM, 주입식 factory) + offscreen 배선 + `[Recall:perf]` 지연 로그. 단위 테스트 real-path(RecallService)·가짜 factory(어댑터), RED 검증 완료. 타입체크 통과.
-  - **남은 것**: (1) **실브라우저 지연 측정**(offscreen 콘솔 `[Recall:perf]` — 이 worktree는 빌드가 사전부터 깨져 있어(`@mlc-ai/web-llm` 미설치) 메인 체크아웃에서 빌드·로드 필요). (2) **Ask 경로 리랭킹**(현재는 Search만; Ask는 병합된 청크 집합 재정렬이라 별도).
+  - **Ask 경로 코드 완료 2026-07-10**: [ask-service.ts](../../../src/core/ask-service.ts)가 merge된 retrieved 청크를 같은 크로스인코더로 재정렬해 제한된 컨텍스트를 채움. **신뢰도 게이트는 벡터 점수 그대로**(로짓 스케일이 달라 게이트에 안 먹임) — 리랭커는 "어느 청크가 컨텍스트에 들어갈지"만 바꿈. best-effort 폴백. offscreen에서 Search와 같은 리랭커 인스턴스 재사용. TDD RED→GREEN.
+  - **남은 것(1개)**: **실브라우저 지연 측정** — offscreen 콘솔 `[Recall:perf] recalled ... in Nms`. 이 worktree는 빌드가 사전부터 깨져 있음(`@mlc-ai/web-llm`이 node_modules에 아예 없음 — package.json엔 있으나 `npm install` 안 됨). 빌드하려면 `npm install` 먼저.
 - [x] **A2 청킹 겹침 + 문장 경계 — 측정 후 기각(음성 결과) 2026-07-10**
   - 증거 먼저: eval 스파이크 [eval/lib/sentence-chunker.mjs](../../../eval/lib/sentence-chunker.mjs) + `EVAL_CHUNKER=sentence` 스위치([build-and-search.mjs](../../../eval/lib/build-and-search.mjs)). `EVAL_CHUNKER=sentence EVAL_CHUNK_OVERLAP=N npm run eval:english`로 재현.
   - 결과(12쿼리): 베이스라인 P@1=0.58/MRR=0.70. 문장경계 겹침0 → 0.50/0.65, 겹침1 → 0.50/0.68, 겹침2 → 0.42/0.60. **recall@5는 내내 0.92로 불변** = 겹침의 경계-구제 효과 안 나타남. 겹칠수록 악화.
