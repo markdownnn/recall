@@ -103,6 +103,33 @@ export function buildEvidenceMessages(question: string, chunks: RankedResult[]):
   ]
 }
 
+// One-shot worked example shown BEFORE the real question. A 1B model given only the "synthesize,
+// don't list" rule still copies the numbered excerpts back verbatim; a single demonstration of the
+// desired shape (a user turn with excerpts + question, then an assistant turn that answers in
+// synthesized prose and ends with the hidden [[cite: ...]] line) reliably breaks that habit. The
+// topic (caffeine) is deliberately unrelated to typical queries so the model never bleeds this
+// example's content into a real answer, and its excerpt numbering is local to the example.
+const ONE_SHOT_EXAMPLE: ChatCompletionMessageParam[] = [
+  {
+    role: 'user',
+    content: [
+      'Saved excerpts:',
+      'Excerpt 1)\nPage title: Caffeine\nSaved text: Caffeine blocks adenosine receptors in the brain, which reduces the feeling of tiredness and increases alertness.',
+      '',
+      'Excerpt 2)\nPage title: Sleep hygiene\nSaved text: Caffeine has a half-life of about five hours, so drinking it late in the day can make it harder to fall asleep at night.',
+      '',
+      'Question: how does caffeine keep you awake?',
+    ].join('\n'),
+  },
+  {
+    role: 'assistant',
+    content:
+      'Caffeine keeps you awake by blocking adenosine, the brain chemical that builds up through the day ' +
+      'and makes you feel sleepy, so you stay more alert instead. Because it lingers in the body for about ' +
+      'five hours, having it late in the day can also delay how easily you fall asleep at night.\n[[cite: 1, 2]]',
+  },
+]
+
 export function buildAskMessages(
   question: string,
   chunks: RankedResult[],
@@ -130,6 +157,8 @@ export function buildAskMessages(
           notes ? 'Use the working notes as a relevance guide, but the saved excerpts are the source of truth. Do not mention the working notes.' : '',
         ].join(' '),
     },
+    // Show the desired shape once (synthesized prose + hidden cite line) before the real question.
+    ...ONE_SHOT_EXAMPLE,
     {
       role: 'user',
       content:
