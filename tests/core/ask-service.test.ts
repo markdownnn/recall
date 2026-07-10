@@ -416,7 +416,8 @@ test('ask falls back to the merge order for context when the reranker throws', a
 // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 계약을 가진 fake generator를 쓴다.
 test('ask gates on the true max score across retrieved chunks, not the hit-count winner', async () => {
   const strong: RankedResult = { ...chunk('p1#0', 'Strong single-hit match.'), score: 0.9 }
-  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.6 }
+  // Below ASK_MIN_CONFIDENCE (0.45): on its own this would gate the answer off; the strong 0.9 max must save it.
+  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.3 }
   const spyEmbedder: EmbeddingPort = {
     // Mutually orthogonal vectors so all three queries survive dedupeSimilarQueries regardless
     // of threshold -- this test is about the merge/gate interaction, not dedup.
@@ -449,7 +450,7 @@ test('ask gates on the true max score across retrieved chunks, not the hit-count
   const svc = new AskService(spyEmbedder, store, generator)
   const answer = await svc.ask({ text: 'strong query', retrieveK: 12, contextK: 8 })
 
-  // ASK_MIN_CONFIDENCE is 0.7: the mediocre chunk's 0.6 must NOT gate this off, because the
+  // ASK_MIN_CONFIDENCE is 0.45: the mediocre chunk's 0.3 must NOT gate this off, because the
   // true best score (strong, 0.9) clears the bar even though mediocre sorts first in the merge.
   expect(generatorCalled).toBe(true)
   expect(answer.text).toBe('answered from the strong match')
