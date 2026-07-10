@@ -206,15 +206,43 @@ export function parseExpandedQueries(raw: string): string[] {
   }
 }
 
-export async function createLlamaAskEngine(
+// A swappable description of an on-device Ask model: which MLC model, where its files live on
+// our CDN, its compiled wasm lib, and how to build its WebLLM app config. Swapping the answer
+// model = choosing a different spec at the composition root (offscreen) -- no parallel engine
+// factories. All URLs resolve to our model CDN so WebLLM never falls back to HF/GitHub.
+export interface AskModelSpec {
+  modelId: string
+  modelDir: string
+  modelLib: string
+  buildAppConfig: (modelBaseUrl: string, modelLibUrl: string) => AppConfig
+}
+
+export const LLAMA_ASK_SPEC: AskModelSpec = {
+  modelId: LLAMA_ASK_MODEL,
+  modelDir: LLAMA_ASK_MODEL_DIR,
+  modelLib: LLAMA_ASK_MODEL_LIB,
+  buildAppConfig: buildLlamaAppConfig,
+}
+
+export const GEMMA_ASK_SPEC: AskModelSpec = {
+  modelId: GEMMA_ASK_MODEL,
+  modelDir: GEMMA_ASK_MODEL_DIR,
+  modelLib: GEMMA_ASK_MODEL_LIB,
+  buildAppConfig: buildGemmaAppConfig,
+}
+
+// One factory for any Ask model. The concrete spec is chosen by the caller (offscreen), keeping
+// the model choice at the composition root and this module model-agnostic.
+export async function createAskEngine(
+  spec: AskModelSpec,
   onProgress?: (e: ModelProgressEvent) => void,
 ): Promise<MLCEngineInterface> {
   const { CreateMLCEngine } = await import('@mlc-ai/web-llm')
-  const modelBaseUrl = modelCdnUrl(LLAMA_ASK_MODEL_DIR)
-  const modelLibUrl = modelCdnUrl(`${LLAMA_ASK_MODEL_DIR}${LLAMA_ASK_MODEL_LIB}`)
+  const modelBaseUrl = modelCdnUrl(spec.modelDir)
+  const modelLibUrl = modelCdnUrl(`${spec.modelDir}${spec.modelLib}`)
   onProgress?.({ status: 'initiate', progress: 0 })
-  const engine = await CreateMLCEngine(LLAMA_ASK_MODEL, {
-    appConfig: buildLlamaAppConfig(modelBaseUrl, modelLibUrl),
+  const engine = await CreateMLCEngine(spec.modelId, {
+    appConfig: spec.buildAppConfig(modelBaseUrl, modelLibUrl),
     initProgressCallback: (report) => onProgress?.(webLlmProgressToModelProgress(report)),
   })
   onProgress?.({ status: 'ready' })

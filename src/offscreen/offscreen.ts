@@ -24,7 +24,7 @@ import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-mo
 import type { AskModelStatus } from '../core/ask-model-status'
 import type { EmbeddingPort } from '../core/ports'
 import type { AnswerGeneratorPort } from '../core/answer-generator'
-import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'
+import { WebLlmAnswerGenerator, createAskEngine, GEMMA_ASK_SPEC } from './webllm-answer-generator'
 
 // ---------------------------------------------------------------------------
 // Core services
@@ -90,7 +90,9 @@ function emitAskModelProgress(e: { status: string; progress?: number; error?: st
 function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
   if (!answerGeneratorP) {
     answerGeneratorReady = false
-    answerGeneratorP = createLlamaAskEngine(emitAskModelProgress)
+    // Composition root chooses the Ask model. Gemma 3 1B follows the "synthesize, don't list"
+    // instruction better than Llama 3.2 1B on this task (B2). Swap the spec to change models.
+    answerGeneratorP = createAskEngine(GEMMA_ASK_SPEC, emitAskModelProgress)
       .then((engine) => {
         answerGeneratorReady = true
         askModelStatus = { state: 'ready', percent: 100 }

@@ -7,9 +7,14 @@ import {
   MAX_CHARS_PER_PROMPT_CHUNK,
   MAX_EVIDENCE_PROMPT_CHUNKS,
   buildLlamaAppConfig,
+  buildGemmaAppConfig,
   LLAMA_ASK_MODEL,
   LLAMA_ASK_MODEL_DIR,
   LLAMA_ASK_MODEL_LIB,
+  GEMMA_ASK_MODEL,
+  GEMMA_ASK_MODEL_DIR,
+  GEMMA_ASK_MODEL_LIB,
+  GEMMA_ASK_SPEC,
   parseExpandedQueries,
   webLlmProgressToModelProgress,
   WebLlmAnswerGenerator,
@@ -202,6 +207,36 @@ describe('webllm answer generator', () => {
     expect(serialized).not.toContain('huggingface.co')
     expect(serialized).not.toContain('raw.githubusercontent.com')
     expect(serialized).not.toContain('chrome-extension://')
+  })
+
+  // Scenario: Gemma가 활성 Ask 모델이 됐으니, 그 설정도 HF/GitHub이 아니라 오직 우리 CDN에서만 받아야 한다.
+  // 경로가 어긋나면 WebLLM이 조용히 기본 원격(HF)으로 새거나 404로 로드에 실패한다.
+  // Coverage: ✅ integration
+  test('gemma app config uses only model CDN urls', () => {
+    const baseUrl = `https://cdn.teamnyongs.com/models/${GEMMA_ASK_MODEL_DIR}`
+    const modelLibUrl = `${baseUrl}${GEMMA_ASK_MODEL_LIB}`
+    const config = buildGemmaAppConfig(baseUrl, modelLibUrl)
+    const record = config.model_list[0]
+    const serialized = JSON.stringify(config)
+
+    expect(record.model_id).toBe(GEMMA_ASK_MODEL)
+    expect(record.model).toBe(baseUrl)
+    expect(record.model).toBe(
+      'https://cdn.teamnyongs.com/models/webllm/gemma3-1b-it/q4f16_1/resolve/main/',
+    )
+    expect(record.model_lib).toBe(modelLibUrl)
+    expect(serialized).not.toContain('huggingface.co')
+    expect(serialized).not.toContain('raw.githubusercontent.com')
+  })
+
+  // Scenario: 조립 지점(offscreen)이 모델을 spec 하나로 고르는 헥사고날 구조 — GEMMA_ASK_SPEC이 실제
+  // Gemma 모델/디렉토리/라이브러리를 정확히 묶어야 엔진 팩토리가 올바른 CDN 경로로 로드한다.
+  // Coverage: ✅ integration
+  test('GEMMA_ASK_SPEC bundles the gemma model, dir, lib and app-config builder', () => {
+    expect(GEMMA_ASK_SPEC.modelId).toBe(GEMMA_ASK_MODEL)
+    expect(GEMMA_ASK_SPEC.modelDir).toBe(GEMMA_ASK_MODEL_DIR)
+    expect(GEMMA_ASK_SPEC.modelLib).toBe(GEMMA_ASK_MODEL_LIB)
+    expect(GEMMA_ASK_SPEC.buildAppConfig).toBe(buildGemmaAppConfig)
   })
 
   // Scenario: 라마 모델이 처음 켜질 때 오래 걸리는데 진행률이 없으면 사용자는 멈춘 줄 안다.
