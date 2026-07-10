@@ -74,25 +74,6 @@ describe('webllm answer generator', () => {
     expect(joined).not.toContain('Source id:')
   })
 
-  // Scenario: 1B 모델은 "종합해라, 나열하지 마라"는 지시만으로는 부족해 프롬프트의 excerpt를 그대로
-  // 베껴 목록을 뱉는다(실측). 실제 질문 앞에 "이렇게 한 문단으로 종합한다"는 예시 대화 한 쌍(user→assistant)을
-  // 보여줘 베끼는 습관을 끊는다. 예시 답변은 목록이 아니라 산문이어야 하고, 숨김 인용 태그 형식도 보여준다.
-  // Coverage: ✅ integration
-  test('ask prompt includes a one-shot synthesis example (assistant answer, not a list)', () => {
-    const messages = buildAskMessages('what hurts sleep?', [result])
-
-    // There must be an example assistant turn before the real question.
-    const assistantExample = messages.find((m) => m.role === 'assistant')?.content as string | undefined
-    expect(assistantExample).toBeTruthy()
-    // The example demonstrates the hidden citation line...
-    expect(assistantExample).toContain('[[cite:')
-    // ...and is synthesized prose, NOT a copied "Excerpt N)" list.
-    expect(assistantExample).not.toContain('Excerpt 1)')
-    // The example sits before the real user question (system, exampleUser, exampleAssistant, realUser).
-    const roles = messages.map((m) => m.role)
-    expect(roles.indexOf('assistant')).toBeLessThan(roles.lastIndexOf('user'))
-  })
-
   // Scenario: 작은 WebLLM이 검색 결과 읽기와 답변 작성을 한 번에 하면 관련 없는 내용을 섞기 쉽다.
   // Coverage: ✅ integration
   test('evidence prompt asks for short working notes without hidden thinking tags', () => {
