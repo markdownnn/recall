@@ -20,15 +20,15 @@
 
 ### 0. 몸풀기 (결정 불필요, 하네스 검증)
 
-- [ ] **E1 죽은 스트리밍 델타 배선 제거**
-  - 무엇: `ask-answer-delta` 경로(messaging → background:171 → offscreen:358 → SearchTab:42 + generator/ask-service의 `answerStream`).
-  - 주의: [webllm-answer-generator.ts:244](../../../src/offscreen/webllm-answer-generator.ts)가 아직 `onDelta(delta)`를 호출함. **정말 도달 불가인지** 먼저 확인(systematic-debugging) 후 제거. 5개 파일 계약이라 조심.
-  - 잴: 기존 테스트 green 유지 + Ask 흐름 수동/통합 확인.
+- [x] **E1 죽은 스트리밍 델타 배선 제거 — 닫음(잘못된 전제) 2026-07-10**
+  - 조사 결과: 델타 경로가 전 구간 **살아 있음**. offscreen:356의 onDelta가 `ask-answer-delta`를 실제로 보내고 → background:171 중계 → SearchTab:42가 라이브 타이핑으로 렌더. generator [answerStream:244](../../../src/offscreen/webllm-answer-generator.ts)는 토큰마다 `onDelta(delta)`를 발신 중.
+  - 즉 백로그의 "answerStream이 델타를 안 쏜다"는 현재 코드와 어긋남. 지우면 실시간 타이핑이 깨지는 회귀. **제거할 죽은 코드 없음 → 항목 닫음.**
 
 ### 1. 품질 즉효
 
-- [ ] **B1 인용 청크 전부 하단 표시** (코어 변경 — 위 결정 참조)
-  - 잴: UI라 자동 측정보다 브라우저 눈 확인 + 렌더 스냅샷.
+- [x] **B1 인용 청크 전부 하단 표시** (코어 변경 — 위 결정 참조) — **완료 2026-07-10**
+  - ask-service: `sourcesByPage` 접기 → `chunks.filter(cited)` (전부·순서). SearchTab: 제목 링크 + 3줄 클램프 스니펫.
+  - 잴: ask-service.test.ts(코어) + ask-ui.test.ts(소스 계약)로 고정. 픽셀 눈 확인은 남은 선택 항목.
 - [ ] **A1 크로스인코더 리랭커** (최대 레버, 새 온디바이스 모델)
   - 후보 50개 → 크로스인코더 재채점. Search 결과 + Ask 청크 둘 다.
   - 잴: `eval:english` 골든셋으로 precision@1·MRR 전후 비교.
