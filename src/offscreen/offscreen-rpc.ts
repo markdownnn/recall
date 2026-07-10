@@ -1,3 +1,5 @@
+import { describeError } from '../core/describe-error'
+
 // Reliable SW <-> offscreen RPC over chrome.runtime.sendMessage.
 //
 // WHY NOT sendResponse:
@@ -223,7 +225,9 @@ export function installOffscreenRpcHandler(
           const result = await handler(payload)
           reply = { channel: 'rpc', dir: 'to-sw', id, result }
         } catch (err) {
-          reply = { channel: 'rpc', dir: 'to-sw', id, error: String(err) }
+          // describeError, not String(err): WebLLM throws message-less objects that String()
+          // renders as the useless "[object Object]", hiding the real load/generation failure.
+          reply = { channel: 'rpc', dir: 'to-sw', id, error: describeError(err) }
         }
         chrome.runtime.sendMessage(reply).catch(() => {
           // SW may already be shutting down; ignore send failures.

@@ -7,6 +7,7 @@
 
 import { installOffscreenRpcHandler } from './offscreen-rpc'
 import { WebGpuEmbedder } from './webgpu-embedder'
+import { WebGpuReranker } from './webgpu-reranker'
 import { SqliteWorkerClient } from './sqlite-worker-client'
 import { WorkerVectorStore } from './worker-vector-store'
 import { WorkerSettingsStore } from './worker-settings-store'
@@ -18,12 +19,13 @@ import { AskService } from '../core/ask-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
 import { migrateEmbeddingModel } from '../core/embed-migration'
+import { describeError } from '../core/describe-error'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
 import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-model-status'
 import type { AskModelStatus } from '../core/ask-model-status'
 import type { EmbeddingPort } from '../core/ports'
 import type { AnswerGeneratorPort } from '../core/answer-generator'
-import { WebLlmAnswerGenerator, createLlamaAskEngine } from './webllm-answer-generator'
+import { WebLlmAnswerGenerator, createAskEngine, LLAMA_ASK_SPEC } from './webllm-answer-generator'
 
 // ---------------------------------------------------------------------------
 // Core services
@@ -70,7 +72,11 @@ const chunker = new ParagraphChunker(220)
 // findable.
 const capture = new CaptureService(chunker, store, 0.35)
 const indexing = new IndexingService(store, localEmbedder)
-const recall = new RecallService(localEmbedder, store)
+// A1: a cross-encoder reranker re-scores the wide candidate pool from hybrid search into a better
+// top-k (measured lift on the english golden set: P@1 0.58->0.83). Best-effort: if the model can't
+// load on this device, RecallService silently falls back to the hybrid order.
+const reranker = new WebGpuReranker()
+const recall = new RecallService(localEmbedder, store, reranker)
 let answerGeneratorP: Promise<AnswerGeneratorPort> | null = null
 let answerGeneratorReady = false
 let askModelStatus: AskModelStatus = INITIAL_ASK_MODEL_STATUS
@@ -85,7 +91,11 @@ function emitAskModelProgress(e: { status: string; progress?: number; error?: st
 function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
   if (!answerGeneratorP) {
     answerGeneratorReady = false
-    answerGeneratorP = createLlamaAskEngine(emitAskModelProgress)
+    // Composition root chooses the Ask model. Gemma 3 1B was tried (B2) but its WebLLM wasm
+    // runtime crashed on this setup ("Program terminated with exit(1)") after a cascade of
+    // config fixes, while Llama runs -- so Gemma3-1B isn't viable here. Back on Llama; swap the
+    // spec (GEMMA_ASK_SPEC stays defined, model still hosted) if a future web-llm fixes Gemma3.
+    answerGeneratorP = createAskEngine(LLAMA_ASK_SPEC, emitAskModelProgress)
       .then((engine) => {
         answerGeneratorReady = true
         askModelStatus = { state: 'ready', percent: 100 }
@@ -94,7 +104,7 @@ function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
       .catch((err) => {
         answerGeneratorP = null
         answerGeneratorReady = false
-        emitAskModelProgress({ status: 'error', error: String(err) })
+        emitAskModelProgress({ status: 'error', error: describeError(err) })
         throw err
       })
   }
@@ -216,6 +226,16 @@ embedder
       .catch(() => {})
   })
 
+// Prewarm the cross-encoder reranker IN PARALLEL with the embedder above. Reranking is a core
+// part of search, not an add-on, so we download it up front (alongside the embedding model)
+// instead of lazily on the first query -- otherwise the first search pays a ~22MB fetch + load.
+// Fully independent of the embedder chain: a reranker load failure never blocks capture/indexing
+// or the embedder, and search still falls back to the raw hybrid order at query time.
+reranker
+  .ensureLoaded()
+  .then(() => console.log(`[recall] reranker prewarmed (device=${reranker.device})`))
+  .catch((e) => console.warn('[recall] reranker prewarm failed (search falls back to hybrid order):', String(e)))
+
 // ---------------------------------------------------------------------------
 // RPC handler: dispatches on payload.op
 // ---------------------------------------------------------------------------
@@ -328,12 +348,15 @@ installOffscreenRpcHandler(async (payload: unknown) => {
   }
 
 
-  // --- recall: embed query, cosine search ---
+  // --- recall: embed query, hybrid search, cross-encoder rerank ---
   if (op === 'recall') {
     const text = p.text as string
     const k = p.k as number
+    // [Recall:perf] end-to-end recall latency incl. rerank. Read this in the offscreen console to
+    // check the reranker isn't making search feel slow (the one thing not measurable offline).
+    const t0 = performance.now()
     const results = await recall.recall({ text, k })
-    console.log(`[recall] recalled ${results.length} results`)
+    console.log(`[recall] recalled ${results.length} results in ${Math.round(performance.now() - t0)}ms (device=${reranker.device ?? 'n/a'})`)
     return { results }
   }
 
@@ -342,7 +365,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
-    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator(), undefined, reranker)
     const answer = await ask.ask({ text, retrieveK, contextK })
     return { answer }
   }
@@ -352,7 +375,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
-    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator(), undefined, reranker)
     const answer = await ask.askStream({ text, retrieveK, contextK }, (delta) => {
       chrome.runtime
         .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-delta', requestId, text: delta })

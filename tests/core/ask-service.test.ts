@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { AskService } from '../../src/core/ask-service'
 import type { AnswerGeneratorPort } from '../../src/core/answer-generator'
-import type { EmbeddingPort, VectorSearchPort } from '../../src/core/ports'
+import type { EmbeddingPort, RerankPort, VectorSearchPort } from '../../src/core/ports'
 import type { RankedResult } from '../../src/core/model'
 import { rankedResult as chunk } from './fixtures'
 
@@ -26,7 +26,8 @@ const embedder: EmbeddingPort = {
   embed: async (texts) => texts.map((_, i) => new Float32Array([1, i])),
 }
 
-// Scenario: Ask가 너무 적은 Chunk만 보면 답변 모델이 근거 없는 말을 만들 수 있다. 하지만 같은 문서의 청크 여러 개를 썼다고 출처 링크가 여러 번 보이면 화면이 중복된다.
+// Scenario: Ask가 너무 적은 Chunk만 보면 답변 모델이 근거 없는 말을 만들 수 있다. 그리고 모델이 실제로
+// 인용한 청크는 (같은 문서라도) 접지 말고 전부 출처로 나와야 한다(B1).
 // Coverage: ⚠️ mock - 임베더, 저장소, 답변 생성기는 무거운 실제 부품 대신 같은 계약의 fake를 쓴다.
 test('ask retrieves more chunks than search and sends a bounded context to generator', async () => {
   const results = Array.from({ length: 12 }, (_, i) => chunk(`p1#${i}`, `context ${i}`))
@@ -59,31 +60,34 @@ test('ask retrieves more chunks than search and sends a bounded context to gener
   expect(searchedK).toBe(8)
   expect(seenQuestion).toBe('what wrecks sleep?')
   expect(seen).toHaveLength(8)
-  expect(answer.sources).toHaveLength(1)
-  expect(answer.sources[0].page.id).toBe('p1')
+  // Cited the first three context chunks -> all three surface as sources, in order.
+  expect(answer.sources.map((s) => s.chunk.id)).toEqual(['p1#0', 'p1#1', 'p1#2'])
 })
 
-// Scenario: 한 답변이 같은 저장 문서의 여러 청크를 근거로 삼아도 사용자는 문서 출처 하나만 보면 된다.
-// Coverage: ⚠️ mock - 실제 검색/LLM은 무겁기 때문에 같은 계약의 fake로 출처 병합만 확인한다.
-test('ask deduplicates answer sources by saved page', async () => {
+// Scenario: 사용자가 답이 저장 글의 정확히 어느 대목에서 나왔는지 눈으로 확인하려면, 같은 문서라도
+// 모델이 인용한 청크를 페이지 하나로 접지 말고 하나하나 다 근거로 보여줘야 한다(B1).
+// Coverage: ⚠️ mock - 실제 검색/LLM은 무겁기 때문에 같은 계약의 fake로 출처 수집만 확인한다.
+test('ask returns every cited chunk as a source, unfolded (even from the same page)', async () => {
   const results = Array.from({ length: 4 }, (_, i) => chunk(`p1#${i}`, `gaba context ${i}`))
   const store = fakeStore(async (_vector, _text, k) => results.slice(0, k))
   const generator: AnswerGeneratorPort = {
     answer: async ({ chunks }) => ({
       text: 'GABA is an inhibitory neurotransmitter.',
-      citedChunkIds: chunks.slice(0, 3).map((c) => c.chunk.id),
+      citedChunkIds: [chunks[0].chunk.id, chunks[2].chunk.id],
     }),
   }
 
   const svc = new AskService(embedder, store, generator)
   const answer = await svc.ask({ text: 'what is GABA', retrieveK: 12, contextK: 8 })
 
-  expect(answer.sources.map((source) => source.page.title)).toEqual(['Sleep'])
+  // Two cited chunks from the same page 'p1' -> two sources, in context order, NOT folded to one.
+  expect(answer.sources.map((source) => source.chunk.id)).toEqual(['p1#0', 'p1#2'])
+  expect(answer.sources.map((source) => source.chunk.text)).toEqual(['gaba context 0', 'gaba context 2'])
 })
 
-// Scenario: Ask 스트리밍은 글자를 먼저 보여주되, 끝난 뒤 출처는 기존 Ask처럼 문서 단위로 하나만 보여줘야 한다.
+// Scenario: Ask 스트리밍은 글자를 먼저 보여주되, 끝난 뒤 인용한 청크는 (같은 문서라도) 전부 출처로 나와야 한다(B1).
 // Coverage: ⚠️ mock - 임베더, 저장소, 답변 생성기는 같은 계약의 fake로 두고 스트리밍 흐름만 확인한다.
-test('askStream emits answer deltas and returns deduplicated sources', async () => {
+test('askStream emits answer deltas and returns every cited chunk as sources', async () => {
   const results = Array.from({ length: 4 }, (_, i) => chunk(`p1#${i}`, `gaba context ${i}`))
   const store = fakeStore(async (_vector, _text, k) => results.slice(0, k))
   const generator: AnswerGeneratorPort = {
@@ -107,7 +111,8 @@ test('askStream emits answer deltas and returns deduplicated sources', async () 
 
   expect(deltas).toEqual(['GABA is ', 'inhibitory.'])
   expect(answer.text).toBe('GABA is inhibitory.')
-  expect(answer.sources).toHaveLength(1)
+  // Cited the first three retrieved chunks -> three sources, unfolded.
+  expect(answer.sources.map((s) => s.chunk.id)).toEqual(['p1#0', 'p1#1', 'p1#2'])
 })
 
 // Scenario: Search UI는 page당 대표 청크가 좋지만 Ask는 답변 재료라서 같은 글의 여러 청크가 필요하다.
@@ -191,7 +196,8 @@ test('ask expands the question, searches each query, and merges duplicate chunks
   expect(embeddedTexts).toEqual(['what is cf r2?', 'cloudflare r2 object storage', 'r2 buckets objects'])
   expect(searchedTexts).toEqual(['what is cf r2?', 'cloudflare r2 object storage', 'r2 buckets objects'])
   expect(seenContextIds).toEqual(['p1#1', 'p1#0', 'p1#2'])
-  expect(answer.sources).toHaveLength(1)
+  // The generator cited every context chunk -> all three surface as sources in context order.
+  expect(answer.sources.map((s) => s.chunk.id)).toEqual(['p1#1', 'p1#0', 'p1#2'])
 })
 
 // Scenario: 확장 쿼리가 성공했는데 UI가 알 수 없으면 사용자는 어떤 검색을 같이 했는지 확인할 수 없다.
@@ -333,6 +339,74 @@ test('ask drops an expanded query that is semantically too similar to one alread
   expect(searchedTexts).toEqual(['who invented rnn', 'lstm inventors'])
 })
 
+// Scenario: 온디바이스 1B 모델은 인용 태그를 안 단다(형식을 못 지켜 지저분해져서 뺐다). 그래도 사용자는
+// 답이 어느 저장 글에서 나왔는지 봐야 하므로, 모델이 아무것도 인용 안 하면 답변의 근거가 된 컨텍스트
+// 청크(리랭커가 고른 것)를 출처로 보여준다.
+// Coverage: ⚠️ mock - 실제 검색/LLM은 무겁기 때문에 같은 계약의 fake로 출처 폴백만 확인한다.
+test('ask shows the context chunks as sources when the model cites nothing', async () => {
+  const results = Array.from({ length: 3 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = { ...fakeStore(async () => []), searchForAnswer: async () => results }
+  const generator: AnswerGeneratorPort = {
+    answer: async () => ({ text: 'a synthesized answer', citedChunkIds: [] }), // model cites nothing
+  }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 })
+  const answer = await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  // Fell back to the reranked context chunks (all 3) so the user still sees the source passages.
+  expect(answer.sources.map((s) => s.chunk.id)).toEqual(['p1#0', 'p1#1', 'p1#2'])
+})
+
+// Scenario: Ask는 여러 확장 검색으로 넓게 청크를 모으지만, 답변 모델에 넣을 컨텍스트는 몇 개로 제한된다.
+// 크로스인코더가 그 넓은 후보를 관련도로 다시 세워, "진짜 근거"가 제한된 컨텍스트 안에 들어가야 한다(A1 Ask).
+// Coverage: ⚠️ mock - 실제 크로스인코더는 무겁기 때문에 같은 계약의 fake reranker로 컨텍스트 선택 재정렬만 확인한다.
+test('ask reranks retrieved chunks and sends the best maxContextChunks to the generator', async () => {
+  const results = Array.from({ length: 6 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = {
+    ...fakeStore(async () => []),
+    searchForAnswer: async () => results, // a pool (6) wider than maxContextChunks (3)
+  }
+  let seenIds: string[] = []
+  const generator: AnswerGeneratorPort = {
+    answer: async ({ chunks }) => {
+      seenIds = chunks.map((c) => c.chunk.id)
+      return { text: 'answer', citedChunkIds: [] }
+    },
+  }
+  const reranker: RerankPort = { rerank: async (_q, cands, k) => [...cands].reverse().slice(0, k) }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 }, reranker)
+  await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  // 6 retrieved -> reranker reverses -> the best 3 that reach the generator are the pool's last three.
+  expect(seenIds).toEqual(['p1#5', 'p1#4', 'p1#3'])
+})
+
+// Scenario: Ask 리랭커 모델이 이 기기에서 로드에 실패해도 답변이 통째로 죽으면 안 된다. 리랭킹은 best-effort —
+// 실패하면 merge 순서 top-maxContextChunks로 조용히 폴백한다.
+// Coverage: ⚠️ mock - 같은 계약의 fake reranker가 throw하게 만들어 폴백 배선만 확인한다.
+test('ask falls back to the merge order for context when the reranker throws', async () => {
+  const results = Array.from({ length: 6 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = { ...fakeStore(async () => []), searchForAnswer: async () => results }
+  let seenIds: string[] = []
+  const generator: AnswerGeneratorPort = {
+    answer: async ({ chunks }) => {
+      seenIds = chunks.map((c) => c.chunk.id)
+      return { text: 'answer', citedChunkIds: [] }
+    },
+  }
+  const reranker: RerankPort = {
+    rerank: async () => {
+      throw new Error('reranker model unavailable on this device')
+    },
+  }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 }, reranker)
+  await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  expect(seenIds).toEqual(['p1#0', 'p1#1', 'p1#2'])
+})
+
 // Scenario: mergeAnswerResults ranks a chunk that TWO expanded queries corroborate (hits=2)
 // above a chunk only ONE query found, even if that single-hit chunk has a much higher score.
 // The confidence gate must judge by the true best score among all retrieved chunks, not
@@ -342,7 +416,8 @@ test('ask drops an expanded query that is semantically too similar to one alread
 // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 같은 계약을 가진 fake generator를 쓴다.
 test('ask gates on the true max score across retrieved chunks, not the hit-count winner', async () => {
   const strong: RankedResult = { ...chunk('p1#0', 'Strong single-hit match.'), score: 0.9 }
-  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.6 }
+  // Below ASK_MIN_CONFIDENCE (0.45): on its own this would gate the answer off; the strong 0.9 max must save it.
+  const mediocre: RankedResult = { ...chunk('p2#0', 'Mediocre but corroborated match.'), score: 0.3 }
   const spyEmbedder: EmbeddingPort = {
     // Mutually orthogonal vectors so all three queries survive dedupeSimilarQueries regardless
     // of threshold -- this test is about the merge/gate interaction, not dedup.
@@ -375,7 +450,7 @@ test('ask gates on the true max score across retrieved chunks, not the hit-count
   const svc = new AskService(spyEmbedder, store, generator)
   const answer = await svc.ask({ text: 'strong query', retrieveK: 12, contextK: 8 })
 
-  // ASK_MIN_CONFIDENCE is 0.7: the mediocre chunk's 0.6 must NOT gate this off, because the
+  // ASK_MIN_CONFIDENCE is 0.45: the mediocre chunk's 0.3 must NOT gate this off, because the
   // true best score (strong, 0.9) clears the bar even though mediocre sorts first in the merge.
   expect(generatorCalled).toBe(true)
   expect(answer.text).toBe('answered from the strong match')

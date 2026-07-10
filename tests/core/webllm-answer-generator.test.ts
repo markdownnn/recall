@@ -7,9 +7,14 @@ import {
   MAX_CHARS_PER_PROMPT_CHUNK,
   MAX_EVIDENCE_PROMPT_CHUNKS,
   buildLlamaAppConfig,
+  buildGemmaAppConfig,
   LLAMA_ASK_MODEL,
   LLAMA_ASK_MODEL_DIR,
   LLAMA_ASK_MODEL_LIB,
+  GEMMA_ASK_MODEL,
+  GEMMA_ASK_MODEL_DIR,
+  GEMMA_ASK_MODEL_LIB,
+  GEMMA_ASK_SPEC,
   parseExpandedQueries,
   webLlmProgressToModelProgress,
   WebLlmAnswerGenerator,
@@ -33,15 +38,16 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Excerpt 2)')
   })
 
-  // Scenario: 모델이 실제로 사용한 발췌를 답 끝에 숨김 태그로 표시해야 citedChunkIds를 신뢰할 수 있다.
+  // Scenario: 인용 태그 지시가 1B에서 "Excerpt Numbers Used" 섹션으로 새어 답을 지저분하게 만들었다.
+  // 이제 프롬프트는 인용 태그를 요구하지 않고 헤더/라벨을 금지한다(출처는 컨텍스트 청크로 따로 표시).
   // Coverage: ✅ integration
-  test('ask prompt instructs the model to append a hidden citation tag', () => {
+  test('ask prompt does not ask for a citation tag and forbids headings/labels', () => {
     const messages = buildAskMessages('what hurts sleep?', [result])
     const joined = messages.map((m) => m.content).join('\n')
 
-    expect(joined).toContain('[[cite:')
-    expect(joined).toContain('hidden from the user')
-    expect(joined).not.toContain('Sources:')
+    expect(joined).not.toContain('[[cite:')
+    expect(joined).not.toContain('Excerpt Numbers Used')
+    expect(joined).toContain('no headings, labels, or section titles')
   })
 
   // Scenario: WebLLM이 저장된 근거 밖의 답을 만들거나 검색 결과를 나열하면 Recall Ask의 신뢰가 깨진다.
@@ -55,16 +61,13 @@ describe('webllm answer generator', () => {
     expect(joined).toContain('Use ONLY information found in the saved excerpts.')
     expect(joined).toContain('Never invent facts, numbers, names, or dates.')
     expect(joined).toContain('I couldn\'t find that in your saved pages.')
-    expect(joined).toContain("Synthesize across excerpts into one coherent answer.")
-    expect(joined).toContain("Don't list excerpts one by one or copy snippets verbatim.")
-    expect(joined).toContain('Lead with the direct answer first')
-    expect(joined).toContain('Keep it to 2-3 short paragraphs.')
+    expect(joined).toContain('direct answer in 2-4 sentences')
+    expect(joined).toContain('Do NOT quote, paste, or list the excerpts')
+    expect(joined).toContain('no headings, labels, or section titles')
     expect(joined).toContain("Match the language of the user's question.")
-    expect(joined).toContain("Don't add opinions or filler like \"Great question!\"")
+    expect(joined).toContain('No opinions or filler.')
     expect(joined).toContain('Saved excerpts:')
-    expect(joined).toContain('Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".')
     expect(joined).toContain('Cortisol can disrupt REM sleep.')
-    expect(joined).not.toContain('say what is missing')
     expect(joined).not.toContain('Sources:')
     expect(joined).not.toContain('Source id:')
   })
@@ -84,18 +87,6 @@ describe('webllm answer generator', () => {
     expect(joined).not.toContain('<answer>')
   })
 
-  // Scenario: 근거 메모를 만든 뒤 최종 답변에 넘겨야 답변 모델이 관련 근거를 더 잘 따라간다.
-  // Coverage: ✅ integration
-  test('answer prompt can include internal evidence notes without showing a notes section', () => {
-    const messages = buildAskMessages('what is GABA?', [result], 'Direct fact: GABA is inhibitory.')
-    const joined = messages.map((m) => m.content).join('\n')
-
-    expect(joined).toContain('Working notes:')
-    expect(joined).toContain('Direct fact: GABA is inhibitory.')
-    expect(joined).toContain('Do not mention the working notes.')
-    expect(joined).not.toContain('Sources:')
-  })
-
   // Scenario: Ask가 검색 청크를 너무 많이, 너무 길게 그대로 넣으면 4K context window를 넘겨서 아예 답을 못 한다.
   // Coverage: ✅ integration
   test('prompt builders cap chunk count and chunk text length before calling WebLLM', () => {
@@ -111,7 +102,7 @@ describe('webllm answer generator', () => {
     })) satisfies RankedResult[]
 
     const evidenceJoined = buildEvidenceMessages('what is this?', oversized).map((m) => m.content).join('\n')
-    const answerJoined = buildAskMessages('what is this?', oversized, 'note').map((m) => m.content).join('\n')
+    const answerJoined = buildAskMessages('what is this?', oversized).map((m) => m.content).join('\n')
 
     expect(evidenceJoined.match(/Page title: Long page/g)?.length).toBe(MAX_EVIDENCE_PROMPT_CHUNKS)
     expect(answerJoined.match(/Page title: Long page/g)?.length).toBe(MAX_ASK_PROMPT_CHUNKS)
@@ -185,6 +176,16 @@ describe('webllm answer generator', () => {
     expect(serialized).not.toContain('chrome-extension://')
   })
 
+  // Scenario: 조립 지점(offscreen)이 모델을 spec 하나로 고르는 헥사고날 구조 — GEMMA_ASK_SPEC이 실제
+  // Gemma 모델/디렉토리/라이브러리를 정확히 묶어야 엔진 팩토리가 올바른 CDN 경로로 로드한다.
+  // Coverage: ✅ integration
+  test('GEMMA_ASK_SPEC bundles the gemma model, dir, lib and app-config builder', () => {
+    expect(GEMMA_ASK_SPEC.modelId).toBe(GEMMA_ASK_MODEL)
+    expect(GEMMA_ASK_SPEC.modelDir).toBe(GEMMA_ASK_MODEL_DIR)
+    expect(GEMMA_ASK_SPEC.modelLib).toBe(GEMMA_ASK_MODEL_LIB)
+    expect(GEMMA_ASK_SPEC.buildAppConfig).toBe(buildGemmaAppConfig)
+  })
+
   // Scenario: 라마 모델이 처음 켜질 때 오래 걸리는데 진행률이 없으면 사용자는 멈춘 줄 안다.
   // Coverage: ✅ integration
   test('webllm progress reports become model loading percentages', () => {
@@ -236,25 +237,17 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual([])
   })
 
-  // Scenario: evidence pass는 사용자에게 보일 답변이 아니라 다음 답변 호출에 들어갈 짧은 내부 메모다.
-  // Coverage: ⚠️ mock - 실제 WebLLM 대신 같은 chat 계약을 가진 fake engine으로 호출 순서와 프롬프트 전달만 확인한다.
-  test('answer runs an evidence pass before the final answer', async () => {
+  // Scenario: 예전엔 답변 전에 "근거 메모" 단계를 한 번 더 돌렸는데, 그 메모의 메타 문구("Excerpt 1
+  // directly answers...")가 최종 답에 새어들어 제거했다. 이제 답변은 단 한 번의 호출로, 근거 메모 없이 만든다.
+  // Coverage: ⚠️ mock - 실제 WebLLM 대신 같은 chat 계약을 가진 fake engine으로 호출 횟수와 프롬프트만 확인한다.
+  test('answer makes a single answer call with no separate evidence pass', async () => {
     const calls: Array<{ content: string; maxTokens?: number }> = []
     const engine = {
       chat: {
         completions: {
           create: async (request: { messages: Array<{ content: string }>; max_tokens?: number }) => {
-            const content = request.messages.map((m) => m.content).join('\n')
-            calls.push({ content, maxTokens: request.max_tokens })
-            return {
-              choices: [{
-                message: {
-                  content: calls.length === 1
-                    ? 'Direct fact: GABA is inhibitory.'
-                    : 'GABA is an inhibitory neurotransmitter.',
-                },
-              }],
-            }
+            calls.push({ content: request.messages.map((m) => m.content).join('\n'), maxTokens: request.max_tokens })
+            return { choices: [{ message: { content: 'GABA is an inhibitory neurotransmitter.' } }] }
           },
         },
       },
@@ -263,31 +256,25 @@ describe('webllm answer generator', () => {
     const generator = new WebLlmAnswerGenerator(engine as any)
     const answer = await generator.answer({ question: 'what is GABA?', chunks: [result] })
 
-    expect(calls).toHaveLength(2)
-    expect(calls[0].content).toContain('Return short working notes')
-    expect(calls[0].maxTokens).toBe(220)
-    expect(calls[1].content).toContain('Working notes:')
-    expect(calls[1].content).toContain('Direct fact: GABA is inhibitory.')
-    expect(calls[1].maxTokens).toBe(640)
+    expect(calls).toHaveLength(1) // no evidence pass
+    expect(calls[0].content).not.toContain('Working notes:')
+    expect(calls[0].content).not.toContain('Return short working notes')
+    expect(calls[0].maxTokens).toBeUndefined() // length is controlled by the prompt, not a token cap
     expect(answer.text).toBe('GABA is an inhibitory neurotransmitter.')
   })
 
-  // Scenario: 스트리밍으로 가려면 첫 답을 숨겼다가 다시 쓰는 흐름이 화면을 복잡하게 만든다.
+  // Scenario: 답변은 한 번의 호출로 만들고, 끝에 붙은 숨김 인용 태그([[cite: 1]])는 화면 텍스트에서
+  // 잘라내되 citedChunkIds로는 뽑아낸다.
   // Coverage: ⚠️ mock - 실제 WebLLM은 무겁기 때문에 chat 호출 횟수만 fake로 확인한다.
-  test('answer does not retry when the first draft looks like a raw source snippet', async () => {
+  test('answer strips the trailing citation tag and returns cited chunk ids in one call', async () => {
     let calls = 0
     const engine = {
       chat: {
         completions: {
-          create: async () => ({
-            choices: [{
-              message: {
-                content: calls++ === 0
-                  ? 'Relevant fact: sleep article.'
-                  : 'Sleep article says cortisol disrupts sleep.\n[[cite: 1]]',
-              },
-            }],
-          }),
+          create: async () => {
+            calls++
+            return { choices: [{ message: { content: 'Sleep article says cortisol disrupts sleep.\n[[cite: 1]]' } }] }
+          },
         },
       },
     }
@@ -295,7 +282,7 @@ describe('webllm answer generator', () => {
     const generator = new WebLlmAnswerGenerator(engine as any)
     const answer = await generator.answer({ question: 'what hurts sleep?', chunks: [result] })
 
-    expect(calls).toBe(2)
+    expect(calls).toBe(1)
     expect(answer.text).toBe('Sleep article says cortisol disrupts sleep.')
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
@@ -336,10 +323,11 @@ describe('webllm answer generator', () => {
     expect(answer.citedChunkIds).toEqual(['p1#0'])
   })
 
-  // Scenario: saved page 답변이 길어질 때 출력 토큰 예산이 너무 작으면 문장이 중간에서 끊긴다.
+  // Scenario: 답변 길이는 토큰 상한이 아니라 프롬프트("2-4 sentences")로 제어한다. 토큰 상한을 두면 문장을
+  // 중간에서 자르므로, 답변 호출은 max_tokens를 아예 안 넘긴다(모델이 end-of-turn에서 스스로 끝맺음).
   // Coverage: ⚠️ mock - 실제 WebLLM 대신 요청 옵션만 기록하는 fake engine을 쓴다.
-  test('answer and answerStream use a larger answer token budget', async () => {
-    const seen: number[] = []
+  test('answer and answerStream set no max_tokens (length is prompt-controlled)', async () => {
+    const seen: Array<number | undefined> = []
     async function* chunks() {
       yield { choices: [{ delta: { content: 'GABA is inhibitory.' } }] }
     }
@@ -347,7 +335,7 @@ describe('webllm answer generator', () => {
       chat: {
         completions: {
           create: async (request: { max_tokens?: number; stream?: boolean }) => {
-            seen.push(request.max_tokens ?? 0)
+            seen.push(request.max_tokens)
             if (request.stream) return chunks()
             return { choices: [{ message: { content: 'GABA is inhibitory.' } }] }
           },
@@ -359,7 +347,7 @@ describe('webllm answer generator', () => {
     await generator.answer({ question: 'what is GABA?', chunks: [result] })
     await generator.answerStream({ question: 'what is GABA?', chunks: [result] }, () => undefined)
 
-    expect(seen).toEqual([220, 640, 220, 640])
+    expect(seen).toEqual([undefined, undefined])
   })
 
   // Scenario: 청크가 여러 개일 때, 모델이 실제로 인용한 발췌만 출처가 되고 인용 안 한 발췌는 빠져야

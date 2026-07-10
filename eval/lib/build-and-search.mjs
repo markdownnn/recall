@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ParagraphChunker } from '../../src/core/paragraph-chunker.ts'
+import { SentenceOverlapChunker } from './sentence-chunker.mjs'
 import { pageIdFromUrl } from '../../src/core/capture-service.ts'
 import { MemoryVectorStore } from '../../src/adapters/memory-vector-store.ts'
 import { stripBoilerplate } from '../../src/core/boilerplate-strip.ts'
@@ -32,7 +33,12 @@ function reindex(chunks, pageId) {
 // extraction-time fixes so one process can produce before/after numbers.
 export async function buildStore(manifest, opts = {}) {
   const store = new MemoryVectorStore()
-  const chunker = new ParagraphChunker(220)
+  // EVAL_CHUNKER=sentence swaps in the A2 sentence-overlap spike; default is the prod chunker.
+  const maxWords = Number(process.env.EVAL_CHUNK_MAXWORDS || 220) || 220
+  const chunker =
+    process.env.EVAL_CHUNKER === 'sentence'
+      ? new SentenceOverlapChunker(maxWords, Number(process.env.EVAL_CHUNK_OVERLAP ?? 1))
+      : new ParagraphChunker(maxWords)
   for (const row of manifest) {
     let text = readFileSync(resolve('eval/fixtures', row.file), 'utf8')
     if (opts.strip) text = stripBoilerplate(text)

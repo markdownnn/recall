@@ -1,7 +1,7 @@
 import { NOT_FOUND_ANSWER, type AnswerGeneratorPort, type AskProgressEvent } from './answer-generator'
 import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS, type AnswerRetrievalOptions } from './answer-retrieval'
 import type { AskAnswer, AskQuery, RankedResult } from './model'
-import type { EmbeddingPort, VectorSearchPort } from './ports'
+import type { EmbeddingPort, RerankPort, VectorSearchPort } from './ports'
 import { dedupeSimilarQueries, type EmbeddedQuery } from './query-dedup'
 
 const MAX_ASK_SEARCH_QUERIES = 5
@@ -13,18 +13,16 @@ const MAX_ASK_SEARCH_QUERIES = 5
 // question (survQ was 1 for all 9 rows) — dedup never actually triggers, so this run
 // gives no signal to tune it from.
 export const QUERY_DEDUP_THRESHOLD = 0.92
-// ASK_MIN_CONFIDENCE: measured 2026-07-09 via eval:ask (9-query set: 6 answerable, 3
-// unanswerable). Raised from 0.3 to 0.70 -> gate-accuracy 7/9 (was 6/9 at 0.3). The two
-// groups' top scores overlap (answerable: 0.648-0.776, unanswerable: 0.556-0.691), so no
-// single threshold on this sample reaches 9/9 -- 7/9 is the measured ceiling, tied between
-// two disjoint bands: (0.556, 0.648] (0 false negatives, 2 false positives) and
-// (0.691, 0.707] (2 false negatives, 0 false positives). Picked the latter (0.70) per
-// ADR 0024 (docs/adr/0024-ask-shows-only-verified-grounding.md): an unanswered "not
-// found" is safer than a hallucinated answer, and one of the 2 false positives at the
-// lower band is a medical-dosage question ("what dose of melatonin..."), the worst case
-// to get wrong. More negative examples in the golden set would be needed to separate the
-// bands further.
-export const ASK_MIN_CONFIDENCE = 0.7
+// ASK_MIN_CONFIDENCE: the minimum top vector score to even call the answer model. 0.70 (tuned
+// 2026-07-09 on a thin 9-query set) rejected too many genuinely answerable questions in real use:
+// BGE cosine for a relevant-but-not-verbatim match is often 0.5-0.7, so a real query with a saved
+// article on the topic still fell under 0.70 and returned "not found" (e.g. "what is Scientific
+// method?"). Lowered to 0.45 so the gate is just a coarse "is anything relevant at all" floor;
+// the model -- which sees the excerpts and is told to reply NOT_FOUND when they don't answer --
+// makes the real answerability call, and the sources shown below let the user verify. Gating on
+// the reranker's cross-encoder score (a far better relevance judge than the bi-encoder cosine)
+// would be a more robust future fix (docs/adr/0024-ask-shows-only-verified-grounding.md).
+export const ASK_MIN_CONFIDENCE = 0.45
 
 export class AskService {
   constructor(
@@ -32,6 +30,9 @@ export class AskService {
     private readonly store: VectorSearchPort,
     private readonly generator: AnswerGeneratorPort,
     private readonly retrievalOptions?: Partial<AnswerRetrievalOptions>,
+    // Optional cross-encoder: reorders the retrieved chunks so the most relevant ones fill the
+    // bounded context sent to the answer model. Absent = keep the merge order (resilience).
+    private readonly reranker?: RerankPort,
   ) {}
 
   async ask(query: AskQuery): Promise<AskAnswer> {
@@ -74,21 +75,43 @@ export class AskService {
       searchQueries.map((q) => this.store.searchForAnswer(q.vector, q.text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
+    // Gate on the raw vector top score BEFORE reranking: ASK_MIN_CONFIDENCE lives on the cosine
+    // scale, and cross-encoder logits live on a totally different one -- feeding them here would
+    // break the threshold. The reranker only reorders WHICH chunks fill the context, not whether
+    // we answer at all.
     if (!passesConfidenceGate(topScoreOf(retrieved), ASK_MIN_CONFIDENCE)) {
       return { text: NOT_FOUND_ANSWER, sources: [] }
     }
 
-    const chunks = retrieved.slice(0, options.maxContextChunks)
+    const chunks = await this.selectContext(query.text, retrieved, options.maxContextChunks)
     const draft = await generate(chunks)
     const sourceIds = new Set(draft.citedChunkIds)
-    const sourcesByPage = new Map<string, RankedResult>()
-    for (const result of chunks) {
-      if (!sourceIds.has(result.chunk.id)) continue
-      if (!sourcesByPage.has(result.page.id)) sourcesByPage.set(result.page.id, result)
-      if (sourcesByPage.size >= 5) break
-    }
-    const sources = [...sourcesByPage.values()]
+    // Sources = the exact passages the answer was built from. When the model cites specific
+    // excerpts, show those (B1: unfolded, in context order). The on-device 1B model no longer
+    // emits citation tags (they produced ugly "Excerpt Numbers Used" sections), so it cites
+    // nothing -- then fall back to the reranked context chunks, which ARE what the answer was
+    // grounded in. Either way the user always sees the source passages below the answer.
+    const cited = chunks.filter((result) => sourceIds.has(result.chunk.id))
+    const sources = cited.length > 0 ? cited : chunks
     return { text: draft.text, sources }
+  }
+
+  // Pick the chunks that fill the bounded context window. With a reranker, a cross-encoder
+  // reorders the wider retrieved set so the most relevant chunks reach the answer model; without
+  // one (or if it fails to load on this device) it falls back to the merge order. Best-effort:
+  // a rerank failure must never sink an otherwise-answerable question.
+  private async selectContext(
+    question: string,
+    retrieved: RankedResult[],
+    maxContextChunks: number,
+  ): Promise<RankedResult[]> {
+    if (!this.reranker) return retrieved.slice(0, maxContextChunks)
+    try {
+      return await this.reranker.rerank(question, retrieved, maxContextChunks)
+    } catch (err) {
+      console.warn('[recall] ask rerank failed, using merge order:', String(err))
+      return retrieved.slice(0, maxContextChunks)
+    }
   }
 
   // Expands the question via the generator (best-effort), textually dedupes, embeds every

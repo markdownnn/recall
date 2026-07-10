@@ -18,10 +18,9 @@ export const GEMMA_ASK_MODEL_LIB = 'gemma3-1b-it-q4f16_1_cs1k-webgpu.wasm'
 export const ASK_MODEL_CANDIDATES = [LLAMA_ASK_MODEL, GEMMA_ASK_MODEL] as const
 export const MAX_QUERY_EXPANSIONS = 4
 export const MAX_EVIDENCE_PROMPT_CHUNKS = 4
-export const MAX_ASK_PROMPT_CHUNKS = 5
+export const MAX_ASK_PROMPT_CHUNKS = 3
 export const MAX_CHARS_PER_PROMPT_CHUNK = 800
 export const MAX_EVIDENCE_TOKENS = 220
-export const MAX_ANSWER_TOKENS = 640
 export type ModelProgressEvent = { status: string; progress?: number; error?: string }
 
 function buildWebLlmAppConfig(
@@ -51,14 +50,17 @@ export function buildLlamaAppConfig(modelBaseUrl: string, modelLibUrl: string): 
 }
 
 export function buildGemmaAppConfig(modelBaseUrl: string, modelLibUrl: string): AppConfig {
-  return buildWebLlmAppConfig(
-    GEMMA_ASK_MODEL,
-    modelBaseUrl,
-    modelLibUrl,
-    711.07,
-    true,
-    { sliding_window_size: -1 },
-  )
+  // Gemma 3 is built around sliding-window attention (native window 512, interleaved with global
+  // layers). WebLLM requires EXACTLY ONE of context_window_size / sliding_window_size to be
+  // positive. So set context_window_size to -1 and let the model's native 512 sliding window
+  // drive. The reverse (sliding_window_size: -1 + context 4096, i.e. forced full attention) loaded
+  // but produced repeating gibberish -- the wasm lib expects the sliding-window path.
+  // Sliding window also requires an attention_sink_size; 0 selects the default sliding-window
+  // behaviour (WebLLM errors without it: AttentionSinkSizeError).
+  return buildWebLlmAppConfig(GEMMA_ASK_MODEL, modelBaseUrl, modelLibUrl, 711.07, true, {
+    context_window_size: -1,
+    attention_sink_size: 0,
+  })
 }
 
 export function webLlmProgressToModelProgress(report: InitProgressReport): ModelProgressEvent {
@@ -103,12 +105,7 @@ export function buildEvidenceMessages(question: string, chunks: RankedResult[]):
   ]
 }
 
-export function buildAskMessages(
-  question: string,
-  chunks: RankedResult[],
-  workingNotes = '',
-): ChatCompletionMessageParam[] {
-  const notes = workingNotes.trim()
+export function buildAskMessages(question: string, chunks: RankedResult[]): ChatCompletionMessageParam[] {
   return [
     {
       role: 'system',
@@ -119,25 +116,16 @@ export function buildAskMessages(
           'Rules:',
           '- Use ONLY information found in the saved excerpts. Never invent facts, numbers, names, or dates.',
           `- If the saved excerpts don't contain the answer, say exactly: "${NOT_FOUND_ANSWER}"`,
-          "- Synthesize across excerpts into one coherent answer. Don't list excerpts one by one or copy snippets verbatim.",
-          '- Lead with the direct answer first, then add supporting detail only if useful.',
-          '- Write in natural, conversational prose. Keep it to 2-3 short paragraphs. No bullet points unless the question explicitly asks for a list.',
+          '- Give a direct answer in 2-4 sentences of plain prose, in your own words. Answer the question fully but stay concise -- no rambling or filler.',
+          '- Do NOT quote, paste, or list the excerpts, and do not copy sentences verbatim.',
+          '- Write ONLY the answer sentences, with no headings, labels, or section titles (no "Answer" or "Summary" labels, no sources or citation section), no markdown, no bullet points, and no lists.',
           "- Match the language of the user's question.",
-          '- Stay neutral and factual. Don\'t add opinions or filler like "Great question!"',
-          'Do not write audit sections like "what is provided", "what is missing", or "this saved chunk supports".',
-          'Do not include a sources section; Recall shows sources below the answer.',
-          'After your answer, on a new line, add the excerpt numbers you actually used like this: [[cite: 1, 3]] using the numbers shown below. This line is hidden from the user and does not count as a visible sources section. If you cannot answer from the excerpts, do not add this line.',
-          notes ? 'Use the working notes as a relevance guide, but the saved excerpts are the source of truth. Do not mention the working notes.' : '',
+          '- Stay neutral and factual. No opinions or filler.',
         ].join(' '),
     },
     {
       role: 'user',
-      content:
-        [
-          `Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_ASK_PROMPT_CHUNKS)}`,
-          notes ? `Working notes:\n${notes}` : '',
-          `Question: ${question}`,
-        ].filter(Boolean).join('\n\n'),
+      content: [`Saved excerpts:\n${formatSavedExcerpts(chunks, MAX_ASK_PROMPT_CHUNKS)}`, `Question: ${question}`].join('\n\n'),
     },
   ]
 }
@@ -177,15 +165,43 @@ export function parseExpandedQueries(raw: string): string[] {
   }
 }
 
-export async function createLlamaAskEngine(
+// A swappable description of an on-device Ask model: which MLC model, where its files live on
+// our CDN, its compiled wasm lib, and how to build its WebLLM app config. Swapping the answer
+// model = choosing a different spec at the composition root (offscreen) -- no parallel engine
+// factories. All URLs resolve to our model CDN so WebLLM never falls back to HF/GitHub.
+export interface AskModelSpec {
+  modelId: string
+  modelDir: string
+  modelLib: string
+  buildAppConfig: (modelBaseUrl: string, modelLibUrl: string) => AppConfig
+}
+
+export const LLAMA_ASK_SPEC: AskModelSpec = {
+  modelId: LLAMA_ASK_MODEL,
+  modelDir: LLAMA_ASK_MODEL_DIR,
+  modelLib: LLAMA_ASK_MODEL_LIB,
+  buildAppConfig: buildLlamaAppConfig,
+}
+
+export const GEMMA_ASK_SPEC: AskModelSpec = {
+  modelId: GEMMA_ASK_MODEL,
+  modelDir: GEMMA_ASK_MODEL_DIR,
+  modelLib: GEMMA_ASK_MODEL_LIB,
+  buildAppConfig: buildGemmaAppConfig,
+}
+
+// One factory for any Ask model. The concrete spec is chosen by the caller (offscreen), keeping
+// the model choice at the composition root and this module model-agnostic.
+export async function createAskEngine(
+  spec: AskModelSpec,
   onProgress?: (e: ModelProgressEvent) => void,
 ): Promise<MLCEngineInterface> {
   const { CreateMLCEngine } = await import('@mlc-ai/web-llm')
-  const modelBaseUrl = modelCdnUrl(LLAMA_ASK_MODEL_DIR)
-  const modelLibUrl = modelCdnUrl(`${LLAMA_ASK_MODEL_DIR}${LLAMA_ASK_MODEL_LIB}`)
+  const modelBaseUrl = modelCdnUrl(spec.modelDir)
+  const modelLibUrl = modelCdnUrl(`${spec.modelDir}${spec.modelLib}`)
   onProgress?.({ status: 'initiate', progress: 0 })
-  const engine = await CreateMLCEngine(LLAMA_ASK_MODEL, {
-    appConfig: buildLlamaAppConfig(modelBaseUrl, modelLibUrl),
+  const engine = await CreateMLCEngine(spec.modelId, {
+    appConfig: spec.buildAppConfig(modelBaseUrl, modelLibUrl),
     initProgressCallback: (report) => onProgress?.(webLlmProgressToModelProgress(report)),
   })
   onProgress?.({ status: 'ready' })
@@ -204,30 +220,18 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
     return parseExpandedQueries(completion.choices[0]?.message.content ?? '')
   }
 
-  private async createEvidenceNotes(request: AnswerRequest): Promise<string> {
+  private async createAnswerText(request: AnswerRequest): Promise<string> {
     const completion = await this.engine.chat.completions.create({
-      messages: buildEvidenceMessages(request.question, request.chunks),
+      messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
-      max_tokens: MAX_EVIDENCE_TOKENS,
-    })
-    return completion.choices?.[0]?.message.content?.trim() ?? ''
-  }
-
-  private async createAnswerText(request: AnswerRequest, workingNotes: string): Promise<string> {
-    const completion = await this.engine.chat.completions.create({
-      messages: buildAskMessages(request.question, request.chunks, workingNotes),
-      temperature: 0,
-      max_tokens: MAX_ANSWER_TOKENS,
     })
     return completion.choices[0]?.message.content?.trim() || NOT_FOUND_ANSWER
   }
 
   async answerStream(request: AnswerRequest, onDelta: (delta: string) => void): Promise<AnswerDraft> {
-    const workingNotes = await this.createEvidenceNotes(request)
     const stream = await this.engine.chat.completions.create({
-      messages: buildAskMessages(request.question, request.chunks, workingNotes),
+      messages: buildAskMessages(request.question, request.chunks),
       temperature: 0,
-      max_tokens: MAX_ANSWER_TOKENS,
       stream: true,
     })
     let text = ''
@@ -253,8 +257,7 @@ export class WebLlmAnswerGenerator implements AnswerGeneratorPort {
   }
 
   async answer(request: AnswerRequest): Promise<AnswerDraft> {
-    const workingNotes = await this.createEvidenceNotes(request)
-    const raw = await this.createAnswerText(request, workingNotes)
+    const raw = await this.createAnswerText(request)
     // See the matching comment in answerStream: citations must be validated against the same
     // slice the prompt actually showed, not the full (possibly larger) request.chunks.
     const { displayText, citedChunkIds } = parseAnswerCitation(raw, request.chunks.slice(0, MAX_ASK_PROMPT_CHUNKS))
