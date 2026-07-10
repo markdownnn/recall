@@ -350,7 +350,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
-    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator(), undefined, reranker)
     const answer = await ask.ask({ text, retrieveK, contextK })
     return { answer }
   }
@@ -360,7 +360,7 @@ installOffscreenRpcHandler(async (payload: unknown) => {
     const text = String(p.text ?? '')
     const retrieveK = Number(p.retrieveK ?? 12)
     const contextK = Number(p.contextK ?? 8)
-    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator())
+    const ask = new AskService(localEmbedder, store, await getReadyAnswerGenerator(), undefined, reranker)
     const answer = await ask.askStream({ text, retrieveK, contextK }, (delta) => {
       chrome.runtime
         .sendMessage({ channel: 'rpc-event', kind: 'ask-answer-delta', requestId, text: delta })

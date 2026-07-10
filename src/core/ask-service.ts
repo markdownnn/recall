@@ -1,7 +1,7 @@
 import { NOT_FOUND_ANSWER, type AnswerGeneratorPort, type AskProgressEvent } from './answer-generator'
 import { DEFAULT_ANSWER_RETRIEVAL_OPTIONS, type AnswerRetrievalOptions } from './answer-retrieval'
 import type { AskAnswer, AskQuery, RankedResult } from './model'
-import type { EmbeddingPort, VectorSearchPort } from './ports'
+import type { EmbeddingPort, RerankPort, VectorSearchPort } from './ports'
 import { dedupeSimilarQueries, type EmbeddedQuery } from './query-dedup'
 
 const MAX_ASK_SEARCH_QUERIES = 5
@@ -32,6 +32,9 @@ export class AskService {
     private readonly store: VectorSearchPort,
     private readonly generator: AnswerGeneratorPort,
     private readonly retrievalOptions?: Partial<AnswerRetrievalOptions>,
+    // Optional cross-encoder: reorders the retrieved chunks so the most relevant ones fill the
+    // bounded context sent to the answer model. Absent = keep the merge order (resilience).
+    private readonly reranker?: RerankPort,
   ) {}
 
   async ask(query: AskQuery): Promise<AskAnswer> {
@@ -74,11 +77,15 @@ export class AskService {
       searchQueries.map((q) => this.store.searchForAnswer(q.vector, q.text, options)),
     )
     const retrieved = mergeAnswerResults(resultSets)
+    // Gate on the raw vector top score BEFORE reranking: ASK_MIN_CONFIDENCE (0.70) was tuned on
+    // that scale, and cross-encoder logits live on a totally different one -- feeding them here
+    // would silently break the tuned threshold. The reranker only reorders WHICH chunks fill the
+    // context, not whether we answer at all.
     if (!passesConfidenceGate(topScoreOf(retrieved), ASK_MIN_CONFIDENCE)) {
       return { text: NOT_FOUND_ANSWER, sources: [] }
     }
 
-    const chunks = retrieved.slice(0, options.maxContextChunks)
+    const chunks = await this.selectContext(query.text, retrieved, options.maxContextChunks)
     const draft = await generate(chunks)
     const sourceIds = new Set(draft.citedChunkIds)
     // B1: surface EVERY cited chunk (unfolded), in context order, so the user can read each exact
@@ -87,6 +94,24 @@ export class AskService {
     // context is already capped at maxContextChunks.
     const sources = chunks.filter((result) => sourceIds.has(result.chunk.id))
     return { text: draft.text, sources }
+  }
+
+  // Pick the chunks that fill the bounded context window. With a reranker, a cross-encoder
+  // reorders the wider retrieved set so the most relevant chunks reach the answer model; without
+  // one (or if it fails to load on this device) it falls back to the merge order. Best-effort:
+  // a rerank failure must never sink an otherwise-answerable question.
+  private async selectContext(
+    question: string,
+    retrieved: RankedResult[],
+    maxContextChunks: number,
+  ): Promise<RankedResult[]> {
+    if (!this.reranker) return retrieved.slice(0, maxContextChunks)
+    try {
+      return await this.reranker.rerank(question, retrieved, maxContextChunks)
+    } catch (err) {
+      console.warn('[recall] ask rerank failed, using merge order:', String(err))
+      return retrieved.slice(0, maxContextChunks)
+    }
   }
 
   // Expands the question via the generator (best-effort), textually dedupes, embeds every

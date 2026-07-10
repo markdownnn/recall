@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { AskService } from '../../src/core/ask-service'
 import type { AnswerGeneratorPort } from '../../src/core/answer-generator'
-import type { EmbeddingPort, VectorSearchPort } from '../../src/core/ports'
+import type { EmbeddingPort, RerankPort, VectorSearchPort } from '../../src/core/ports'
 import type { RankedResult } from '../../src/core/model'
 import { rankedResult as chunk } from './fixtures'
 
@@ -337,6 +337,56 @@ test('ask drops an expanded query that is semantically too similar to one alread
   await svc.ask({ text: 'who invented rnn', retrieveK: 12, contextK: 8 })
 
   expect(searchedTexts).toEqual(['who invented rnn', 'lstm inventors'])
+})
+
+// Scenario: Ask는 여러 확장 검색으로 넓게 청크를 모으지만, 답변 모델에 넣을 컨텍스트는 몇 개로 제한된다.
+// 크로스인코더가 그 넓은 후보를 관련도로 다시 세워, "진짜 근거"가 제한된 컨텍스트 안에 들어가야 한다(A1 Ask).
+// Coverage: ⚠️ mock - 실제 크로스인코더는 무겁기 때문에 같은 계약의 fake reranker로 컨텍스트 선택 재정렬만 확인한다.
+test('ask reranks retrieved chunks and sends the best maxContextChunks to the generator', async () => {
+  const results = Array.from({ length: 6 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = {
+    ...fakeStore(async () => []),
+    searchForAnswer: async () => results, // a pool (6) wider than maxContextChunks (3)
+  }
+  let seenIds: string[] = []
+  const generator: AnswerGeneratorPort = {
+    answer: async ({ chunks }) => {
+      seenIds = chunks.map((c) => c.chunk.id)
+      return { text: 'answer', citedChunkIds: [] }
+    },
+  }
+  const reranker: RerankPort = { rerank: async (_q, cands, k) => [...cands].reverse().slice(0, k) }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 }, reranker)
+  await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  // 6 retrieved -> reranker reverses -> the best 3 that reach the generator are the pool's last three.
+  expect(seenIds).toEqual(['p1#5', 'p1#4', 'p1#3'])
+})
+
+// Scenario: Ask 리랭커 모델이 이 기기에서 로드에 실패해도 답변이 통째로 죽으면 안 된다. 리랭킹은 best-effort —
+// 실패하면 merge 순서 top-maxContextChunks로 조용히 폴백한다.
+// Coverage: ⚠️ mock - 같은 계약의 fake reranker가 throw하게 만들어 폴백 배선만 확인한다.
+test('ask falls back to the merge order for context when the reranker throws', async () => {
+  const results = Array.from({ length: 6 }, (_, i) => chunk(`p1#${i}`, `ctx ${i}`))
+  const store: VectorSearchPort = { ...fakeStore(async () => []), searchForAnswer: async () => results }
+  let seenIds: string[] = []
+  const generator: AnswerGeneratorPort = {
+    answer: async ({ chunks }) => {
+      seenIds = chunks.map((c) => c.chunk.id)
+      return { text: 'answer', citedChunkIds: [] }
+    },
+  }
+  const reranker: RerankPort = {
+    rerank: async () => {
+      throw new Error('reranker model unavailable on this device')
+    },
+  }
+
+  const svc = new AskService(embedder, store, generator, { maxContextChunks: 3 }, reranker)
+  await svc.ask({ text: 'q', retrieveK: 12, contextK: 8 })
+
+  expect(seenIds).toEqual(['p1#0', 'p1#1', 'p1#2'])
 })
 
 // Scenario: mergeAnswerResults ranks a chunk that TWO expanded queries corroborate (hits=2)
