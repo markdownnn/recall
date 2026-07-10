@@ -67,8 +67,11 @@ export function buildGemmaAppConfig(modelBaseUrl: string, modelLibUrl: string): 
   // positive. So set context_window_size to -1 and let the model's native 512 sliding window
   // drive. The reverse (sliding_window_size: -1 + context 4096, i.e. forced full attention) loaded
   // but produced repeating gibberish -- the wasm lib expects the sliding-window path.
+  // Sliding window also requires an attention_sink_size; 0 selects the default sliding-window
+  // behaviour (WebLLM errors without it: AttentionSinkSizeError).
   return buildWebLlmAppConfig(GEMMA_ASK_MODEL, modelBaseUrl, modelLibUrl, 711.07, true, {
     context_window_size: -1,
+    attention_sink_size: 0,
   })
 }
 

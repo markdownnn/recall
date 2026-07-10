@@ -33,7 +33,7 @@ describe('webllm ask model options', () => {
     // Gemma 3 must use its native sliding-window attention: context_window_size -1 so the model's
     // own sliding_window_size (512) is the single positive one WebLLM requires. Forcing full
     // attention (sliding_window_size -1) broke inference into gibberish. Regression guard.
-    expect(record.overrides).toMatchObject({ context_window_size: -1 })
+    expect(record.overrides).toMatchObject({ context_window_size: -1, attention_sink_size: 0 })
     expect(record.overrides).not.toHaveProperty('sliding_window_size')
     expect(record.model).toBe(
       'https://cdn.teamnyongs.com/models/webllm/gemma3-1b-it/q4f16_1/resolve/main/',
