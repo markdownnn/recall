@@ -209,26 +209,6 @@ describe('webllm answer generator', () => {
     expect(serialized).not.toContain('chrome-extension://')
   })
 
-  // Scenario: Gemma가 활성 Ask 모델이 됐으니, 그 설정도 HF/GitHub이 아니라 오직 우리 CDN에서만 받아야 한다.
-  // 경로가 어긋나면 WebLLM이 조용히 기본 원격(HF)으로 새거나 404로 로드에 실패한다.
-  // Coverage: ✅ integration
-  test('gemma app config uses only model CDN urls', () => {
-    const baseUrl = `https://cdn.teamnyongs.com/models/${GEMMA_ASK_MODEL_DIR}`
-    const modelLibUrl = `${baseUrl}${GEMMA_ASK_MODEL_LIB}`
-    const config = buildGemmaAppConfig(baseUrl, modelLibUrl)
-    const record = config.model_list[0]
-    const serialized = JSON.stringify(config)
-
-    expect(record.model_id).toBe(GEMMA_ASK_MODEL)
-    expect(record.model).toBe(baseUrl)
-    expect(record.model).toBe(
-      'https://cdn.teamnyongs.com/models/webllm/gemma3-1b-it/q4f16_1/resolve/main/',
-    )
-    expect(record.model_lib).toBe(modelLibUrl)
-    expect(serialized).not.toContain('huggingface.co')
-    expect(serialized).not.toContain('raw.githubusercontent.com')
-  })
-
   // Scenario: 조립 지점(offscreen)이 모델을 spec 하나로 고르는 헥사고날 구조 — GEMMA_ASK_SPEC이 실제
   // Gemma 모델/디렉토리/라이브러리를 정확히 묶어야 엔진 팩토리가 올바른 CDN 경로로 로드한다.
   // Coverage: ✅ integration

@@ -30,7 +30,10 @@ describe('webllm ask model options', () => {
     expect(record.model_id).toBe(GEMMA_ASK_MODEL)
     expect(record.model).toBe(baseUrl)
     expect(record.model_lib).toBe(modelLibUrl)
-    expect(record.overrides).toMatchObject({ context_window_size: 4096, sliding_window_size: -1 })
+    // Cap context, but do NOT disable Gemma 3's sliding-window attention: forcing sliding_window_size
+    // to -1 broke inference into repeating gibberish. Regression guard so it's never re-added.
+    expect(record.overrides).toMatchObject({ context_window_size: 4096 })
+    expect(record.overrides).not.toHaveProperty('sliding_window_size')
     expect(record.model).toBe(
       'https://cdn.teamnyongs.com/models/webllm/gemma3-1b-it/q4f16_1/resolve/main/',
     )

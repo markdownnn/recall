@@ -62,14 +62,11 @@ export function buildLlamaAppConfig(modelBaseUrl: string, modelLibUrl: string): 
 }
 
 export function buildGemmaAppConfig(modelBaseUrl: string, modelLibUrl: string): AppConfig {
-  return buildWebLlmAppConfig(
-    GEMMA_ASK_MODEL,
-    modelBaseUrl,
-    modelLibUrl,
-    711.07,
-    true,
-    { sliding_window_size: -1 },
-  )
+  // Do NOT override sliding_window_size: Gemma 3 interleaves local sliding-window and global
+  // attention layers by design. Forcing it off (-1) broke inference -- the model emitted
+  // repeating gibberish ("Deep Deep Deep Learning... The Questioning..."). Let the model's own
+  // mlc-chat-config drive its attention; we only cap context_window_size (via buildWebLlmAppConfig).
+  return buildWebLlmAppConfig(GEMMA_ASK_MODEL, modelBaseUrl, modelLibUrl, 711.07, true)
 }
 
 export function webLlmProgressToModelProgress(report: InitProgressReport): ModelProgressEvent {
