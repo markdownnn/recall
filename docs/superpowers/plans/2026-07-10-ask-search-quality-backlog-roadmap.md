@@ -64,8 +64,13 @@
   - 시도 1 (few-shot 예시): 실제 질문 앞에 카페인 종합 예시 1쌍 추가 → **역효과**. 1B가 예시와 질문을 구분 못 해 **카페인 예시 내용이 답에 누수**('what is deep learning?'에 카페인 문장이 붙음). 되돌림.
   - 시도 2 (Gemma 3 1B 교체): 호스팅(588MB)까지 했으나 WebLLM wasm 런타임이 계단식 config 에러(sliding window → attention_sink) 끝에 **하드 크래시("Program terminated with exit(1)")**. Llama는 도는데 Gemma3만 크래시 → 이 web-llm에서 **Gemma3-1B 비호환**. Llama로 복귀. (spec·호스팅은 남겨둠, 향후 web-llm이 고치면 한 줄 스왑.)
   - 시도 3 (anti-loop 디코딩): Gemma 루프용이라 Llama 복귀와 함께 되돌림.
-  - 결론: **1B 프롬프트·디코딩 튜닝으로는 안 됨.** 진짜 답은 (a) **더 큰 모델**(Llama-3.2-**3B** — Llama 계열이라 여기서 확실히 돎, Gemma와 달리 저위험, 호스팅 ~1.8GB) 또는 (b) **excerpt-first 제품 설계**(1B 종합 접고 B1 excerpt를 답처럼). 별도 결정.
-  - 부수 산출물(유지): 헥사고날 `AskModelSpec`/`createAskEngine`(모델 스왑 한 줄), [describeError](../../../src/core/describe-error.ts)(진짜 에러 노출).
+  - **해결됨(Llama 1B로) 2026-07-10** — 브라우저 눈 검증. 결정적이었던 것:
+    1. **근거 메모 2단계 제거**: 메모의 메타 표현("Direct Answer: Excerpt 1 directly answers...")이 답에 새어들던 게 사라져 **내용이 제대로 된 종합**으로 바뀜. (덤: 레이턴시 절반.)
+    2. **간결 프롬프트 + 200토큰**: 1~3문장 요약 강제, 문장 중간 잘림 해소.
+    3. **프롬프트에서 인용 지시 제거 + 헤더/라벨 금지**: 모델이 "Excerpt Numbers Used"·"**Answer:**" 틀을 씌우던 게 사라짐. (후처리 munging 아님 — 프롬프트 레벨.)
+    4. **출처 = 컨텍스트 청크 폴백**: 모델 인용에 의존 안 하고 리랭커가 고른 근거 청크를 항상 표시 → 출처 안정적으로 뜸.
+  - 즉 **3B 없이 1B로 해결.** (Gemma·few-shot·디코딩 삽질은 헛다리였고, 진짜 원인은 근거메모 오염 + 인용/라벨 유도 프롬프트였음.)
+  - 부수 산출물(유지): 헥사고날 `AskModelSpec`/`createAskEngine`(모델 스왑 한 줄 — 3B 필요시 즉시), [describeError](../../../src/core/describe-error.ts)(진짜 에러 노출).
 
 ### 보류
 
