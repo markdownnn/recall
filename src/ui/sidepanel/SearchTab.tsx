@@ -162,9 +162,12 @@ export function SearchTab({
           {answer.sources.length > 0 && (
             <div class="answersources">
               {answer.sources.map((r) => (
-                <a href={demoLinkFor(r.page.url)} target="_blank" rel="noopener noreferrer" key={r.chunk.id}>
-                  {r.page.title}
-                </a>
+                <div class="answersource" key={r.chunk.id}>
+                  <a href={demoLinkFor(r.page.url)} target="_blank" rel="noopener noreferrer">
+                    {r.page.title}
+                  </a>
+                  <p>{r.chunk.text}</p>
+                </div>
               ))}
             </div>
           )}

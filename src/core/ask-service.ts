@@ -81,13 +81,11 @@ export class AskService {
     const chunks = retrieved.slice(0, options.maxContextChunks)
     const draft = await generate(chunks)
     const sourceIds = new Set(draft.citedChunkIds)
-    const sourcesByPage = new Map<string, RankedResult>()
-    for (const result of chunks) {
-      if (!sourceIds.has(result.chunk.id)) continue
-      if (!sourcesByPage.has(result.page.id)) sourcesByPage.set(result.page.id, result)
-      if (sourcesByPage.size >= 5) break
-    }
-    const sources = [...sourcesByPage.values()]
+    // B1: surface EVERY cited chunk (unfolded), in context order, so the user can read each exact
+    // passage the answer leaned on -- not one representative chunk per page. Two chunks from the
+    // same saved page therefore appear as two sources. Naturally bounded: cited ⊆ context, and
+    // context is already capped at maxContextChunks.
+    const sources = chunks.filter((result) => sourceIds.has(result.chunk.id))
     return { text: draft.text, sources }
   }
 

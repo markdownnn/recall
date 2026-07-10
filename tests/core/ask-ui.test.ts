@@ -76,7 +76,21 @@ describe('ask side panel ui contract', () => {
 
     expect(css).toContain('overflow-wrap: anywhere')
     expect(css).toContain('word-break: break-word')
-    expect(css).toContain('.answersources > a')
+    expect(css).toContain('.answersource > a')
+  })
+
+  // Scenario: 답이 저장 글의 어느 대목에서 나왔는지 눈으로 확인하려면, 각 인용 출처가 페이지 제목뿐 아니라
+  // 그 청크의 본문 스니펫까지 보여줘야 한다(B1).
+  // Coverage: ⚠️ mock - Chrome side panel 렌더링은 브라우저 전용이라 컴포넌트/CSS 소스 계약으로 고정한다.
+  test('Ask sources show each cited chunk snippet, not just the page title', () => {
+    const source = readFileSync('src/ui/sidepanel/SearchTab.tsx', 'utf8')
+    const css = readFileSync('src/ui/sidepanel/sidepanel.css', 'utf8')
+
+    expect(source).toContain('class="answersource"')
+    expect(source).toContain('<p>{r.chunk.text}</p>')
+    // Snippet is line-clamped like a search-result card so a long chunk can't flood the panel.
+    expect(css).toContain('.answersource > p')
+    expect(css).toContain('-webkit-line-clamp: 3')
   })
 
   // Scenario: 첫 토큰이 오기 전 빈 답변 카드가 보이면 얇은 빈 박스처럼 보여 어색하다.
