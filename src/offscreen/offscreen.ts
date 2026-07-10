@@ -19,6 +19,7 @@ import { AskService } from '../core/ask-service'
 import { ParagraphChunker } from '../core/paragraph-chunker'
 import { CaptureGate } from '../core/capture-gate'
 import { migrateEmbeddingModel } from '../core/embed-migration'
+import { describeError } from '../core/describe-error'
 import { EMBED_MODEL_VERSION } from '../core/embed-version'
 import { INITIAL_ASK_MODEL_STATUS, reduceAskModelProgress } from '../core/ask-model-status'
 import type { AskModelStatus } from '../core/ask-model-status'
@@ -101,7 +102,7 @@ function getAnswerGenerator(): Promise<AnswerGeneratorPort> {
       .catch((err) => {
         answerGeneratorP = null
         answerGeneratorReady = false
-        emitAskModelProgress({ status: 'error', error: String(err) })
+        emitAskModelProgress({ status: 'error', error: describeError(err) })
         throw err
       })
   }
